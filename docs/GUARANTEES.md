@@ -337,6 +337,9 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
 - A sync records the published file counts while it still holds the store lock.
   Another process's offline write after that round remains unpublished until
   a later publication carries it, including when a command publishes automatically.
+  The counts are of the remote they were published to: on a store switched to
+  another coordination remote (`sync --remote`, `BEAD_REMOTE`), everything
+  counts as unpublished there until a sync publishes to it.
 - A final unpublished-count failure does not turn a committed local write
   into a failed command. Its successful result stays on stdout, and stderr
   warns that the write was recorded locally and the count is unavailable.
@@ -457,6 +460,11 @@ machine's tracker of the same name if it has one; `BEAD_WORKSPACE=ID bead sync
 --remote origin` on a machine that has it, its origin moved, publishes it at the new
 URL, and every other machine's next `sync` adopts it. Until a machine's origin moves it keeps using the old
 URL, which a forge's rename redirects.
+
+A local-path origin that is gone for a while (moved, renamed, on a volume not
+mounted) is not a move: the id is derived from the path as it resolves, whether
+it exists or not, so the checkout keeps its tracker, plain edits stay local,
+and the next `bead sync` once it is back publishes them.
 
 A tracked `.beadroll.json` keeps its id through any move. With its remote left
 to origin, or named `origin`, the first `sync` after the move publishes the

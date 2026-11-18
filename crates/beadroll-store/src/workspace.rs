@@ -318,9 +318,14 @@ impl Workspace {
     }
 
     /// Bookkeeping once the remote has accepted. It never turns a command that took effect into a
-    /// failure: a full volume or a damaged `meta.json` only leaves `last_sync` behind.
+    /// failure: a full volume or a damaged `meta.json` only leaves `last_sync` behind. Published
+    /// counts are saved with `published_to`, the URL they were published to, as git was handed it:
+    /// counts of one remote say nothing of another the store is switched to.
     pub fn note_sync(&self, remote: &Endpoint, values: &[(&str, Value)]) {
         let mut all: Vec<(&str, Value)> = values.to_vec();
+        if values.iter().any(|(key, _)| *key == "published") {
+            all.push(("published_to", published_to(remote)));
+        }
         all.push(("remote", remembered(remote)));
         all.push(("last_sync", Value::from(stamp(&self.settings.clock))));
         let _ = self.save_meta(&all);
@@ -360,6 +365,12 @@ impl Workspace {
 /// remote given to it (a name is looked up then).
 pub fn remembered(remote: &Endpoint) -> Value {
     Value::from(remote.chosen().to_string_lossy().into_owned())
+}
+
+/// What `meta.json`'s `published_to` records of `remote`: its URL as bead hands it to git, which
+/// the same remote chosen again reads back as.
+pub fn published_to(remote: &Endpoint) -> Value {
+    Value::from(remote.url.to_string_lossy().into_owned())
 }
 
 /// `[A-Za-z0-9][A-Za-z0-9._-]{0,99}`, whole.

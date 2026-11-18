@@ -10,8 +10,8 @@ use beadroll_core::metadata::Counts;
 use beadroll_core::text::shell_quote;
 use beadroll_store::{
     Endpoint, Failpoints, FileMode, Fired, Memo, MetadataRead, PublicationState, RemoteSource,
-    Workspace, claim_files, layout, moved_workspaces, pending_files, relative, relative_name,
-    segment_files, workspaces_named, write_atomic,
+    Workspace, claim_files, layout, moved_workspaces, pending_files, published_to, relative,
+    relative_name, segment_files, workspaces_named, write_atomic,
 };
 
 use crate::error::Error;
@@ -345,13 +345,19 @@ pub fn adopt_published(
 /// unpublished. Arithmetic is checked: nonnumeric counts or subtraction, addition or increment
 /// beyond an i128 return IO. Memoized line counts avoid rereading unchanged segments on each command.
 pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
-    match ws.remote(None) {
-        Ok(Some(remote)) if !remote.is_empty() => {}
+    let endpoint = match ws.endpoint(None) {
+        Ok(Some(endpoint)) if !endpoint.url.is_empty() => endpoint,
         _ => return Ok(None),
-    }
+    };
     let meta = ws.metadata(MetadataRead::Lenient)?;
     let none = Counts::default();
+    // counts published to another remote than the one chosen now say nothing of it: everything is
+    // unpublished there until a sync, as before a first publication (a count that errs high)
+    let elsewhere = meta
+        .value("published_to")
+        .is_some_and(|to| *to != published_to(&endpoint));
     let published = match meta.published() {
+        Some(_) if elsewhere => &none,
         Some(published) => published,
         _ if meta.value("last_sync").is_some_and(Value::truthy) => return Ok(None),
         _ => &none,
