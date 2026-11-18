@@ -333,8 +333,44 @@ mod finding_names {
             .collect()
     }
 
-    /// No function or module is named for a finding: a test is named for the contract it checks
-    /// and cites its finding in its doc comment (`AGENTS.md`, *Making a change*).
+    /// The ids of this tracker's issues that `texts` cite (`roll-k2wy`), as a name would carry
+    /// them (`roll_k2wy`): the tracker itself lives outside the repository, so the issues a name
+    /// could be named for are those the repository cites.
+    fn issue_ids<'a>(texts: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+        let cited = Regex::new(r"\broll-([a-z0-9]{4})\b").expect("a valid pattern");
+        let mut ids: Vec<String> = (texts.into_iter())
+            .flat_map(|text| {
+                cited
+                    .captures_iter(text)
+                    .map(|found| format!("roll_{}", &found[1]))
+            })
+            .collect();
+        ids.sort();
+        ids.dedup();
+        ids
+    }
+
+    /// The functions and modules of `text`, the file `name`, named for one of `issues`: the id as
+    /// whole words of the name (`meets_roll_k2wy_18`), as NAME:LINE: ITEM.
+    fn named_for_an_issue(name: &str, text: &str, issues: &[String]) -> Vec<String> {
+        let item = Regex::new(r"(?m)^[ \t]*(?:pub(?:\([a-z]+\))? )?(?:fn|mod) ([a-z0-9_]+)")
+            .expect("a valid pattern");
+        let words = |name: &str| format!("_{name}_");
+        (item.captures_iter(text))
+            .filter(|found| {
+                let name = words(&found[1]);
+                issues.iter().any(|issue| name.contains(&words(issue)))
+            })
+            .map(|found| {
+                let at = found.get(0).expect("the match").start();
+                let line = text[..at].matches('\n').count() + 1;
+                format!("{name}:{line}: {}", found[0].trim())
+            })
+            .collect()
+    }
+
+    /// No function or module is named for a finding or an issue: a test is named for the contract
+    /// it checks and cites its finding or issue in its doc comment (`AGENTS.md`, *Making a change*).
     #[test]
     fn nothing_is_named_for_a_finding() {
         let root = workspace::root();
@@ -342,8 +378,20 @@ mod finding_names {
         let ids = finding_ids(&ledger);
         // A ledger read as empty would pass everything: it has hundreds of rows.
         assert!(ids.len() > 100, "{} finding ids", ids.len());
-        let found: Vec<String> = (super::rust_sources().iter())
-            .flat_map(|(name, text)| named_for_a_finding(name, text, &ids))
+        let sources = super::rust_sources();
+        let docs = ["docs/FINDINGS.md", "docs/REVIEWING.md", "CHANGELOG.md"]
+            .map(|doc| std::fs::read_to_string(root.join(doc)).expect("a doc"));
+        let cited =
+            (docs.iter().map(String::as_str)).chain(sources.iter().map(|(_, t)| t.as_str()));
+        let issues = issue_ids(cited);
+        // Cited ids read as none would pass everything: the docs cite dozens.
+        assert!(issues.len() > 3, "{issues:?}");
+        let found: Vec<String> = (sources.iter())
+            .flat_map(|(name, text)| {
+                let mut found = named_for_a_finding(name, text, &ids);
+                found.extend(named_for_an_issue(name, text, &issues));
+                found
+            })
             .collect();
         assert!(
             found.is_empty(),
@@ -366,6 +414,23 @@ mod finding_names {
                 "x.rs:2: mod g25_b",
                 "x.rs:4: pub(crate) fn g25_d"
             ]
+        );
+    }
+
+    /// A name holding a cited issue's id as whole words is found; `roll` inside a word, as in
+    /// `beadroll_core`, or followed by words no cited issue has, as in `roll_back`, is not.
+    #[test]
+    fn a_cited_issue_id_is_found_only_as_whole_words_of_a_name() {
+        let issues = issue_ids([
+            "see roll-k2wy.18 and (roll-lqjj)",
+            "not roll-toolong or xroll-abcd",
+        ]);
+        assert_eq!(issues, ["roll_k2wy", "roll_lqjj"]);
+        let text = "fn meets_roll_k2wy_18() {}\n  mod roll_lqjj {}\nfn beadroll_core_x() {}\n\
+                    fn enroll_lqjj() {}\nfn roll_back() {}\nfn a_roll_lqjjx() {}\n";
+        assert_eq!(
+            named_for_an_issue("x.rs", text, &issues),
+            ["x.rs:1: fn meets_roll_k2wy_18", "x.rs:2: mod roll_lqjj"]
         );
     }
 }

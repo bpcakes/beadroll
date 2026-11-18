@@ -54,7 +54,8 @@ storage, protocol behavior and fault recovery.
   process, on a machine of the sandbox that `src/testing.rs` opens: what a command's outcome holds
   and when the run frees it (roll-lqjj.42).
 - `tests/cli/main.rs`: the one test binary's root; `sandbox()` hands test support the binary Cargo
-  built (`env!("CARGO_BIN_EXE_bead")`), the only place that default can come from.
+  built (`env!("CARGO_BIN_EXE_bead")`), as `rust_only` does; `tests/cli/support.rs` names the same
+  binary only to check which one a test chose.
 - `tests/cli/commands/*.rs`: command behavior, and `commands/setup.rs`, the golden
   path of setting a tracker up (roll-dih8.13); `commands/ownership.rs`, what two machines that end
   claims every way print of who held each issue, against the transcript this build recorded in
@@ -98,8 +99,9 @@ storage, protocol behavior and fault recovery.
 
 ## Invariants
 
-- Only `cli` reads the process environment, the working directory and the clock; it passes values
-  down.
+- Only `cli` reads the process environment and the working directory, and it makes the clock: it
+  passes values down, and the clock as `Settings`' `Clock`, whose `real_ns` is bead's one reading
+  of the wall clock (the `clock` failpoint shifts it).
 - A command hands the one thing it is done with to its `Outcome` (`Outcome::held`): the state it
   answers from (`Outcome::answered_from`, its last state, never beside another), or the transaction
   a write was made in (`Outcome::wrote_in`, from `beadroll_sync::writing_spent`: `create`,

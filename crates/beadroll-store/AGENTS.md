@@ -80,15 +80,16 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   and what it was made from, written before the state and the index as parts (`file::head`,
   `file::parts`), so that they are not copied behind them first;
   `src/projection/sources.rs`: `Sourced`, a projection with the journal files it was made from
-  (`projection_sourced`: each segment's identity as `current` read it, the attempt files by the
-  listing and identities the locked phase keeps), and `Sourced::into_current`, which says whether
-  they are still the store's files (roll-lqjj.37).
+  (each segment's identity as `current` read it, the attempt files by the listing and identities
+  the locked phase keeps; `src/projection.rs`'s `projection_sourced` makes one), and
+  `Sourced::into_current`, which says whether they are still the store's files (roll-lqjj.37).
   `projection/extension.rs` loads the exact locations an owned core `Extension` requests and
   applies it, with replay on missing or damaged texts; sync uses the same `extend_projection`.
   `projection/writeback.rs` persists the core's borrowed `Writeback` and acknowledges its own
   places and generation only after both writes succeed. Failed writes leave new places
   unacknowledged for retry, with existing cache durability and lock order.
-- `src/listing.rs`: `Claims`, the in-memory accepted-attempt names shared by `claim_files`,
+- `src/listing.rs`: `Claims`, the in-memory accepted-attempt names shared by `claim_files`
+  (in `src/journal.rs`, with `claim_keys` and `claim_files_afresh`),
   validated against each directory's identity on every call and cleared at lock boundaries.
   A directory change re-lists it; the file identities used by the memo and projection are still
   checked individually (roll-lqjj.12): `claim_keys` stats each file once a locked phase, whoever

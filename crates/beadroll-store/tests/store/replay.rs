@@ -1,6 +1,6 @@
 //! Store replay and isolation tests.
 
-mod unit_test {
+mod refs_and_isolation {
     use beadroll_core::json::Object;
     use beadroll_core::json::Value;
     use beadroll_store::Workspace;

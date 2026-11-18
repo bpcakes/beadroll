@@ -2,7 +2,7 @@
 //! forming a cycle report it while both issues remain ready, matching Beads behavior. In-process
 //! replay checks live in beadroll-core's `tests/core/replay.rs`.
 
-mod replay_audit_thread_ownership {
+mod thread_ownership {
 
     use beadroll_test_support::{Machine, code};
 

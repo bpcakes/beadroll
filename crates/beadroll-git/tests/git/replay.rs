@@ -1,6 +1,6 @@
 //! URL normalization tests.
 
-mod unit_test {
+mod remote_identity {
     use std::ffi::OsStr;
     use std::path::Path;
 

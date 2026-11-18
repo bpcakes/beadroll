@@ -1,5 +1,5 @@
-//! Black-box tests of bead, grouped under `tests/cli/`. Module and test names preserve
-//! findings-ledger references.
+//! Black-box tests of bead, grouped under `tests/cli/`. A module is named for its subject and a
+//! test for the contract it checks; a finding's id is cited in its doc comment.
 //!
 //! Tests use `beadroll-test-support` with the binary this package builds, unless BEAD_UNDER_TEST
 //! or a machine selects another. Goldens and parity fixtures pin output and stored bytes. Tests

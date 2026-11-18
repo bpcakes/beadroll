@@ -62,7 +62,8 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_pending`).
   batches, with fetch and repository replacement boundaries. `src/link/known.rs`: object-presence
   evidence and its invalidation by merge, rehash, maintenance and repository replacement.
 - `src/synchronise.rs`: `synchronise` and `Synced`, `adopt_published`, `publish_soon` (and its
-  two halves, `destination`, where a write would go, and `publish_soon_at`; roll-lqjj.50),
+  two halves, `destination`, where a write would go, and `publish_soon_at`; roll-lqjj.50;
+  `publish_soon_to`, for a caller that chose the remote already, as `init` does),
   `unpublished_count` (the memo's segment entries alone, `meta.json` as the command read it, the
   attempt files named by their bytes with `relative_name`; roll-lqjj.30 and roll-lqjj.47),
   `pause`, `ROUNDS`. `src/synchronise/round.rs` returns each round's incoming progress beside
