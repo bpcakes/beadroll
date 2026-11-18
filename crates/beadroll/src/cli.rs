@@ -18,12 +18,15 @@ mod tempdir;
 mod texts;
 
 use std::collections::BTreeMap;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::os::unix::ffi::OsStrExt as _;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use args::{create_args, filters, list_args, network, owned, transition_args, update_args};
+use args::{
+    comment_args, create_args, init_args, list_args, network, ownership_args, ready_args, remote,
+    transition_args, update_args,
+};
 use beadroll_core::code::Code;
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Object, Value};
@@ -454,19 +457,9 @@ fn dispatch(
     ns: &Namespace,
 ) -> Result<(Outcome, NetworkMode, Option<OsString>), Failure> {
     let network = network(ns);
-    let remote = ns.text("remote").map(OsStr::to_os_string);
+    let remote = remote(ns);
     let outcome = match ns.spec.name {
-        "init" => commands::init(
-            ctx,
-            commands::InitArgs {
-                prefix: owned(ns, "prefix"),
-                import_path: owned(ns, "import_path"),
-                tracked: ns.flag("tracked"),
-                remote: remote.clone(),
-                network,
-                dry_run: ns.flag("dry_run"),
-            },
-        )?,
+        "init" => commands::init(ctx, init_args(ns))?,
         "import" => commands::import(
             ctx,
             ns.text("path").unwrap_or_default(),
@@ -484,15 +477,7 @@ fn dispatch(
         "delete" => commands::transition(ctx, Transition::Delete, &transition_args(ns))?,
         "show" => commands::show(ctx, ns.texts("ids"))?,
         "list" => commands::list(ctx, &list_args(ns))?,
-        "ready" => commands::ready(
-            ctx,
-            &commands::ReadyArgs {
-                root: owned(ns, "root"),
-                epic: owned(ns, "epic"),
-                parent: owned(ns, "parent"),
-                filters: filters(ns),
-            },
-        )?,
+        "ready" => commands::ready(ctx, &ready_args(ns))?,
         "blocked" => commands::blocked(ctx)?,
         "search" => commands::search(
             ctx,
@@ -513,35 +498,18 @@ fn dispatch(
                 Edges::WaitsFor
             },
         )?,
-        "comments" => commands::comments(
-            ctx,
-            &commands::CommentArgs {
-                words: ns.texts("words").to_vec(),
-                message: owned(ns, "message"),
-                file: owned(ns, "file"),
-                author: owned(ns, "author"),
-            },
-        )?,
+        "comments" => commands::comments(ctx, &comment_args(ns))?,
         "lint" => commands::lint(ctx)?,
         "sync" => commands::sync(ctx, remote.as_ref())?,
         "log" => commands::log(ctx, ns.text("key"), ns.int("limit"))?,
         "info" => commands::info(ctx)?,
         "machines" => commands::machines(ctx, ns.text("name"))?,
         "claims" => commands::claims(ctx, real_seconds(&ctx.ws.settings.clock))?,
-        name => {
-            let args = commands::OwnershipArgs {
-                ids: ns.texts("ids").to_vec(),
-                reason: owned(ns, "reason"),
-                network,
-                remote: remote.clone(),
-                asked: ns.asked(),
-            };
-            match name {
-                "claim" => commands::claim(ctx, &args)?,
-                "takeover" => commands::takeover(ctx, &args)?,
-                _ => commands::release(ctx, &args)?,
-            }
-        }
+        "claim" => commands::claim(ctx, &ownership_args(ns))?,
+        "takeover" => commands::takeover(ctx, &ownership_args(ns))?,
+        "release" => commands::release(ctx, &ownership_args(ns))?,
+        // the parser takes only the commands of the spec, each dispatched above
+        other => return Err(Failure::new(Code::Usage, format!("no command {other}"))),
     };
     Ok((outcome, network, remote))
 }

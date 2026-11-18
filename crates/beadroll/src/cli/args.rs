@@ -41,7 +41,7 @@ pub(super) fn transition_args(ns: &Namespace) -> commands::TransitionArgs {
         recursive: ns.flag("recursive"),
         force: ns.flag("force"),
         network: network(ns),
-        remote: ns.text("remote").map(OsStr::to_os_string),
+        remote: remote(ns),
     }
 }
 
@@ -57,7 +57,56 @@ pub(super) fn update_args(ns: &Namespace) -> commands::UpdateArgs {
         remove_label: ns.texts("remove_label").to_vec(),
         set_labels: owned(ns, "set_labels"),
         network: network(ns),
-        remote: owned(ns, "remote"),
+        remote: remote(ns),
+        asked: ns.asked(),
+    }
+}
+
+/// The coordination remote `--remote` names, when the command was given one.
+pub(super) fn remote(ns: &Namespace) -> Option<OsString> {
+    owned(ns, "remote")
+}
+
+/// `init`'s arguments.
+pub(super) fn init_args(ns: &Namespace) -> commands::InitArgs {
+    commands::InitArgs {
+        prefix: owned(ns, "prefix"),
+        import_path: owned(ns, "import_path"),
+        tracked: ns.flag("tracked"),
+        remote: remote(ns),
+        network: network(ns),
+        dry_run: ns.flag("dry_run"),
+    }
+}
+
+/// `ready`'s arguments: one scope at most, which the parser has seen to.
+pub(super) fn ready_args(ns: &Namespace) -> commands::ReadyArgs {
+    commands::ReadyArgs {
+        root: owned(ns, "root"),
+        epic: owned(ns, "epic"),
+        parent: owned(ns, "parent"),
+        filters: filters(ns),
+    }
+}
+
+/// `comments`' arguments: its words, and what `add` writes.
+pub(super) fn comment_args(ns: &Namespace) -> commands::CommentArgs {
+    commands::CommentArgs {
+        words: ns.texts("words").to_vec(),
+        message: owned(ns, "message"),
+        file: owned(ns, "file"),
+        author: owned(ns, "author"),
+    }
+}
+
+/// The arguments `claim`, `takeover` and `release` share, with the command line as its receipt
+/// names it.
+pub(super) fn ownership_args(ns: &Namespace) -> commands::OwnershipArgs {
+    commands::OwnershipArgs {
+        ids: ns.texts("ids").to_vec(),
+        reason: owned(ns, "reason"),
+        network: network(ns),
+        remote: remote(ns),
         asked: ns.asked(),
     }
 }
