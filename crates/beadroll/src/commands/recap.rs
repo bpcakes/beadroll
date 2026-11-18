@@ -23,7 +23,7 @@ use beadroll_store::{
 
 use self::layout::{activity, time};
 use super::history::logged;
-use super::{Delivered, Failure, Line, Outcome, Tone};
+use super::{Delivered, Failure, Line, Outcome, Tone, counted};
 
 pub(crate) use self::layout::Layout;
 
@@ -292,9 +292,12 @@ fn opening(
         let line = format!("  first seen here: since {since}{earlier}");
         lines.push(Line::toned(Tone::Dim, line));
     }
-    let count = |n: usize, what: &str| format!("{n} {what}{}", if n == 1 { "" } else { "s" });
     if !st.integrity().is_empty() {
-        let problems = count(st.integrity().len(), "integrity problem");
+        let problems = counted(
+            st.integrity().len(),
+            "integrity problem",
+            "integrity problems",
+        );
         lines.push(Line::toned(Tone::Warning, format!("  {problems}:")));
         let each = st
             .integrity()
@@ -303,7 +306,7 @@ fn opening(
         lines.extend(each.map(|line| Line::toned(Tone::Warning, line)));
     }
     if !st.pending().is_empty() {
-        let waiting = count(st.pending().len(), "event");
+        let waiting = counted(st.pending().len(), "event", "events");
         let line = format!("  {waiting} waiting for causes not here yet: shown once they arrive");
         lines.push(Line::toned(Tone::Warning, line));
     }

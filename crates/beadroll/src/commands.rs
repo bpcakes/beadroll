@@ -302,6 +302,11 @@ pub(crate) fn need_tracker(st: &State) -> Result<(), Failure> {
     Ok(())
 }
 
+/// `count` and the noun for it, `one` or `many`: "1 issue", "2 issues".
+pub(crate) fn counted(count: usize, one: &str, many: &str) -> String {
+    format!("{count} {}", if count == 1 { one } else { many })
+}
+
 /// The issue a key (or a bare suffix) names.
 pub(crate) fn resolve<'s>(st: &'s State, key: &str) -> Result<&'s Issue, Failure> {
     st.resolve(key)

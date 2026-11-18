@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::events::{Event, id_at};
 use beadroll_test_support::{
-    Json, Machine, git, json, json_id, json_ids, json_line, parse_json, pool_map,
+    Json, Machine, code, git, json, json_id, json_ids, json_line, parse_json, pool_map,
 };
 
 use super::{column, length, segments, sorted_codes};
@@ -82,8 +82,11 @@ fn parallel_writers_lose_nothing_and_claim_is_exclusive() {
         claim.thread(*thread).run()
     });
     assert_eq!(sorted_codes(&claims), [0, 1]);
-    let stderr: String = claims.iter().map(|c| c.stderr.as_str()).collect();
-    assert!(stderr.contains("ALREADY_CLAIMED"), "{stderr}");
+    let refused = claims
+        .iter()
+        .find(|claim| claim.returncode() == 1)
+        .expect("the refused claim");
+    assert_eq!(code(refused), "ALREADY_CLAIMED", "{}", refused.stderr);
 }
 
 /// With the machine's home read-only, `show`, `list` and `ready` still work, and a write fails.
