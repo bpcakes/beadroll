@@ -57,7 +57,7 @@ mod integer_fields_stay_beads_readable {
     /// rule is for writes only. Events already written with a boolean priority, or an estimate of
     /// any sign or size, keep their issue and their attempt.
     #[test]
-    fn writes_refuse_booleans_and_estimates_beads_cannot_read() {
+    fn reads_keep_events_with_booleans_and_estimates_beads_cannot_read() {
         let base = "01a00000-0000-7000-8000-00000000000";
         let mut journal = Journal::new();
         let fields = [

@@ -247,11 +247,19 @@ fn nonowner_cannot_bypass_close_guard_with_status_update() {
     assert_eq!(code(&close), "CLAIMED_BY_OTHER");
     let status = ["update", &key, "--status", "closed", "--json"];
     let changed = a.cmd(status).thread("other-thread").run();
-    assert_ne!(
-        changed.returncode(),
-        0,
+    assert_eq!(
+        code(&changed),
+        "CLAIMED_BY_OTHER",
         "update --status closed bypassed close ownership check and left claim live"
     );
+    // refused whole: neither closed nor its claim ended
+    let shown = a.show(&key);
+    assert_ne!(
+        shown["status"],
+        beadroll_test_support::Json::from("closed"),
+        "{shown:?}"
+    );
+    assert!(shown.get("claim").is_some(), "{shown:?}");
 }
 
 /// A09: a thread that does not hold the claim cannot set the issue's status to open, and `ready`

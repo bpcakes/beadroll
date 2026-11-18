@@ -43,8 +43,9 @@ impl Reaudit {
     }
 
     /// A claim, or with `title` a claiming update that also sets the title and adds `label`, whose
-    /// publish never reaches the remote: it fails, and stays pending, unconfirmed.
-    fn interrupted_claim(&self, update: Option<(&str, &str)>) -> Vec<String> {
+    /// publish never reaches the remote: it fails, and stays pending, unconfirmed. A claim that
+    /// failed before it wrote its attempt would leave nothing for the tests built on it to void.
+    fn interrupted_claim(&self, update: Option<(&str, &str)>) {
         let ws = self.ws(UNREACHABLE);
         let actor = actor(&self.a);
         let result = match update {
@@ -53,7 +54,10 @@ impl Reaudit {
         };
         assert!(result.is_err(), "{result:?}");
         assert!(self.a.show(&self.key).get("claim").is_none());
-        pending_ids(&ws)
+        assert!(
+            !pending_ids(&ws).is_empty(),
+            "the interrupted claim left no attempt pending"
+        );
     }
 
     /// A sync of machine a in this process, its every publish failing as unreachable.
