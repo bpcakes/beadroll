@@ -212,7 +212,20 @@ Rules  Ownership belongs to your agent thread; a new session is a new owner.
        repository is damaged again after a rebuild: delete it, nothing in it is
        the only copy of anything, and run the command again), UNRESOLVED (an
        attempt of yours awaits the remote: run bead sync), SYNC_CONFLICT, IO
-       (the store or a file could not be read or written; nothing half-done).
+       (the store or a file could not be read or written; nothing half-done),
+       USAGE (the command line is wrong: see bead help COMMAND), NOT_INITIALIZED
+       (no tracker here yet: bead sync joins a published one, bead init starts
+       one), NO_WORKSPACE (not in a git checkout: run bead from one, or set
+       BEAD_WORKSPACE), WORKSPACE_MISMATCH (the published tracker is another
+       workspace's: the message names what to set), NO_REMOTE (this tracker has
+       no remote, so it cannot sync), CONFIG (a setting or .beadroll.json is
+       unusable: the message names it), GIT_ERROR (git failed; the message
+       quotes it), FORMAT_UNSUPPORTED (the published tracker is newer than this
+       bead: upgrade bead), and, for each of these, tell a human, as retrying
+       will not help: MANIFEST_MISSING (the published tracker has no readable
+       manifest), ATTEMPT_FORK, JOURNAL_FORK and IDENTITY (this machine's
+       identity is in use elsewhere or damaged), KEY_SPACE (no free key is
+       left).
 exit 0
 
 $ bead prime
@@ -235,7 +248,7 @@ No tracker here yet (NOT_INITIALIZED): run `bead sync` to fetch this repository'
 
 Rules  Ownership belongs to your agent thread; a new session is a new owner. Continue your own earlier work with bead takeover ID -r "same task, new session". Never --force or take over someone else's work without a reason you have verified.
        A conflict (two writers, same field) is listed under "conflicts" in show; a write that has seen both sides settles it. --offline claims are provisional, never exclusive.
-       Use --json for machine output. Error codes: ALREADY_CLAIMED, CLAIMED_BY_OTHER, NOT_OWNER, STATUS_CONFLICT, CYCLE, VALIDATION, ISSUE_NOT_FOUND, REMOTE_UNREACHABLE (nothing is lost; retry later), REMOTE_REFUSED (the remote refuses bead's ref: tell a human; retrying will not help), REMOTE_DAMAGED (the remote lost objects: tell a human; retrying will not help), SYNC_REPO_DAMAGED (this machine's sync repository is damaged again after a rebuild: delete it, nothing in it is the only copy of anything, and run the command again), UNRESOLVED (an attempt of yours awaits the remote: run bead sync), SYNC_CONFLICT, IO (the store or a file could not be read or written; nothing half-done).
+       Use --json for machine output. Error codes: ALREADY_CLAIMED, CLAIMED_BY_OTHER, NOT_OWNER, STATUS_CONFLICT, CYCLE, VALIDATION, ISSUE_NOT_FOUND, REMOTE_UNREACHABLE (nothing is lost; retry later), REMOTE_REFUSED (the remote refuses bead's ref: tell a human; retrying will not help), REMOTE_DAMAGED (the remote lost objects: tell a human; retrying will not help), SYNC_REPO_DAMAGED (this machine's sync repository is damaged again after a rebuild: delete it, nothing in it is the only copy of anything, and run the command again), UNRESOLVED (an attempt of yours awaits the remote: run bead sync), SYNC_CONFLICT, IO (the store or a file could not be read or written; nothing half-done), USAGE (the command line is wrong: see bead help COMMAND), NOT_INITIALIZED (no tracker here yet: bead sync joins a published one, bead init starts one), NO_WORKSPACE (not in a git checkout: run bead from one, or set BEAD_WORKSPACE), WORKSPACE_MISMATCH (the published tracker is another workspace's: the message names what to set), NO_REMOTE (this tracker has no remote, so it cannot sync), CONFIG (a setting or .beadroll.json is unusable: the message names it), GIT_ERROR (git failed; the message quotes it), FORMAT_UNSUPPORTED (the published tracker is newer than this bead: upgrade bead), and, for each of these, tell a human, as retrying will not help: MANIFEST_MISSING (the published tracker has no readable manifest), ATTEMPT_FORK, JOURNAL_FORK and IDENTITY (this machine's identity is in use elsewhere or damaged), KEY_SPACE (no free key is left).
 exit 0
 
 $ bead help

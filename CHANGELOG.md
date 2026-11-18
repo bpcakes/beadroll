@@ -6,6 +6,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `bead prime` names every error code bead answers with, as the onboarding text says it does, each
+  with what to do where there is something to do: `USAGE`, `NOT_INITIALIZED`, `NO_WORKSPACE`,
+  `WORKSPACE_MISMATCH`, `NO_REMOTE`, `CONFIG`, `GIT_ERROR`, `FORMAT_UNSUPPORTED`, and the ones to
+  take to a human (`MANIFEST_MISSING`, `ATTEMPT_FORK`, `JOURNAL_FORK`, `IDENTITY`, `KEY_SPACE`).
+  It named 13 of the 27.
+
 - `create` refuses with `CYCLE` a new issue whose parent, named as a `parent-child`
   dependency in `--deps`, already waits on one of its blocking dependencies. Only a
   parent named by `--parent` was checked, so `create new --deps parent-child:X,blocks:Y`

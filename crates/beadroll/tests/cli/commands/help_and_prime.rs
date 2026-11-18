@@ -77,6 +77,23 @@ fn every_command_has_help() {
     assert!(message.contains("'list'"), "{message}");
 }
 
+/// `bead prime` names every error code bead can answer with, as the onboarding text promises: a
+/// code added later fails this until prime says what it means.
+#[test]
+fn prime_names_every_error_code() {
+    let (_sandbox, a) = set_up();
+    let primed = a.run(["prime"]);
+    assert_eq!(primed.returncode(), 0, "{}", primed.stderr);
+    let words: std::collections::BTreeSet<&str> = (primed.stdout)
+        .split(|c: char| !(c.is_ascii_uppercase() || c == '_'))
+        .collect();
+    let missing: Vec<&str> = (beadroll_core::code::Code::ALL.iter())
+        .map(|code| code.as_str())
+        .filter(|code| !words.contains(code))
+        .collect();
+    assert_eq!(missing, Vec::<&str>::new(), "prime does not name these");
+}
+
 #[test]
 fn prime_and_onboard_work_with_and_without_a_tracker() {
     let (sandbox, a) = set_up();
