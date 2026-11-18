@@ -12,7 +12,7 @@ use beadroll_test_support::{Json, json};
 /// both directions across the history and bound replay time; the ancestry representation is
 /// private to core.
 #[test]
-fn ownership_ancestry_stays_small_on_a_long_claim_release_history() {
+fn ownership_ancestry_replays_within_a_second_on_a_long_claim_release_history() {
     let mut events: Vec<Json> = Vec::new();
     let (mut uid, mut active) = (String::new(), String::new());
     for i in 0..3000u64 {

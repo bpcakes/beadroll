@@ -218,6 +218,13 @@ fn init_starts_nothing_when_joining_the_published_tracker_fails() {
     json(&b, &["sync"]);
     assert_eq!(titles(&b), ["before the move"]);
     assert_eq!(workspace(&b), workspace(&a));
+    // the adopted tracker's store alone: none started where the import was to go
+    assert_eq!(
+        super::fixtures::metas(&b).len(),
+        1,
+        "{:?}",
+        super::fixtures::metas(&b)
+    );
 }
 
 /// A tracked id other than the one the remote publishes cannot be adopted: `init` refuses it,

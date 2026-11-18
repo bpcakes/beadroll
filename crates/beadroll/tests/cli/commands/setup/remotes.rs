@@ -115,6 +115,12 @@ fn init_joining_keeps_a_named_remote_as_it_was_chosen() {
     assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
     let claimed = b.run(["claim", &key, "--json"]);
     assert_eq!(claimed.returncode(), 0, "{}", claimed.stderr);
+    // origin, as it was chosen, never remembered
+    let stored = crate::commands::fixtures::metas(&b);
+    assert_eq!(stored.len(), 1, "{stored:?}");
+    let meta =
+        parse_json(&std::fs::read_to_string(&stored[0]).expect("a meta.json")).expect("JSON");
+    assert_eq!(meta.get("remote"), None, "{meta:?}");
 }
 
 /// A tracked remote's name whose URL git rewrites (`url.<base>.insteadOf`), in a store an older

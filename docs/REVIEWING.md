@@ -391,7 +391,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   review's fuzzer, 6,167 writes with 1,021 answer checks against the base's replay, 874 of them with
   the projection up to 24 writes behind; and its concurrent-creates and concurrent-rename scenarios,
   where keys two machines minted concurrently were renamed as replay renames them
-  (`storage::projection::deferred::a_merge_concurrent_only_with_writes_left_after_the_projection_extends_it`
+  (`storage::projection::deferred::a_merge_extends_the_projection_only_while_concurrent_with_writes_left_after_it`
   pins the rule both ways). Such a merge extends where this machine has records left after its
   stored projection that the other machine had not seen, with no read between, while they hold at
   most a 64th of the projection's bytes: for `bead sync`, after a single write left so; for a write

@@ -80,6 +80,11 @@ fn import_probes_dependencies_before_writing() {
     assert!(!imported.crashed(), "{}", imported.stderr);
     assert_eq!(code(&imported), "VALIDATION", "{}", imported.stderr);
     assert_eq!(machine.bead(["info"]).unwrap()["integrity"], json!([]));
+    // probed before writing: neither record's create was written
+    let none = machine
+        .bead(["list", "--all", "--limit", "0"])
+        .expect("a list");
+    assert_eq!(none["total"], json!(0), "{none:?}");
 
     let bare = sandbox.root().join("bare.jsonl");
     let records = [record("ex-c", "C", json!({"dependencies": ["ex-b"]}))];

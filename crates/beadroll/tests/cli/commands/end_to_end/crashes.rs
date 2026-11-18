@@ -109,7 +109,7 @@ fn an_update_answers_with_the_unconfirmed_claim_as_show_does() {
 /// owner: the remote was never claimed, so another machine's claim succeeds, the stopped
 /// machine's next sync finds no integrity problem, and it agrees on the new owner.
 #[test]
-fn a_crash_before_the_claim_is_written_leaves_no_false_owner() {
+fn a_claim_stopped_before_its_push_leaves_no_false_owner() {
     let sandbox = crate::sandbox();
     let (a, b, x, _) = two_machines(&sandbox);
     // written as pending, never pushed
