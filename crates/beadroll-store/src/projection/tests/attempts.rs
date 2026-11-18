@@ -108,13 +108,7 @@ fn a_record_read_from_the_segments_finds_the_attempt_it_builds_on() {
 /// identity it keeps is settled before it, whatever tick the files were written in.
 fn settle(ws: &Workspace) {
     let later = std::time::SystemTime::now() + Duration::from_secs(60);
-    let projection = std::fs::File::options()
-        .write(true)
-        .open(projection_path(ws))
-        .unwrap();
-    projection
-        .set_times(std::fs::FileTimes::new().set_modified(later))
-        .unwrap();
+    crate::testing::set_modified(&projection_path(ws), later);
 }
 
 /// Under the store lock each attempt file is stat-ed once a phase, whoever asks, and again once

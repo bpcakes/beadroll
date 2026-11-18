@@ -2,7 +2,6 @@
 //! place keeps the names: what its bytes are is for the FileKey that projection and blob reuse
 //! check, and for the sums those caches keep, to say.
 
-use std::fs::FileTimes;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -11,6 +10,7 @@ use std::time::{Duration, SystemTime};
 use super::{Claims, DirectoryKey};
 use crate::LockState;
 use crate::memo::FileKey;
+use crate::testing::set_modified;
 
 /// Puts `dir`'s modification time back where the listing it was taken for cannot have seen it,
 /// so that a change made here is seen whatever the clock an inode's times come from has done: a
@@ -23,11 +23,7 @@ fn aged(dir: &Path) {
 /// [`aged`] by `seconds`: a directory aged by a different number of seconds each time has a new
 /// identity each time, whatever granularity its clock has.
 fn aged_by(dir: &Path, seconds: u64) {
-    let earlier = SystemTime::now() - Duration::from_secs(seconds);
-    let opened = std::fs::File::open(dir).unwrap();
-    opened
-        .set_times(FileTimes::new().set_modified(earlier))
-        .unwrap();
+    set_modified(dir, SystemTime::now() - Duration::from_secs(seconds));
 }
 
 #[test]
@@ -142,12 +138,7 @@ fn in_place_rewrites_reuse_names_and_a_file_key_never_vouches_for_bytes() {
     let files = claims.files(home.path()).unwrap();
     let directory = DirectoryKey::of(&folder).unwrap();
     // written long enough ago for any clock an inode's times come from
-    let earlier = SystemTime::now() - Duration::from_secs(60);
-    let opened = std::fs::File::options().write(true).open(&path).unwrap();
-    opened
-        .set_times(FileTimes::new().set_modified(earlier))
-        .unwrap();
-    drop(opened);
+    set_modified(&path, SystemTime::now() - Duration::from_secs(60));
     let file = FileKey::of(&path).unwrap();
     std::fs::write(&path, b"AFTER!").unwrap();
     assert_eq!(DirectoryKey::of(&folder), Some(directory));
@@ -201,11 +192,7 @@ fn identities_are_kept_across_listings_but_for_what_bead_writes() {
     assert_eq!(&*first, &[FileKey::of(&one), FileKey::of(&two)]);
     // something other than bead moves both files' times: kept, the identities taken stand
     for path in [&one, &two] {
-        let opened = std::fs::File::options().write(true).open(path).unwrap();
-        let earlier = SystemTime::now() - Duration::from_secs(60);
-        opened
-            .set_times(FileTimes::new().set_modified(earlier))
-            .unwrap();
+        set_modified(path, SystemTime::now() - Duration::from_secs(60));
     }
     assert!(Arc::ptr_eq(&first, &claims.keys(&files, LockState::Locked)));
     assert_ne!(
