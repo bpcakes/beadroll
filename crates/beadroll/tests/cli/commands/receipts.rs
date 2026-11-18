@@ -247,3 +247,48 @@ fn receipt_identity_includes_resolved_file_content() {
         Some("second body")
     );
 }
+
+/// A receipt that cannot be read is never taken for junk and deleted: under the lock it may be
+/// what a retry needs, so a later command is refused as `IO` naming it and the receipt stays, and
+/// once it can be read again the retry is still recognised.
+#[test]
+fn an_unreadable_receipt_is_kept_and_reported() {
+    use std::os::unix::fs::PermissionsExt as _;
+    if beadroll_test_support::skipped_as_root("a mode-000 file is readable to root") {
+        return;
+    }
+    let sandbox = crate::sandbox();
+    let owner = crate::rust_only(&sandbox, "unreadable");
+    owner.bead(["init", "--prefix", "ex"]);
+    let key = printed_id(owner.bead(["create", "claimed once"]));
+    let other = printed_id(owner.bead(["create", "claimed after"]));
+    owner.bead(["sync"]);
+    let claim = ["claim", key.as_str(), "--json"];
+    let crashed = owner
+        .cmd(claim)
+        .env("BEAD_FAILPOINTS", "ownership.after-publish-ok=exit(99)")
+        .run();
+    assert_eq!(crashed.returncode(), 99, "{}", crashed.stderr);
+    let pending = owner.store().join("pending");
+    let receipt = glob_ending(&pending, ".command")
+        .pop()
+        .expect("the claim's receipt");
+    let mode = |m: u32| std::fs::set_permissions(&receipt, std::fs::Permissions::from_mode(m));
+    mode(0o000).expect("an unreadable receipt");
+    let refused = owner.run(["claim", other.as_str(), "--json"]);
+    mode(0o600).expect("the receipt readable again");
+    assert_eq!(
+        beadroll_test_support::code(&refused),
+        "IO",
+        "{}",
+        refused.stderr
+    );
+    assert!(receipt.exists(), "the unreadable receipt was deleted");
+    let retry = owner.run(claim);
+    assert_eq!(retry.returncode(), 0, "{}", retry.stderr);
+    assert_eq!(
+        count(&ops(&owner, &key), "claim"),
+        1,
+        "the retry was not recognised"
+    );
+}

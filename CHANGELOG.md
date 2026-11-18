@@ -6,6 +6,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `export` before any tracker is `NOT_INITIALIZED`, as the other reads are. It answered
+  "Exported 0 issues" and, given `-o FILE`, replaced the file with nothing.
+- A claim's receipt that cannot be read is reported as `IO` and kept, never deleted as junk, so
+  the retry of the claim it records is still recognised once it can be read.
+- `blocked` lists an issue whose ending is disputed (closed on one machine, deleted on another)
+  while a blocker holds it, as `show` and readiness count it: a disputed status is not done.
+
 - `export` writes a legacy boolean priority as its number (`true` is 1, as `list` and `show` print
   it) and leaves out an estimate that is out of range or not a whole number, so the export of an
   old history is one bead's own import, and br, read back; they refused it.

@@ -234,6 +234,16 @@ impl State {
         blockers
     }
 
+    /// Whether `issue` is ready, with `held` the tracker's [`State::readiness`]: open, nobody holds
+    /// it, nothing blocks it and its status is not disputed. The one rule `ready`, `prime`'s count
+    /// and [`State::ready`] keep.
+    pub fn is_ready(&self, held: &Readiness<'_>, issue: &Issue) -> bool {
+        issue.status() == status::OPEN
+            && issue.claim().is_none()
+            && !held.is_blocked(issue)
+            && !self.disputed(issue, Field::Status)
+    }
+
     /// What `bead ready` lists: open issues in scope that nobody holds, nothing blocks and whose
     /// status is not disputed, by priority, then creation time, then key. Readiness is judged on the
     /// whole tracker, so a blocker outside the scope still holds an issue inside it, and once for
@@ -246,14 +256,12 @@ impl State {
         let held = self.readiness();
         let mut items: Vec<&Issue> = self
             .issues()
-            .filter(|issue| issue.status() == status::OPEN)
             .filter(|issue| {
                 beneath
                     .as_ref()
                     .is_none_or(|beneath| beneath.contains(&issue.uid()))
             })
-            .filter(|issue| issue.claim().is_none() && !held.is_blocked(issue))
-            .filter(|issue| !self.disputed(issue, Field::Status))
+            .filter(|issue| self.is_ready(&held, issue))
             .collect();
         sort_for_listing(&mut items);
         items

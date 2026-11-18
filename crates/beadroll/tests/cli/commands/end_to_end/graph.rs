@@ -205,3 +205,31 @@ fn removing_a_dependency_that_is_not_there_is_refused() {
     // the refusals wrote nothing: an add and one removal since
     assert_eq!(events(&a).as_i64(), before.as_i64().map(|n| n + 2));
 }
+
+/// An issue two machines end apart (closed on one, deleted on the other) has a disputed status,
+/// which is not done until a write settles it, for `blocked` as for `show` and readiness: an open
+/// blocker still holds it, and `blocked` lists it, though either status it shows is a done one.
+#[test]
+fn blocked_lists_an_issue_whose_ending_is_disputed() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, gate) = super::two_machines(&sandbox);
+    a.bead(["dep", "add", &x, &gate]);
+    super::settle(&[&a, &b]);
+    a.bead(["close", &x, "--reason", "done here", "--offline"]);
+    b.bead(["delete", &x, "--reason", "not needed", "--offline"]);
+    super::settle(&[&a, &b]);
+    for machine in [&a, &b] {
+        let shown = machine.show(&x);
+        assert!(shown.get("conflicts").is_some(), "not disputed: {shown:?}");
+        let status = shown["status"].as_str().unwrap_or_default();
+        assert!(["closed", "tombstone"].contains(&status), "{shown:?}");
+        assert_eq!(shown["blocked"], Json::Bool(true), "{shown:?}");
+        let blocked = machine
+            .bead(["blocked"])
+            .expect("bead blocked prints a list");
+        let listed: Vec<&str> = (blocked.as_array().expect("a list").iter())
+            .filter_map(|row| row["id"].as_str())
+            .collect();
+        assert_eq!(listed, [x.as_str()], "{shown:?} {blocked:?}");
+    }
+}

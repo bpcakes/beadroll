@@ -316,3 +316,27 @@ fn a_machine_name_without_an_id_is_refused() {
         "aliases.json was changed"
     );
 }
+
+/// `bead export` before any tracker is `NOT_INITIALIZED` and leaves a file it was told to write as
+/// it was, never an empty export over it.
+#[test]
+fn export_without_a_tracker_changes_no_file() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    let output = machine.checkout().join("issues.jsonl");
+    std::fs::write(&output, "{\"id\":\"keep-me\"}\n").unwrap();
+    let target = output.to_str().unwrap();
+    for args in [&["export"][..], &["export", "-o", target]] {
+        let run = machine.run(args.iter().copied().chain(["--json"]));
+        assert_eq!(
+            beadroll_test_support::code(&run),
+            "NOT_INITIALIZED",
+            "{args:?}: {}",
+            run.stderr
+        );
+    }
+    assert_eq!(
+        std::fs::read_to_string(&output).unwrap(),
+        "{\"id\":\"keep-me\"}\n"
+    );
+}

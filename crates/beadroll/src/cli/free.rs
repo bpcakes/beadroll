@@ -4,7 +4,6 @@ use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::code::Code;
-use beadroll_core::event::{Field, status};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::state::State;
 use beadroll_core::text::{repr, repr_bytes, str_of};
@@ -154,15 +153,7 @@ fn standing(ws: &Workspace, me: &Label) -> Result<(String, State), Failure> {
         .map(|i| i.key())
         .collect();
     let readiness = st.readiness();
-    let ready = st
-        .issues()
-        .filter(|i| {
-            i.status() == status::OPEN
-                && i.claim().is_none()
-                && !readiness.is_blocked(i)
-                && !st.disputed(i, Field::Status)
-        })
-        .count();
+    let ready = st.issues().filter(|i| st.is_ready(&readiness, i)).count();
     let waiting: usize = st.issues().map(|i| i.unconfirmed().len()).sum();
     let prefix = repr(st.prefix().unwrap_or(&Value::Null));
     let mut line = format!(

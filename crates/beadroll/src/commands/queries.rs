@@ -19,7 +19,8 @@ pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     need_tracker(&st)?;
     let lists = st.blocker_lists();
     let mut items: Vec<(&Issue, Vec<&Issue>)> = (st.issues())
-        .filter(|i| !DONE.contains(&i.status()))
+        // done as readiness and `show` judge it: a closed status still disputed is not done
+        .filter(|i| !st.is_done(i))
         .map(|i| (i, lists.of(i)))
         .filter(|(_, blockers)| !blockers.is_empty())
         .collect();
