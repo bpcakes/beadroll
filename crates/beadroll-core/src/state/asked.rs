@@ -46,7 +46,7 @@ fn holds(state: &State, key: &str) -> bool {
         })
 }
 
-/// Fails unless `claim`, what [`State::claims_key`] answered of `key`, is whether
+/// Fails unless `claim` (what [`State::claims_key`] answered of `key`) is whether
 /// [`State::claimed_keys`] would hold it; keeps the ask.
 pub(super) fn agrees(state: &State, key: &str, claim: KeyClaim) {
     // an ask stores the answer as the flag its checks compare

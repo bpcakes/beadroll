@@ -87,7 +87,8 @@ fn target(rng: &mut Rng, targets: usize) -> Target {
     target_of(rng.below(targets))
 }
 
-/// What a removal of the edges on a target does to each: when `any`, or when it is of `kind`, it
+/// What a removal of the edges on a target does to each: when `any` is `RemovalScope::Any`, or
+/// when it is of `kind`, it
 /// is listed in `seen` and loses its additions before `below`.
 fn removal<'a>(
     any: RemovalScope,

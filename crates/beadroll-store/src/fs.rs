@@ -155,9 +155,9 @@ pub(crate) fn write_cache_parts(
     .map(drop)
 }
 
-/// `parts` written to a temporary file beside `path`, fsynced when `durable`, and renamed into
-/// place, the file written still open: [`write_atomic_parts`], [`write_atomic_keyed`] and
-/// [`write_cache_parts`].
+/// `parts` written to a temporary file beside `path`, fsynced when `durable` is
+/// `Durability::Durable`, and renamed into place, the file written still open:
+/// [`write_atomic_parts`], [`write_atomic_keyed`] and [`write_cache_parts`].
 fn written_whole(
     path: &Path,
     parts: &[&[u8]],

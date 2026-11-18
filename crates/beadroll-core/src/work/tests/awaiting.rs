@@ -16,7 +16,7 @@ pub(crate) enum AwaitedKeys {
 }
 
 /// The history of `issues` creates whose imports each wait for a key no issue has: the first
-/// half's for the keys the second half brings when `brought`, and for keys that never come
+/// half's for the keys the second half brings when `brought` is `AwaitedKeys::Brought`, and for keys that never come
 /// otherwise.
 fn waiting(issues: usize, brought: AwaitedKeys) -> History {
     let mut history = History::new();

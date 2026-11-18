@@ -242,8 +242,8 @@ error: not a warning about /t/y.profraw: but an error
 /// does not have.
 const NO_SUBCOMMAND: &str = "echo 'error: no such command: `llvm-cov`' >&2\nexit 101\n";
 
-/// A toolchain whose libraries are in `dir/lib` and whose LLVM tools, when `llvm_tools`, are in
-/// `dir/bin`, as `rustup component add llvm-tools` puts them.
+/// A toolchain whose libraries are in `dir/lib` and whose LLVM tools, when `llvm_tools` is
+/// `LlvmTools::Installed`, are in `dir/bin`, as `rustup component add llvm-tools` puts them.
 fn rustc(dir: &Path, llvm_tools: LlvmTools) -> OsString {
     std::fs::create_dir_all(dir.join("lib")).expect("the libraries");
     std::fs::create_dir_all(dir.join("bin")).expect("the binaries");

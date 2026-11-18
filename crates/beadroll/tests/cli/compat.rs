@@ -203,7 +203,7 @@ mod real_exports {
         value.get(key).ok_or_else(|| format!("KeyError: {key:?}"))
     }
 
-    /// Nothing when `holds`, else the failure `what` that ends the subtest.
+    /// Nothing when `holds` is `CheckResult::Passed`, else the failure `what` that ends the subtest.
     fn check(holds: CheckResult, what: &str) -> Result<(), String> {
         if holds == CheckResult::Passed {
             Ok(())

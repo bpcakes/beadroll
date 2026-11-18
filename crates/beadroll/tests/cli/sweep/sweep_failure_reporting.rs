@@ -22,8 +22,9 @@ pub(crate) enum ScheduleResult {
 /// deletes, retried.
 const RETRIES: [&str; 5] = ["RD", "RO", "RS", "OR", "SR"];
 
-/// The verdict of a sweep whose only schedule is `only`, reporting `injected failure` unless
-/// `ok`: the full sweep's list with `full`, else the slice, as `BEAD_SWEEP` picks them.
+/// The verdict of a sweep whose only schedule is `only`, reporting `injected failure` unless `ok`
+/// is `ScheduleResult::Passed`: the full sweep's list when `schedule_set` is `ScheduleSet::Full`,
+/// else the slice, as `BEAD_SWEEP` picks them.
 fn sweep_of(only: Schedule, ok: ScheduleResult, schedule_set: ScheduleSet) -> Result<(), String> {
     let chosen = selected(schedule_set, Execution::Sequential, vec![only], &[only]);
     let sequential = Variant {
