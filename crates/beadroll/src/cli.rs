@@ -39,7 +39,7 @@ use spec::Scope;
 use crate::cli::paint::Color;
 use crate::commands::{
     self, Context, Delivered, Failure, Held, ImportMode, Line, Outcome, SearchScope, Tone,
-    Transition,
+    Transition, VERSION,
 };
 
 /// Whether another state will be read to publish the command.
@@ -71,9 +71,6 @@ pub(crate) enum OutputMode {
 
 #[cfg(test)]
 mod tests;
-
-/// The version this binary reports.
-const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Runs `bead` with the process's arguments; the exit status is 0, 1 for an error, 2 for a usage
 /// error. The process ends with the run, so what a command held when it answered, the state it
@@ -193,7 +190,7 @@ fn build() -> Option<String> {
     let meta = std::fs::metadata(std::env::current_exe().ok()?).ok()?;
     Some(format!(
         "{} {}:{} {} {}.{:09}",
-        env!("CARGO_PKG_VERSION"),
+        VERSION,
         meta.dev(),
         meta.ino(),
         meta.len(),

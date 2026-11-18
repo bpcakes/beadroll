@@ -10,10 +10,7 @@ use beadroll_store::{
     tracked_config_warning,
 };
 
-use super::{Context, Failure, Outcome};
-
-/// The version `info` reports.
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+use super::{Context, Failure, Outcome, VERSION};
 
 /// The tracker's identity and place, the remote, this machine and actor, and the journal's
 /// numbers: issues, events, segments, the frontier, attempts awaiting the remote, integrity

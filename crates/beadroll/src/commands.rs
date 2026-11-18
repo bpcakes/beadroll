@@ -82,6 +82,9 @@ pub(crate) use sync::sync;
 pub(crate) use transition::{Transition, TransitionArgs, transition};
 pub(crate) use update::{UpdateArgs, update};
 
+/// The version this binary reports, in `--version` and in `info`.
+pub(crate) const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// What a command answers: the result `--json` prints, and the lines a human reads; or, for a
 /// command that writes its own output (`export`), that output as it is.
 #[derive(Debug)]
