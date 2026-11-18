@@ -7,12 +7,14 @@ use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::text::printed_text;
 use beadroll_store::{FileMode, normalize_path, view, write_atomic};
 
-use super::{Context, Failure, Outcome};
+use super::{Context, Failure, Outcome, need_tracker};
 
 /// One compact JSON line per issue; written to `output` when given (its directory's modes, as
 /// any file there), else to standard output as it is.
 pub(crate) fn export(ctx: &Context<'_>, output: Option<&OsStr>) -> Result<Outcome, Failure> {
     let st = view(ctx.ws)?;
+    // before any tracker there is nothing to export: never an empty file over the one given
+    need_tracker(&st)?;
     let mut text = String::new();
     for record in st.hydrated()?.export_records() {
         let line = json::write(&Value::from(record), Format::COMPACT)?;

@@ -4,12 +4,15 @@
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::Value;
+use beadroll_git::IoError;
 use beadroll_store::{Actor, Workspace, json_text, layout, read, receipt_files, remove};
 
 use crate::error::Error;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Receipt {
+    /// Gone since it was listed: nothing to settle or remove.
+    Gone,
     Malformed,
     Foreign,
     Pending,
@@ -17,19 +20,25 @@ enum Receipt {
 }
 
 impl Receipt {
-    fn read(actor: &Actor, path: &Path) -> Self {
-        let recorded = read(path).ok().and_then(|data| json_text(&data).ok());
-        let Some(Value::Object(recorded)) = recorded else {
-            return Self::Malformed;
+    /// What the receipt at `path` is to `actor`. One that cannot be read is an error, never
+    /// junk: under the lock it is a receipt a retry may need, as `load_pending` keeps its attempt.
+    fn read(actor: &Actor, path: &Path) -> Result<Self, Error> {
+        let data = match std::fs::read(path) {
+            Ok(data) => data,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Self::Gone),
+            Err(error) => return Err(IoError::at(&error, path).into()),
+        };
+        let Ok(Value::Object(recorded)) = json_text(&data) else {
+            return Ok(Self::Malformed);
         };
         // An actor containing invalid UTF-8 cannot have written a receipt.
         if !actor.writable || recorded.get("actor") != Some(&actor.value) {
-            return Self::Foreign;
+            return Ok(Self::Foreign);
         }
         if path.with_extension("json").exists() {
-            return Self::Pending;
+            return Ok(Self::Pending);
         }
-        Self::Settled
+        Ok(Self::Settled)
     }
 }
 
@@ -101,10 +110,10 @@ pub(crate) fn settle(
 ) -> Result<SettledCommands, Error> {
     let mut settled = Vec::new();
     for path in receipt_files(ws) {
-        let receipt = Receipt::read(actor, &path);
+        let receipt = Receipt::read(actor, &path)?;
         match receipt {
             Receipt::Malformed => remove(&path)?,
-            Receipt::Foreign | Receipt::Pending => {}
+            Receipt::Gone | Receipt::Foreign | Receipt::Pending => {}
             Receipt::Settled => settled.push(path),
         }
     }

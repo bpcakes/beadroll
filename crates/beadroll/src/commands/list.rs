@@ -2,7 +2,7 @@
 
 use std::ffi::OsString;
 
-use beadroll_core::event::{Field, status};
+use beadroll_core::event::status;
 use beadroll_core::json::{Int, Object, Value};
 use beadroll_store::view_outline;
 
@@ -152,7 +152,7 @@ pub(crate) fn ready(ctx: &Context<'_>, args: &ReadyArgs) -> Result<Outcome, Fail
     let mut items: Vec<_> = select(&st, &filters)?
         .into_iter()
         .filter(|i| beneath.as_ref().is_none_or(|b| b.contains(&i.uid())))
-        .filter(|i| i.claim().is_none() && !held.is_blocked(i) && !st.disputed(i, Field::Status))
+        .filter(|i| st.is_ready(&held, i))
         .collect();
     if args.filters.limit != Int::from(0) {
         items = first(items, &args.filters.limit);
