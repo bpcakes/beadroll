@@ -2,7 +2,8 @@
 //! strict JSON: UTF-8 throughout, a lone surrogate (escaped or as raw bytes) refused, `NaN`,
 //! `Infinity` and a number beyond a float refused, at most [`MAX_DEPTH`] levels of arrays and
 //! objects. An integer that fits a `u64` or an `i64` is exact; one beyond them, which bead never
-//! writes, arrives as a float. A repeated key keeps its last value at its first place.
+//! writes, arrives as a float, and so does `-0`, as serde_json reads it (`-0.0`). A repeated key
+//! keeps its last value at its first place.
 
 use std::fmt;
 

@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
+use std::os::unix::ffi::OsStrExt as _;
 use std::path::Path;
 use std::sync::LazyLock;
 
@@ -84,25 +85,28 @@ pub fn transport_settings(env: &Env) -> Result<Output, Error> {
 /// Checkout transport configuration, including repository, conditional-include and global
 /// settings. The private sync repository cannot see all of these itself. Apply them at
 /// command-line precedence in order, clearing resettable lists first to avoid duplicate
-/// transmission. A valueless key means true.
-pub fn transport_config(proc: &Output) -> Vec<(String, String)> {
+/// transmission. A valueless key means true. Keys and values are carried as git gave them, bytes and
+/// all: a path or URL that is not UTF-8 reaches the sync repository as it is, never guessed at.
+pub fn transport_config(proc: &Output) -> Vec<(OsString, OsString)> {
     let mut rows = Vec::new();
     if proc.success() {
-        for item in String::from_utf8_lossy(&proc.stdout).split('\0') {
+        for item in proc.stdout.split(|byte| *byte == 0) {
             if item.is_empty() {
                 continue;
             }
-            match item.split_once('\n') {
-                Some((key, value)) => rows.push((key.to_owned(), value.to_owned())),
-                None => rows.push((item.to_owned(), "true".to_owned())),
+            let bytes = |bytes: &[u8]| OsStr::from_bytes(bytes).to_owned();
+            match item.iter().position(|byte| *byte == b'\n') {
+                Some(at) => rows.push((bytes(&item[..at]), bytes(&item[at + 1..]))),
+                None => rows.push((bytes(item), OsString::from("true"))),
             }
         }
     }
-    let mut resets: Vec<(String, String)> = Vec::new();
+    let mut resets: Vec<(OsString, OsString)> = Vec::new();
     for (key, _) in &rows {
-        let resettable = RESETTABLE.as_ref().is_some_and(|re| re.is_match(key));
+        let resettable = (RESETTABLE.as_ref())
+            .is_some_and(|re| key.to_str().is_some_and(|key| re.is_match(key)));
         if resettable && !resets.iter().any(|(seen, _)| seen == key) {
-            resets.push((key.clone(), String::new()));
+            resets.push((key.clone(), OsString::new()));
         }
     }
     resets.extend(rows);
@@ -128,7 +132,7 @@ pub struct CountRules<'a> {
 pub fn sync_env(
     checkout: &Env,
     git_dir: &Path,
-    carried: &[(String, String)],
+    carried: &[(OsString, OsString)],
     rules: &CountRules<'_>,
 ) -> Result<Env, Error> {
     let mut env: BTreeMap<OsString, OsString> = checkout
@@ -212,6 +216,35 @@ pub fn sync_env(
 mod tests {
     use super::*;
 
+    /// A transport setting that is not UTF-8 (a cookie file's path, a URL's subsection) is carried
+    /// as git gave it, bytes and all, never with U+FFFD in place of what it could not decode; a
+    /// valueless key is true.
+    #[test]
+    fn transport_settings_are_carried_as_bytes() {
+        let answered = Output {
+            ended: crate::runner::Ended::Exit(0),
+            stdout: b"http.cookiefile\n/tmp/caf\xe9\0url.\xff.insteadof\nx\0http.sslverify\0"
+                .to_vec(),
+            stderr: Vec::new(),
+        };
+        let rows = transport_config(&answered);
+        let bytes = |text: &OsString| text.as_bytes().to_vec();
+        let rows: Vec<(Vec<u8>, Vec<u8>)> =
+            (rows.iter()).map(|(k, v)| (bytes(k), bytes(v))).collect();
+        assert!(
+            rows.contains(&(b"http.cookiefile".to_vec(), b"/tmp/caf\xe9".to_vec())),
+            "{rows:?}"
+        );
+        assert!(
+            rows.contains(&(b"url.\xff.insteadof".to_vec(), b"x".to_vec())),
+            "{rows:?}"
+        );
+        assert!(
+            rows.contains(&(b"http.sslverify".to_vec(), b"true".to_vec())),
+            "{rows:?}"
+        );
+    }
+
     /// ASCII numeric rules sufficient for these test cases.
     const RULES: CountRules<'static> = CountRules {
         is_digit: &|text| !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()),
@@ -242,8 +275,8 @@ mod tests {
             ("HOME", "/h"),
         ]);
         let carried = vec![
-            ("credential.helper".to_owned(), String::new()),
-            ("credential.helper".to_owned(), "store".to_owned()),
+            (OsString::from("credential.helper"), OsString::new()),
+            (OsString::from("credential.helper"), OsString::from("store")),
         ];
         let env = sync_env(&base, Path::new("/s/sync.git"), &carried, &RULES).unwrap();
         assert_eq!(get(&env, "GIT_DIR"), Some("/s/sync.git"));
@@ -279,7 +312,7 @@ mod tests {
             let env = sync_env(&checkout(vars), Path::new("/s"), &[], &RULES).unwrap();
             assert_ne!(get(&env, "GIT_SSH_COMMAND"), Some(DEFAULT_SSH_COMMAND));
         }
-        let carried = [("core.sshcommand".to_owned(), "ssh -v".to_owned())];
+        let carried = [(OsString::from("core.sshcommand"), OsString::from("ssh -v"))];
         let env = sync_env(&checkout(&[]), Path::new("/s"), &carried, &RULES).unwrap();
         assert_eq!(get(&env, "GIT_SSH_COMMAND"), None);
     }

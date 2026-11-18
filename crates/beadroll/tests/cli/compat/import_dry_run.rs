@@ -121,6 +121,45 @@ fn every_problem_is_listed_and_the_dry_run_still_answers() {
     assert_eq!(code(&refused), "VALIDATION", "{}", refused.stderr);
 }
 
+/// Run as a hook runs it, `GIT_DIR` and `GIT_INDEX_FILE` naming this checkout's, the dry run still
+/// asks each other worktree about its own files: one whose tracker change is committed on its own
+/// branch has nothing uncommitted, and is not named, whatever this checkout's index holds.
+#[test]
+fn a_worktree_is_judged_in_its_own_repository_whatever_the_callers_git_dir() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let checkout = a.checkout();
+    let file = beads_file(&a, EXPORT);
+    let at = Some(checkout);
+    git(["add", ".beads"], at);
+    git(commit(&["-q", "-m", "tracker"]), at);
+    let committed = checkout.with_file_name("committed-tree");
+    let tree = committed.to_str().unwrap();
+    git(["worktree", "add", "-q", "-b", "committed", tree], at);
+    let more = format!("{EXPORT}{{\"id\":\"ex-4\",\"title\":\"four\"}}\n");
+    std::fs::write(committed.join(".beads/issues.jsonl"), &more).unwrap();
+    git(
+        commit(&["-q", "-am", "tracker work there"]),
+        Some(&committed),
+    );
+    let dot_git = checkout.join(".git");
+    let said = a
+        .cmd(["init", "--import", &file, "--dry-run", "--json"])
+        .env("GIT_DIR", &dot_git)
+        .env("GIT_INDEX_FILE", dot_git.join("index"))
+        .run();
+    assert_eq!(said.returncode(), 0, "{}", said.stderr);
+    let said: Json = beadroll_test_support::parse_json(&said.stdout).unwrap();
+    let trees = said["elsewhere"]["worktrees"]
+        .as_array()
+        .map(<[Json]>::to_vec);
+    assert_eq!(
+        trees.unwrap_or_default(),
+        Vec::<Json>::new(),
+        "a clean worktree was named: {said:?}"
+    );
+}
+
 #[test]
 fn branches_and_worktrees_with_tracker_changes_the_checkout_lacks_are_named() {
     let sandbox = crate::sandbox();
