@@ -15,7 +15,7 @@ use super::super::state_codec::write_issue;
 use super::super::{Projection, Record, project};
 use super::history;
 use crate::id::EventId;
-use crate::journal::{Event, Journal, JournalOrder};
+use crate::journal::Event;
 use crate::json::Value;
 use crate::projection::tests::HistoryKind;
 use crate::state::{Issue, Knowledge, TextPlace, Texts};
@@ -304,19 +304,7 @@ pub(super) fn checked(
 
 /// A projection of the clean history of `seed`, read back.
 fn read_back(seed: u64) -> Projection {
-    let mut journal = Journal::new();
-    for record in history(seed, 30, HistoryKind::Valid) {
-        journal.add(
-            record.value,
-            &record.replica,
-            &record.origin,
-            if record.sequenced {
-                JournalOrder::Sequenced
-            } else {
-                JournalOrder::Attempt
-            },
-        );
-    }
+    let journal = super::super::journal_of(history(seed, 30, HistoryKind::Valid));
     let (encoded, _) = project(journal).unwrap().encode(0);
     Projection::decode(encoded).unwrap()
 }
@@ -354,19 +342,7 @@ fn an_issue_changed_moved_or_an_event_changed_is_seen() {
 
 #[test]
 fn reading_texts_in_changes_no_record() {
-    let mut journal = Journal::new();
-    for record in history(7, 30, HistoryKind::Valid) {
-        journal.add(
-            record.value,
-            &record.replica,
-            &record.origin,
-            if record.sequenced {
-                JournalOrder::Sequenced
-            } else {
-                JournalOrder::Attempt
-            },
-        );
-    }
+    let journal = super::super::journal_of(history(7, 30, HistoryKind::Valid));
     let (encoded, _) = project(journal).unwrap().encode(0);
     let mut projection = Projection::decode(encoded.clone()).unwrap();
     let read = Records::of(&projection);

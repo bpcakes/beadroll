@@ -47,7 +47,7 @@ use indexmap::IndexMap;
 
 use super::{Projection, Record};
 use crate::id::EventId;
-use crate::journal::{Event, Journal, JournalOrder, Parts, Rest};
+use crate::journal::{Event, Journal, Parts, Rest};
 use crate::json::Value;
 use crate::op::Op;
 use crate::order::position;
@@ -345,25 +345,7 @@ impl Projection {
 
 /// Reads a candidate batch by the same validation and ordering rules as a journal.
 fn read_batch(records: Vec<Record>) -> Journal {
-    let mut journal = Journal::new();
-    for record in records {
-        let Record {
-            value,
-            replica,
-            origin,
-            sequenced,
-        } = record;
-        journal.add(
-            value,
-            &replica,
-            &origin,
-            if sequenced {
-                JournalOrder::Sequenced
-            } else {
-                JournalOrder::Attempt
-            },
-        );
-    }
+    let mut journal = super::journal_of(records);
     journal.settle();
     journal
 }

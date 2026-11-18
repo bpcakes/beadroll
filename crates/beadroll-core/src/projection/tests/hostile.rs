@@ -77,20 +77,7 @@ pub(super) fn base() -> Vec<Record> {
 }
 
 pub(super) fn journal(records: &[Record]) -> Journal {
-    let mut journal = Journal::new();
-    for r in records {
-        journal.add(
-            r.value.clone(),
-            &r.replica,
-            &r.origin,
-            if r.sequenced {
-                JournalOrder::Sequenced
-            } else {
-                JournalOrder::Attempt
-            },
-        );
-    }
-    journal
+    super::super::journal_of(records.iter().cloned())
 }
 
 /// Whether the projection of `base()` declines `batch`; when it takes it, it must answer as replay.

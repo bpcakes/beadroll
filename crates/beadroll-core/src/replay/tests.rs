@@ -13,7 +13,6 @@ use std::collections::BTreeSet;
 use super::replay;
 use crate::event::Field;
 use crate::id::EventId;
-use crate::journal::{Journal, JournalOrder};
 use crate::json::{self, Format, Object, Value};
 use crate::projection::Record;
 use crate::projection::tests::awaiting::fnv;
@@ -140,20 +139,7 @@ fn written(value: &Value) -> String {
 
 /// The state replay makes of `records`, given to a journal in the order of `order`.
 fn delivered(records: &[Record], order: &[usize]) -> State {
-    let mut journal = Journal::new();
-    for at in order {
-        let record = &records[*at];
-        journal.add(
-            record.value.clone(),
-            &record.replica,
-            &record.origin,
-            if record.sequenced {
-                JournalOrder::Sequenced
-            } else {
-                JournalOrder::Attempt
-            },
-        );
-    }
+    let journal = crate::projection::journal_of(order.iter().map(|at| records[*at].clone()));
     replay(journal).unwrap()
 }
 

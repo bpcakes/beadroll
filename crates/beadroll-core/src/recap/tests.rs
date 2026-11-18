@@ -27,20 +27,8 @@ const T: u64 = 1_792_000_000_000;
 
 /// The journal of `records`, taken in in the order of `order`, settled.
 fn taken_in(records: &[Record], order: &[usize]) -> Journal {
-    let mut journal = Journal::new();
-    for record in order.iter().filter_map(|at| records.get(*at)) {
-        let record = record.clone();
-        journal.add(
-            record.value,
-            &record.replica,
-            &record.origin,
-            if record.sequenced {
-                JournalOrder::Sequenced
-            } else {
-                JournalOrder::Attempt
-            },
-        );
-    }
+    let mut journal =
+        crate::projection::journal_of(order.iter().filter_map(|at| records.get(*at)).cloned());
     journal.settle();
     journal
 }
