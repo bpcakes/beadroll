@@ -667,7 +667,8 @@ it, and the file is committed again.
   after `BEAD_NET_TIMEOUT` seconds (default 45) instead of hanging.
 - Publishing is serialised on one ref. Under heavy contention (four machines
   syncing continuously) claims took 9 s median and 27 s at p90, and 3 of 841
-  commands gave up after eight attempts. Writes wait too: four machines each
+  commands gave up after eight attempts, the limit when that was measured; a
+  claim now makes up to 24 rounds, as a sync does. Writes wait too: four machines each
   publishing every write continuously against a remote taking 0.3 s a fetch
   or a push, a write took 1.5 s at the median and 23 s at the longest, and
   every machine converged with nothing left unpublished (roll-lqjj.7: a sync
