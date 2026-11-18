@@ -75,7 +75,8 @@ pub(crate) struct CommandSpec {
     pub(crate) name: &'static str,
     pub(crate) help: &'static str,
     pub(crate) args: &'static [ArgSpec],
-    /// What it runs on: the checkout's tracker, or none.
+    /// What it runs on: the checkout's tracker, that tracker when there is one, or every tracker
+    /// under `BEAD_HOME`.
     pub(crate) scope: Scope,
     /// The forms and rules its options do not tell, after them.
     pub(crate) epilog: Option<&'static [Block]>,

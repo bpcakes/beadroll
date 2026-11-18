@@ -1,6 +1,7 @@
 //! Commands that work anywhere, with or without a repository: help, prime and onboard.
 
 use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::code::Code;
 use beadroll_core::event::{Field, status};
@@ -43,12 +44,12 @@ fn text_outcome(name: &str, text: &str) -> Outcome {
         .split('\n')
         .map(Line::from)
         .collect();
-    laid_out(name, text, lines)
+    outcome_of(name, text, lines)
 }
 
-/// `{name: text}`, `text` laid out for no width so that the reader wraps it, and `shown`, laid
-/// out for this terminal, as its lines.
-fn laid_out(name: &str, text: &str, shown: Vec<Line>) -> Outcome {
+/// The outcome `{name: text}`, with `shown` as its lines. Help and prime pass `text` laid out for
+/// no width, so that the reader wraps it, and `shown` laid out for this terminal.
+fn outcome_of(name: &str, text: &str, shown: Vec<Line>) -> Outcome {
     let mut result = Object::new();
     result.insert(name.into(), Value::from(text));
     Outcome::new(result, shown)
@@ -62,7 +63,7 @@ fn help_page(
 ) -> Result<Outcome, Failure> {
     let Some(name) = name.filter(|n| !n.is_empty()) else {
         let width = layout::width(settings.var("COLUMNS"));
-        return Ok(laid_out(
+        return Ok(outcome_of(
             "help",
             &lay_out(OVERVIEW, None),
             lay_out_lines(OVERVIEW, width),
@@ -73,7 +74,7 @@ fn help_page(
             Code::Usage,
             format!(
                 "unknown command {}; try `bead help`",
-                repr_bytes(std::os::unix::ffi::OsStrExt::as_bytes(name))
+                repr_bytes(name.as_bytes())
             ),
         ));
     };
@@ -81,7 +82,7 @@ fn help_page(
     // clap's page, painted already
     let shown = help::page(spec, width, color_mode);
     let shown = Line::toned(Tone::Verbatim, shown.trim_end_matches('\n'));
-    Ok(laid_out(
+    Ok(outcome_of(
         "help",
         &help::page(spec, None, Color::Plain),
         vec![shown],
@@ -132,7 +133,7 @@ fn prime(ws: Option<&Workspace>, actor: &Actor, settings: &Settings) -> Result<O
     }
     shown.push(Line::new());
     shown.extend(lay_out_lines(PRIME, width));
-    let mut outcome = laid_out("prime", &text, shown);
+    let mut outcome = outcome_of("prime", &text, shown);
     if let Some(Value::Object(result)) = &mut outcome.result {
         result.insert("actor".into(), Value::from(me.shown()));
     }
