@@ -102,8 +102,9 @@ fn sync_git_left_empty_by_an_interrupted_init_is_completed() {
     assert_b_works(&a, &b, &issue, "finding sync.git empty");
 }
 
-/// G27: GIT_OBJECT_DIRECTORY at first contact puts sync.git's objects in the caller's directory
-/// and leaves sync.git without objects/, which every later command then fails on.
+/// G27: GIT_OBJECT_DIRECTORY at first contact put sync.git's objects in the caller's directory
+/// and left sync.git without objects/, which every later command then failed on. Neither that
+/// first contact nor a later one writes there.
 #[test]
 fn caller_object_directory_never_reaches_sync_git() {
     let sandbox = crate::sandbox();
@@ -125,6 +126,17 @@ fn caller_object_directory_never_reaches_sync_git() {
         &b,
         &issue,
         "a first contact with GIT_OBJECT_DIRECTORY set",
+    );
+    // and not at a later contact either, sync.git already made: "never", not "not first"
+    let later = b
+        .cmd(["sync", "--json"])
+        .env("GIT_OBJECT_DIRECTORY", &objects)
+        .run();
+    assert_eq!(later.returncode(), 0, "{}", later.stderr);
+    assert_eq!(
+        files_under(&objects),
+        Vec::<String>::new(),
+        "a later sync wrote sync.git's objects into the caller's object directory"
     );
 }
 
