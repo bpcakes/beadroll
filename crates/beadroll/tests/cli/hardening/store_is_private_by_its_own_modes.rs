@@ -138,13 +138,35 @@ fn every_store_path_is_owner_only_under_umask_022() {
     );
 }
 
-/// G47: `machines --name` as the first command in a fresh BEAD_HOME creates it 0755.
+/// G47: `machines --name` as the first command in a fresh BEAD_HOME created it 0755. It names
+/// only a machine the journal has seen, so as the first command it is refused before it makes a
+/// home at all; the name a machine gives itself once it has written leaves the home private.
 #[test]
 fn machines_name_as_first_command_makes_a_private_home() {
     let sandbox = crate::sandbox();
     let m = machine(&sandbox, "g47-first");
     let named = m.run(["machines", "--name", "deadbeef=laptop", "--json"]);
+    assert_eq!(
+        beadroll_test_support::code(&named),
+        "VALIDATION",
+        "{}",
+        named.stderr
+    );
+    assert!(
+        !m.home().join("aliases.json").exists(),
+        "a refused name was written"
+    );
+    if m.home().exists() {
+        assert_eq!(loose(m.home()), Vec::<String>::new());
+    }
+    m.bead(["init", "--prefix", "ex"]);
+    let own = m.bead(["info"]).unwrap()["machine"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let named = m.run(["machines", "--name", &format!("{own}=laptop"), "--json"]);
     assert_eq!(named.returncode(), 0, "{}", named.stderr);
+    assert!(m.home().join("aliases.json").exists());
     assert_eq!(loose(m.home()), Vec::<String>::new());
 }
 

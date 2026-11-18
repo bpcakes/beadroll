@@ -443,7 +443,12 @@ for Claude Code and `CODEX_THREAD_ID` for Codex (both confirmed to reach shell
 commands). When one agent is started from inside the other's session both are
 present, and `bead` picks the nearest agent in the process tree. `BEAD_AGENT`,
 `BEAD_THREAD` and `--actor NAME` override them. The machine is an opaque id; its
-hostname is a local alias (`bead machines --name ID=ALIAS`), never in events.
+hostname is a local alias (`bead machines --name ID=ALIAS`, for a machine the
+journal has seen, by its id or a prefix of one alone, or an id named here
+already), never in events. An
+identity that holds nothing, or whose parts would print another's owner label
+(an agent with `:` or `@`, a thread with `@`, a name ending in `@` and a machine
+id), is `VALIDATION`.
 
 The variables bead reads are listed in the README, *Configuration*.
 

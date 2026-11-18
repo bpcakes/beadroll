@@ -301,3 +301,59 @@ mod foreign_folder_default_quote_path {
         }
     }
 }
+
+/// An identity that holds nothing, or whose parts would print another identity's owner label, is
+/// `VALIDATION` before anything is read or written: a claim's owner is its label
+/// (`agent:thread@machine`, or a name), so `a:b` with `c` and `a` with `b:c`, or a name ending in
+/// `@` and a machine id, would hold or end another's claim. An empty `--actor` is refused, never
+/// passed over for `BEAD_ACTOR`; a name like `alice@example.com` and a thread holding `:` are fine.
+#[test]
+fn identities_that_hold_nothing_or_print_another_label_are_refused() {
+    use beadroll_test_support::{Machine, code};
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    machine.bead(["init", "--prefix", "ex"]);
+    let refused: [(&str, Option<&str>, Option<&str>); 7] = [
+        ("a:b", Some("c"), None),
+        ("a@b", Some("c"), None),
+        ("a", Some("b@c"), None),
+        ("  ", Some("t"), None),
+        ("a", Some("  "), None),
+        ("a", Some("t"), Some("codex:t-b1@dc3faaf9")),
+        ("a", Some("t"), Some("  ")),
+    ];
+    for (agent, thread, name) in refused {
+        let mut cmd = machine.cmd(["ready", "--json"]).agent(agent);
+        if let Some(thread) = thread {
+            cmd = cmd.thread(thread);
+        }
+        if let Some(name) = name {
+            cmd = cmd.env("BEAD_ACTOR", name);
+        }
+        let run = cmd.run();
+        assert_eq!(
+            code(&run),
+            "VALIDATION",
+            "{agent:?} {thread:?} {name:?}: {}",
+            run.stderr
+        );
+    }
+    let empty = machine
+        .cmd(["--actor", "", "ready", "--json"])
+        .env("BEAD_ACTOR", "bob")
+        .run();
+    assert_eq!(code(&empty), "VALIDATION", "{}", empty.stderr);
+    let fine = machine
+        .cmd(["ready", "--json"])
+        .thread("b:c")
+        .env("BEAD_ACTOR", "alice@example.com");
+    let fine = fine.run();
+    assert_eq!(fine.returncode(), 0, "{}", fine.stderr);
+    let help = machine.cmd(["help"]).agent("a:b").run();
+    assert_eq!(
+        help.returncode(),
+        0,
+        "help needs no identity: {}",
+        help.stderr
+    );
+}

@@ -334,9 +334,17 @@ fn execute(
         Err(error) if free && error.code() != Code::Io => None,
         Err(error) => return Err(error.into()),
     };
+    // an --actor given as nothing is refused, never passed over for BEAD_ACTOR or detection
+    if request.name.as_ref().is_some_and(|name| name.is_empty()) {
+        return Err(Failure::new(Code::Validation, "--actor needs a name"));
+    }
     let actor = detect_actor(&settings, request.name.as_deref(), &|| {
         nearest_harness(std::os::unix::process::parent_id(), &run_ps)
     });
+    // an identity that holds nothing or prints another's label owns nothing; help needs none
+    if let Some(problem) = actor.problem().filter(|_| ns.spec.name != "help") {
+        return Err(Failure::new(Code::Validation, problem));
+    }
     let (outcome, network, remote) = match &ws {
         Some(ws) if !free => dispatch(&Context { ws, actor: &actor }, &ns)?,
         _ => (

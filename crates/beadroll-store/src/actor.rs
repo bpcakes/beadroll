@@ -5,7 +5,7 @@ use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 
 use beadroll_core::json::{Object, Value};
 use beadroll_core::state::actor_label;
-use beadroll_core::text::printed_text;
+use beadroll_core::text::{printed_text, repr_str, strip};
 
 use crate::settings::Settings;
 
@@ -100,6 +100,65 @@ impl Actor {
         label.extend_from_slice(replica.as_bytes());
         Label(label)
     }
+}
+
+impl Actor {
+    /// Why this identity cannot be used, when it cannot: one that holds nothing (an agent, thread
+    /// or name of spaces alone), or one whose parts would print another identity's label. A label
+    /// is `agent:thread@machine`, the machine eight lowercase hex digits, or a name alone, and an
+    /// owner is its label: an agent holding `:` or `@`, or a thread holding `@`, splits two ways
+    /// (`a:b` with `c` and `a` with `b:c`), and a name ending in `@` and a machine id is a label.
+    pub fn problem(&self) -> Option<String> {
+        let given = self.given.as_ref()?;
+        let blank = |value: &OsStr| strip(&value.to_string_lossy()).is_empty();
+        if blank(&given.agent) {
+            return Some("BEAD_AGENT holds only spaces: name the agent, or unset it".to_owned());
+        }
+        if given
+            .agent
+            .as_bytes()
+            .iter()
+            .any(|b| matches!(b, b':' | b'@'))
+        {
+            return Some(format!(
+                "the agent {} holds ':' or '@', which part an owner's label \
+                 (agent:thread@machine): name it without them",
+                repr_str(&given.agent.to_string_lossy())
+            ));
+        }
+        if let Some(thread) = &given.thread {
+            if blank(thread) {
+                return Some("BEAD_THREAD holds only spaces: name the thread, or unset it".into());
+            }
+            if thread.as_bytes().contains(&b'@') {
+                return Some(format!(
+                    "the thread {} holds '@', which parts an owner's label from its machine: \
+                     name it without one",
+                    repr_str(&thread.to_string_lossy())
+                ));
+            }
+        }
+        let name = given.name.as_ref()?;
+        if blank(name) {
+            return Some("--actor or BEAD_ACTOR holds only spaces: give a name".to_owned());
+        }
+        if ends_in_a_machine(name.as_bytes()) {
+            return Some(format!(
+                "the name {} ends in '@' and a machine id, as another thread's label does: \
+                 name the actor otherwise",
+                repr_str(&name.to_string_lossy())
+            ));
+        }
+        None
+    }
+}
+
+/// Whether `name` ends in `@` and eight lowercase hex digits, as a thread's label ends in its
+/// machine's id.
+fn ends_in_a_machine(name: &[u8]) -> bool {
+    name.len() > 9
+        && name[name.len() - 9] == b'@'
+        && (name[name.len() - 8..].iter()).all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(b))
 }
 
 /// An actor label as its original bytes.

@@ -145,6 +145,17 @@ agents and tests match parts of them; `bead prime` lists the codes.
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
+- Identity is self-declared: a claim's owner is its label, `agent:thread@machine` or an `--actor`
+  name, compared as text, and bead coordinates cooperating agents, never authenticates them. An
+  explicit name may be shared on purpose (a new session continues its work under the same
+  `--actor`). What bead refuses (`VALIDATION`, before anything is read; `help` needs no identity),
+  as the maintainer chose on 2026-11-18, is an identity that holds nothing (an agent, thread or
+  name of spaces alone, an empty `--actor`) and one whose parts would print another's label by
+  accident: an agent holding `:` or `@`, a thread holding `@`, a name ending in `@` and eight
+  lowercase hex digits (a machine id). `alice@example.com` is a name. `machines --name` takes only
+  a machine the journal has seen, by its id or a prefix of one alone, or an id named on this
+  machine already, whose name it changes or takes back.
+
 - Two closes (or a close and a delete) that did not see each other and give different reasons
   dispute the status, as two different statuses do (`query::split` compares a done status with its
   `close_reason`, never its `closed_at`, which two closes give apart always): the issue is not done

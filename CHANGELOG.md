@@ -6,6 +6,15 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- An identity whose parts would print another's owner label is `VALIDATION`: an agent holding `:`
+  or `@`, a thread holding `@`, a name ending in `@` and a machine id. `BEAD_AGENT=a:b
+  BEAD_THREAD=c` and `BEAD_AGENT=a BEAD_THREAD=b:c` were one owner, and `--actor
+  codex:t-b1@dc3faaf9` could end that thread's confirmed claim on another machine. So is one that
+  holds only spaces, and an empty `--actor`, which `BEAD_ACTOR` had silently stood in for.
+- `machines --name` names only a machine the journal has seen, by its id or a unique prefix of one,
+  or an id named here already; it stored an alias for any id.
+- `machines` lists, and `info`'s `events_by_machine` counts, a machine whose only writes are claims.
+
 - `info` names a tracker as `recap` does: the name its last sync recorded, which follows the
   repository through a move, else its init's. It kept the name the tracker was started under.
 

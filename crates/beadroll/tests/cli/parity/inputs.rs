@@ -332,8 +332,7 @@ const ALIASES: &str = r#"{
    "\u00e9"
   ]
  },
- "dup": "last",
- "a": "again",
+ "dup": "again",
  "<replica>": "host"
 }"#;
 
@@ -362,7 +361,8 @@ fn aliases_are_utf8_and_existing_members_survive_a_rename() {
     assert_eq!(refused.stderr.trim(), NOT_UTF8_JSON.2, "{}", refused.stderr);
     assert_eq!(std::fs::read_to_string(&file).unwrap(), seeded);
     let own = format!("{replica}=host");
-    for given in ["zz=new", "a=again", own.as_str()] {
+    // `zz` and `dup` are named here already, and so can be renamed though no machine has them
+    for given in ["zz=new", "dup=again", own.as_str()] {
         let renamed = m.run(["machines", "--name", given]);
         assert_eq!(renamed.returncode(), 0, "{}", renamed.stderr);
     }
