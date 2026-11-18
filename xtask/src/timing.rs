@@ -366,6 +366,17 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
 }
 
 /// A count given to `option`, of `what`.
+/// `name` under the target's `timing/` directory, emptied of whatever an earlier run left there and
+/// not yet made: where a timing writes its stores and histories.
+pub(crate) fn scratch(name: &str) -> Result<std::path::PathBuf, Failure> {
+    let dir = workspace::output_dir("timing")?.join(name);
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir)
+            .map_err(|error| Failure::io("cannot remove", &dir, &error))?;
+    }
+    Ok(dir)
+}
+
 /// The fastest of `runs` runs (one at least) of `run` on what `given` makes for each, made before the
 /// clock starts, and what the last run made: the shape every in-process timing takes. What a run
 /// made is let go of after its clock stops, never while it runs.

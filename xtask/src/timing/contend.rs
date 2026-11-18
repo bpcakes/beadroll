@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use super::history::{ROTATE_BYTES, Shape, history};
 use super::world::{World, bead, profile, write_store};
-use crate::workspace::{self, Failure, json_string};
+use crate::workspace::{Failure, json_string};
 
 /// How many writes each machine makes when `--writes` does not say.
 pub(crate) const WRITES: usize = 25;
@@ -29,11 +29,7 @@ pub(crate) fn measure(
     label: Option<&str>,
 ) -> Result<String, Failure> {
     let bead = bead()?;
-    let dir = workspace::output_dir("timing")?.join(format!("contend-{machines}"));
-    if dir.exists() {
-        std::fs::remove_dir_all(&dir)
-            .map_err(|error| Failure::io("cannot remove", &dir, &error))?;
-    }
+    let dir = super::scratch(&format!("contend-{machines}"))?;
     let first = World::new(&dir.join("m0"), bead, ROTATE_BYTES)?;
     write_store(&first.store(), &history(EVENTS, Shape::Plain), ROTATE_BYTES)?;
     first.bead(&["sync"])?;

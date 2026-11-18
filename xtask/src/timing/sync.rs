@@ -11,7 +11,7 @@
 
 use super::history::{Shape, history};
 use super::world::{RUNS, World, bead, profile, write_store};
-use crate::workspace::{self, Failure, json_string};
+use crate::workspace::{Failure, json_string};
 
 pub(crate) use super::history::ROTATE_BYTES;
 
@@ -26,11 +26,7 @@ pub(crate) fn measure(
     label: Option<&str>,
 ) -> Result<String, Failure> {
     let bead = bead()?;
-    let dir = workspace::output_dir("timing")?.join(format!("sync-{}-{count}", shape.name()));
-    if dir.exists() {
-        std::fs::remove_dir_all(&dir)
-            .map_err(|error| Failure::io("cannot remove", &dir, &error))?;
-    }
+    let dir = super::scratch(&format!("sync-{}-{count}", shape.name()))?;
     let files = history(count, shape);
     let world = World::new(&dir, bead, rotate)?;
     let layout = write_store(&world.store(), &files, rotate)?;

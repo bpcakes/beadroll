@@ -23,7 +23,7 @@ use beadroll_core::projection::{
 use super::history::{Shape, event_id, history};
 use super::world::profile;
 use super::{heap, memory};
-use crate::workspace::{self, Failure, json_string};
+use crate::workspace::{Failure, json_string};
 
 /// How many times each part is decoded; the fastest run counts.
 pub(super) const RUNS: usize = 7;
@@ -54,7 +54,7 @@ fn encodes(projection: &Projection) -> Result<(f64, f64), Failure> {
 
 /// Measures; returns the beginning of the line to record.
 pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result<String, Failure> {
-    let dir = workspace::output_dir("timing")?.join(format!("decode-{}-{count}", shape.name()));
+    let dir = super::scratch(&format!("decode-{}-{count}", shape.name()))?;
     memory::write_files(&dir, &history(count, shape))?;
     let journal = memory::load(&dir)?;
     // An ownership-heavy journal is a hundred thousand files: nothing to leave lying about.

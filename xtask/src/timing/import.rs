@@ -16,7 +16,7 @@ use beadroll_core::json::{Format, Object, Value, write};
 
 use super::history::ROTATE_BYTES;
 use super::world::{World, bead, profile};
-use crate::workspace::{self, Failure, json_string};
+use crate::workspace::{Failure, json_string};
 
 /// A fixed sequence of numbers: every run generates the same export.
 struct Draws(u64);
@@ -128,11 +128,7 @@ fn peak_bytes(peak: Option<u64>) -> String {
 pub(crate) fn measure(records: usize, label: Option<&str>) -> Result<String, Failure> {
     let bead = bead()?;
     let counted = counted();
-    let dir = workspace::output_dir("timing")?.join(format!("import-{records}"));
-    if dir.exists() {
-        std::fs::remove_dir_all(&dir)
-            .map_err(|error| Failure::io("cannot remove", &dir, &error))?;
-    }
+    let dir = super::scratch(&format!("import-{records}"))?;
     std::fs::create_dir_all(&dir).map_err(|error| Failure::io("cannot create", &dir, &error))?;
     let path = dir.join("issues.jsonl");
     let exported = export(records);

@@ -9,7 +9,7 @@ use beadroll_core::replay::replay;
 use super::history::{Shape, history};
 use super::memory;
 use super::world::profile;
-use crate::workspace::{self, Failure, json_string};
+use crate::workspace::{Failure, json_string};
 
 /// How many times the journal is replayed; the fastest run counts.
 const RUNS: usize = 7;
@@ -21,7 +21,7 @@ fn bytes(peak: Option<u64>) -> String {
 
 /// Measures; returns the beginning of the line to record.
 pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result<String, Failure> {
-    let dir = workspace::output_dir("timing")?.join(format!("replay-{}-{count}", shape.name()));
+    let dir = super::scratch(&format!("replay-{}-{count}", shape.name()))?;
     memory::write_files(&dir, &history(count, shape))?;
     let mut parsed = memory::load(&dir)?;
     let settled = parsed.settled_view();

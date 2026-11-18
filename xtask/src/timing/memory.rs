@@ -25,12 +25,9 @@ pub(crate) enum LoadMode {
 }
 
 /// Writes `files` under `dir` as a store holds them: `REPLICA/000001.jsonl` on, rotated as bead
-/// rotates its journal, and `REPLICA/claims/ID.json`, replacing whatever was there. The process
+/// rotates its journal, and `REPLICA/claims/ID.json`, into a directory not yet made ([`super::scratch`]). The process
 /// that loads them then reads a segment at a time, as bead does.
 pub(crate) fn write_files(dir: &Path, files: &[Files]) -> Result<(), Failure> {
-    if dir.exists() {
-        std::fs::remove_dir_all(dir).map_err(|error| Failure::io("cannot remove", dir, &error))?;
-    }
     for machine in files {
         let claims = dir.join(&machine.replica).join("claims");
         std::fs::create_dir_all(&claims)
