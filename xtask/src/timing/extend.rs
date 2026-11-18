@@ -17,6 +17,7 @@ use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::projection::{Extended, Projection, Record, project};
 
+use super::history::stamped;
 use super::world::profile;
 use crate::workspace::{Failure, json_string};
 
@@ -36,16 +37,6 @@ pub(super) fn id(n: u64) -> String {
 /// machine's own write is after its clock rolls back or when it takes in a peer that ran ahead.
 fn earlier(n: u64) -> String {
     stamped(1_759_935_845_123, n)
-}
-
-/// A UUIDv7 at `millis`, numbered `n`.
-fn stamped(millis: u64, n: u64) -> String {
-    format!(
-        "{:08x}-{:04x}-7000-8000-{:012x}",
-        millis >> 16,
-        millis & 0xffff,
-        n
-    )
 }
 
 /// An event as `Tx.emit` writes it: numbered `n`, doing `op` on `issue`, built on `after` alone,

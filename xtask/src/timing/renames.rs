@@ -20,6 +20,7 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 
+use super::history::id;
 use super::world::profile;
 use crate::workspace::{Failure, json_string};
 
@@ -172,17 +173,6 @@ impl Shape {
             format!("ex-gone-{n}")
         }
     }
-}
-
-/// The id of the probe's event number `n`: a UUIDv7, ids in the order of their numbers.
-fn id(n: u64) -> String {
-    let millis = 1_791_558_245_123 + n;
-    format!(
-        "{:08x}-{:04x}-7000-8000-{:012x}",
-        millis >> 16,
-        millis & 0xffff,
-        n
-    )
 }
 
 /// Event `n` of `machine`, doing `op` on itself, built on `after`, as the events of one machine's

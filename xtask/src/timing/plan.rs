@@ -16,6 +16,7 @@ use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 
+use super::history::id;
 use super::world::profile;
 use crate::workspace::{Failure, json_string};
 
@@ -24,17 +25,6 @@ const RUNS: usize = 5;
 
 /// The file the import reads.
 pub(super) const PATH: &str = "issues.jsonl";
-
-/// The id of the probe's event number `n`: a UUIDv7, ids in the order of their numbers.
-fn id(n: u64) -> String {
-    let millis = 1_791_558_245_123 + n;
-    format!(
-        "{:08x}-{:04x}-7000-8000-{:012x}",
-        millis >> 16,
-        millis & 0xffff,
-        n
-    )
-}
 
 /// An event as `Tx.emit` writes it.
 fn event(n: u64, op: &str, issue: &str, data: Value) -> Value {
