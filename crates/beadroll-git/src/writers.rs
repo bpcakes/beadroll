@@ -183,16 +183,12 @@ mod tests {
         );
         assert_eq!(trees.make(b"x\n\ny\n"), Err(NoAnswer));
         let commit = env
-            .git([
-                "-c",
-                "user.name=t",
-                "-c",
-                "user.email=t@t",
+            .git((crate::testing::IDENTITY.into_iter()).chain([
                 "commit-tree",
-                &tree,
+                tree.as_str(),
                 "-m",
                 "m",
-            ])
+            ]))
             .string()
             .unwrap();
         let mut refs = Refs::start(&env).unwrap();

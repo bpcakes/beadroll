@@ -98,7 +98,7 @@ fn journal_commit(env: &Env) -> String {
     let top = mktree(format!(
         "040000 tree {events}\tevents\n100644 blob {a}\tmanifest.json\n"
     ));
-    let identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
+    let identity = crate::testing::IDENTITY;
     let args = identity.into_iter().chain(["commit-tree", &top, "-m", "m"]);
     env.git(args).string().unwrap()
 }
@@ -149,7 +149,7 @@ fn listings_trees_and_names_are_the_ones_git_gives() {
 fn an_object_that_is_not_what_its_name_says_is_left_to_git() {
     let (dir, env) = crate::testing::bare("sha1");
     let commit = journal_commit(&env);
-    let identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
+    let identity = crate::testing::IDENTITY;
     let other = env
         .git(
             identity
