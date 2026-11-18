@@ -303,7 +303,7 @@ mod tests {
     use super::*;
 
     fn id(n: u64) -> EventId {
-        EventId::parse(&format!("01900000-0000-7000-8000-{n:012x}")).unwrap()
+        EventId::parse(&beadroll_test_support::events::id_at(0x0190_0000_0000, n)).unwrap()
     }
 
     #[test]

@@ -10,9 +10,11 @@ use crate::json::{Object, Value};
 
 pub(super) const HERE: &str = "0000aa01";
 
+/// The id of event number `n`: a UUIDv7 `n` milliseconds into an afternoon in 2026, its random bits
+/// `n`, so that ids sort by their numbers.
 pub(super) fn id(n: u128) -> String {
-    let value = ((1_790_000_000_000 + n) << 80) | (7 << 76) | (2 << 62) | n;
-    EventId::from_u128(value).to_string()
+    let n = u64::try_from(n).expect("a small event number");
+    beadroll_test_support::events::id_at(1_790_000_000_000 + n, n)
 }
 
 pub(super) fn event(
