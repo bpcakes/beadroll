@@ -11,6 +11,7 @@ use super::super::Work;
 use super::{MACHINE, grows_linearly, id, key};
 use crate::journal::{Journal, JournalOrder};
 use crate::json::{Object, Value};
+use crate::projection::tests::hostile;
 use crate::replay::replay;
 
 /// Whether copied issues import unresolved dependencies.
@@ -150,16 +151,9 @@ fn renaming_every_copy_of_keys_two_machines_minted_reads_a_bounded_number_of_key
 
 /// Event `n` of `machine`, built on `deps`, doing `op` on the issue event `issue` created.
 fn doing(n: u64, machine: &str, deps: &[u64], op: &str, issue: u64, data: Object) -> Value {
-    let mut event = Object::new();
-    event.insert("v".into(), Value::from(1));
-    event.insert("id".into(), Value::from(id(n)));
-    event.insert("replica".into(), Value::from(machine));
-    let deps = deps.iter().map(|dep| Value::from(id(*dep))).collect();
-    event.insert("deps".into(), Value::Array(deps));
-    event.insert("op".into(), Value::from(op));
-    event.insert("issue".into(), Value::from(id(issue)));
-    event.insert("data".into(), Value::from(data));
-    Value::from(event)
+    // the same ids as `id` gives: `hostile`'s event numbers are this module's too
+    let deps: Vec<u128> = deps.iter().map(|dep| u128::from(*dep)).collect();
+    hostile::event(n.into(), machine, &deps, op, issue.into(), data)
 }
 
 /// The journal of a first machine that creates `ex-1.1` to `ex-1.N` and then an issue whose import

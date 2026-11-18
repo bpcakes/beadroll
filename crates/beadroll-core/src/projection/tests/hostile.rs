@@ -17,7 +17,7 @@ pub(super) fn id(n: u128) -> String {
     beadroll_test_support::events::id_at(1_790_000_000_000 + n, n)
 }
 
-pub(super) fn event(
+pub(crate) fn event(
     n: u128,
     replica: &str,
     deps: &[u128],

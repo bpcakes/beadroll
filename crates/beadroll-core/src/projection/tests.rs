@@ -11,7 +11,7 @@ mod fields;
 mod finished;
 mod flawed;
 mod forged;
-mod hostile;
+pub(crate) mod hostile;
 mod known;
 mod marked;
 mod numbered;
