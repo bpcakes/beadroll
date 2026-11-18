@@ -145,6 +145,45 @@ impl Sandbox {
         )
     }
 
+    /// What `git ARGS` printed, stripped, run as plumbing on the bare remote (`GIT_DIR`, from inside
+    /// it) as author and committer `t`, `input` on its standard input: objects and refs a test
+    /// writes there by hand. A failure panics with git's standard error.
+    pub fn origin_plumbing(&self, args: &[&str], input: Option<&[u8]>) -> String {
+        let mut command = git_command();
+        command
+            .args(args)
+            .current_dir(&self.origin)
+            .env("GIT_DIR", &self.origin)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.invalid")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.invalid")
+            .stdin(if input.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = command.spawn().expect("git starts");
+        let pipe = child.stdin.take();
+        let output = std::thread::scope(|scope| {
+            // written from another thread, so that git never waits for us while we wait for it
+            if let (Some(mut pipe), Some(input)) = (pipe, input) {
+                scope.spawn(move || std::io::Write::write_all(&mut pipe, input));
+            }
+            child.wait_with_output().expect("git's output")
+        });
+        assert!(
+            output.status.success(),
+            "git {}: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let printed = String::from_utf8(output.stdout).expect("git's output is UTF-8");
+        printed.trim().to_owned()
+    }
+
     /// The commit the remote's `refs/beads/journal` names, or `None` when it names none: no
     /// publish has reached it yet. Any other failure of git's panics, so that it is never taken
     /// for a remote without a journal.

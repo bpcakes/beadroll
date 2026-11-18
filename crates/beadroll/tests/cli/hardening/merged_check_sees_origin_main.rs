@@ -3,11 +3,11 @@
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use beadroll_test_support::{Json, Machine, Sandbox};
+use beadroll_test_support::{Json, Machine, Sandbox, git_command};
 use rustix::process::{Pid, Signal, kill_process};
 
 /// A scratch global git configuration, and no system one.
@@ -32,16 +32,10 @@ fn set_up(sandbox: &Sandbox) -> Machine {
 /// environment less every `GIT_*` variable, plus the scratch configuration; what it printed,
 /// stripped. A failure fails the test, and so does git still running after 30 seconds.
 fn git(sandbox: &Sandbox, args: &[&str], cwd: &Path) -> String {
-    let inherited = std::env::vars_os().filter(|(key, _)| {
-        let key = key.as_encoded_bytes();
-        !key.starts_with(b"GIT_")
-    });
-    let child = Command::new("git")
+    let child = git_command()
         .args(["-c", "user.name=t", "-c", "user.email=t@example.invalid"])
         .args(args)
         .current_dir(cwd)
-        .env_clear()
-        .envs(inherited)
         .envs(genv(sandbox))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

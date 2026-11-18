@@ -3,9 +3,7 @@
 //! segment numbers are ASCII digits. These tests write remote content directly with git.
 
 use std::collections::BTreeSet;
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_line};
 
@@ -18,66 +16,17 @@ fn set_up(sandbox: &Sandbox) -> Machine {
     a
 }
 
-/// `git ARGS` on the sandbox's remote (`GIT_DIR`), as author and
-/// committer `t` and with no other `GIT_*` variable, `data` on its standard input; what it printed,
-/// stripped. A failure panics.
-fn remote(sandbox: &Sandbox, args: &[&str], data: Option<&[u8]>) -> String {
-    let inherited = std::env::vars_os().filter(|(key, _)| {
-        let key = key.as_encoded_bytes();
-        !key.starts_with(b"GIT_")
-    });
-    let mut command = Command::new("git");
-    command
-        .args(args)
-        .env_clear()
-        .envs(inherited)
-        .env("GIT_DIR", sandbox.origin())
-        .env("GIT_AUTHOR_NAME", "t")
-        .env("GIT_AUTHOR_EMAIL", "t@example.invalid")
-        .env("GIT_COMMITTER_NAME", "t")
-        .env("GIT_COMMITTER_EMAIL", "t@example.invalid")
-        .stdin(if data.is_some() {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = command.spawn().expect("git starts");
-    if let (Some(mut input), Some(data)) = (child.stdin.take(), data) {
-        // git reads all of it before it prints a word: no pipe fills while this writes
-        input.write_all(data).expect("git takes its input");
-    }
-    let output = child.wait_with_output().expect("git's output");
-    assert!(
-        output.status.success(),
-        "git {args:?} failed ({}): {}",
-        output.status,
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let printed = String::from_utf8(output.stdout).expect("git's output is UTF-8");
-    printed.trim().to_owned()
-}
-
 /// `publish_manifest`: points the remote's journal ref at a commit holding the same journals and
 /// `manifest`; the commit.
 fn publish_manifest(sandbox: &Sandbox, manifest: &[u8]) -> String {
-    let tip = remote(sandbox, &["rev-parse", "refs/beads/journal"], None);
-    let events = remote(sandbox, &["rev-parse", &format!("{tip}:events")], None);
-    let blob = remote(sandbox, &["hash-object", "-w", "--stdin"], Some(manifest));
+    let tip = sandbox.origin_plumbing(&["rev-parse", "refs/beads/journal"], None);
+    let events = sandbox.origin_plumbing(&["rev-parse", &format!("{tip}:events")], None);
+    let blob = sandbox.origin_plumbing(&["hash-object", "-w", "--stdin"], Some(manifest));
     let entries = format!("040000 tree {events}\tevents\n100644 blob {blob}\tmanifest.json\n");
-    let tree = remote(sandbox, &["mktree"], Some(entries.as_bytes()));
+    let tree = sandbox.origin_plumbing(&["mktree"], Some(entries.as_bytes()));
     let message = "a manifest no bead wrote";
-    let commit = remote(
-        sandbox,
-        &["commit-tree", &tree, "-p", &tip, "-m", message],
-        None,
-    );
-    remote(
-        sandbox,
-        &["update-ref", "refs/beads/journal", &commit, &tip],
-        None,
-    );
+    let commit = sandbox.origin_plumbing(&["commit-tree", &tree, "-p", &tip, "-m", message], None);
+    sandbox.origin_plumbing(&["update-ref", "refs/beads/journal", &commit, &tip], None);
     commit
 }
 
@@ -112,7 +61,7 @@ fn a_manifest_that_only_equals_format_1_is_refused() {
         let synced = a.run(["sync", "--json"]);
         assert_eq!(code(&synced), expected, "format={spelling}");
         // nothing rewritten
-        let now = remote(&sandbox, &["rev-parse", "refs/beads/journal"], None);
+        let now = sandbox.origin_plumbing(&["rev-parse", "refs/beads/journal"], None);
         assert_eq!(now, tip, "format={spelling}");
     }
 }
@@ -123,7 +72,7 @@ fn a_manifest_that_only_equals_format_1_is_refused() {
 fn only_segments_numbered_in_ascii_digits_are_merged() {
     let sandbox = crate::sandbox();
     set_up(&sandbox);
-    let tip = remote(&sandbox, &["rev-parse", "refs/beads/journal"], None);
+    let tip = sandbox.origin_plumbing(&["rev-parse", "refs/beads/journal"], None);
     let planted = json!({
         "v": 1,
         "id": "019a5555-5555-7000-8000-000000000001",
@@ -135,35 +84,19 @@ fn only_segments_numbered_in_ascii_digits_are_merged() {
         "data": {"key": "ex-planted", "fields": {"title": "planted"}},
     });
     let line = json_line(&planted) + "\n";
-    let blob = remote(
-        &sandbox,
-        &["hash-object", "-w", "--stdin"],
-        Some(line.as_bytes()),
-    );
+    let blob = sandbox.origin_plumbing(&["hash-object", "-w", "--stdin"], Some(line.as_bytes()));
     let name = "٠".repeat(5) + "١.jsonl";
     let entry = format!("100644 blob {blob}\t{name}\n");
-    let folder = remote(&sandbox, &["mktree"], Some(entry.as_bytes()));
-    let listing = remote(&sandbox, &["ls-tree", &format!("{tip}:events")], None);
+    let folder = sandbox.origin_plumbing(&["mktree"], Some(entry.as_bytes()));
+    let listing = sandbox.origin_plumbing(&["ls-tree", &format!("{tip}:events")], None);
     let entries = format!("{listing}\n040000 tree {folder}\tffffffff\n");
-    let events = remote(&sandbox, &["mktree"], Some(entries.as_bytes()));
-    let manifest = remote(
-        &sandbox,
-        &["rev-parse", &format!("{tip}:manifest.json")],
-        None,
-    );
+    let events = sandbox.origin_plumbing(&["mktree"], Some(entries.as_bytes()));
+    let manifest = sandbox.origin_plumbing(&["rev-parse", &format!("{tip}:manifest.json")], None);
     let entries = format!("040000 tree {events}\tevents\n100644 blob {manifest}\tmanifest.json\n");
-    let tree = remote(&sandbox, &["mktree"], Some(entries.as_bytes()));
+    let tree = sandbox.origin_plumbing(&["mktree"], Some(entries.as_bytes()));
     let message = "a segment no bead wrote";
-    let commit = remote(
-        &sandbox,
-        &["commit-tree", &tree, "-p", &tip, "-m", message],
-        None,
-    );
-    remote(
-        &sandbox,
-        &["update-ref", "refs/beads/journal", &commit, &tip],
-        None,
-    );
+    let commit = sandbox.origin_plumbing(&["commit-tree", &tree, "-p", &tip, "-m", message], None);
+    sandbox.origin_plumbing(&["update-ref", "refs/beads/journal", &commit, &tip], None);
     let b = Machine::new(&sandbox, "u06-b");
     b.bead(["sync"]);
     let listed = b.bead(["list", "--all", "--limit", "0"]).unwrap();
