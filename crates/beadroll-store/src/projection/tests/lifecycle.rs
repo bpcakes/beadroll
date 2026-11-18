@@ -50,7 +50,7 @@ fn failed_projection_writes_leave_new_texts_unacknowledged_for_retry() {
         let mut made = file::read(&projection_path(&ws)).unwrap().made;
         let bytes = std::fs::read(segment(&ws)).unwrap();
         for held in &mut made.files {
-            if held.segment {
+            if held.is_segment() {
                 held.key = FileKey::of(&segment(&ws)).unwrap();
                 held.sum = Some(content_sum(&bytes));
             }

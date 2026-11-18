@@ -302,14 +302,14 @@ fn kept(
     ws: &Workspace,
     path: &Path,
     key: Option<FileKey>,
-    segment: JournalFile,
+    kind: JournalFile,
     sum: Option<[u8; 16]>,
 ) -> Option<Held> {
     let path = path.strip_prefix(&ws.events_dir).ok()?.to_str()?.to_owned();
     Some(Held {
         path,
         key: key?,
-        segment: segment == JournalFile::Segment,
+        kind,
         sum,
     })
 }
@@ -324,7 +324,7 @@ fn same(made: &Made, segments: &[Held], attempts: &[Held], settled: i128) -> boo
     files.len() == segments.len() + attempts.len()
         && (segments.iter().chain(attempts)).all(|now| {
             (files.get(now.path.as_str())).is_some_and(|was| {
-                was.key == now.key && was.segment == now.segment && was.key.settled_before(settled)
+                was.key == now.key && was.kind == now.kind && was.key.settled_before(settled)
             })
         })
 }
@@ -348,12 +348,12 @@ struct Tail {
 /// for its sum to say, once it is read ([`appended`]).
 fn grown(made: &Made, segments: &[Held], settled: i128) -> Option<Vec<Tail>> {
     let before: HashMap<&str, &Held> = (made.files.iter())
-        .filter(|held| held.segment)
+        .filter(|held| held.is_segment())
         .map(|held| (held.path.as_str(), held))
         .collect();
     // each machine's last segment, by name
     let mut last: HashMap<&str, &str> = HashMap::new();
-    for held in made.files.iter().filter(|held| held.segment) {
+    for held in made.files.iter().filter(|held| held.is_segment()) {
         let was = last.entry(machine(&held.path)).or_insert(&held.path);
         *was = (*was).max(held.path.as_str());
     }
@@ -506,7 +506,7 @@ fn appended(
 ) -> Option<(Made, Option<Sources>)> {
     let mut problems: Vec<Problem> = Vec::new();
     let before: HashMap<&str, &Held> = (made.files.iter())
-        .filter(|held| !held.segment)
+        .filter(|held| held.kind == JournalFile::Attempt)
         .map(|held| (held.path.as_str(), held))
         .collect();
     let still: HashSet<&str> = listed.held.iter().map(|held| held.path.as_str()).collect();
@@ -557,7 +557,7 @@ fn appended(
         .map(|held| (held.path.clone(), held))
         .collect();
     let mut segments: Vec<Held> = (made.files.iter())
-        .filter(|held| held.segment)
+        .filter(|held| held.is_segment())
         .map(|held| {
             read.remove(held.path.as_str())
                 .unwrap_or_else(|| held.clone())

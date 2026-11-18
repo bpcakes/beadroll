@@ -198,7 +198,7 @@ fn an_identity_of_the_projections_own_tick_is_read_against_its_sum() {
     let held = |sum| Held {
         path: path.clone(),
         key,
-        segment: true,
+        kind: JournalFile::Segment,
         sum,
     };
     let made = |sum| Made {

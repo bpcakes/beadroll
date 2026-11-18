@@ -12,6 +12,7 @@ use std::path::Path;
 use beadroll_core::projection::{ENCODING, Encoded, sum};
 
 use crate::memo::FileKey;
+use crate::projection::JournalFile;
 
 /// The first bytes of a projection.
 const MAGIC: &[u8; 16] = b"bead projection\n";
@@ -23,15 +24,22 @@ const LAYOUT: u32 = 2;
 const HEADER: usize = 16 + 4 + 4 + 3 * 8 + 3 * 16;
 
 /// A journal file a projection was made from: its path under the store's `events`, its identity
-/// up to what was read of it, whether it is a segment (else an attempt file), and the sum of the
+/// up to what was read of it, its kind (a segment or an attempt file), and the sum of the
 /// bytes that were read, which a segment that grew since must still begin with, and which says
 /// whether a file of the projection's own timestamp tick is the one it was made from.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Held {
     pub(super) path: String,
     pub(super) key: FileKey,
-    pub(super) segment: bool,
+    pub(super) kind: JournalFile,
     pub(super) sum: Option<[u8; 16]>,
+}
+
+impl Held {
+    /// Whether the file is a segment of a machine's journal, not an attempt file.
+    pub(super) fn is_segment(&self) -> bool {
+        self.kind == JournalFile::Segment
+    }
 }
 
 /// What a projection was made from: the build of bead that made it, the journal's files, and the
@@ -156,7 +164,8 @@ fn made_bytes(made: &Made) -> Vec<u8> {
     out.extend_from_slice(&(made.files.len() as u64).to_le_bytes());
     for held in &made.files {
         text(&mut out, &held.path);
-        out.push(u8::from(held.segment));
+        // the layout's byte: 1 for a segment, 0 for an attempt file
+        out.push(u8::from(held.kind == JournalFile::Segment));
         match held.sum {
             Some(sum) => {
                 out.push(1);
@@ -182,9 +191,9 @@ fn unmade(bytes: &[u8]) -> Option<Made> {
     let mut files = Vec::with_capacity(count.min(bytes.len()));
     for _ in 0..count {
         let path = at.text()?;
-        let segment = match at.take::<1>()? {
-            [0] => false,
-            [1] => true,
+        let kind = match at.take::<1>()? {
+            [0] => JournalFile::Attempt,
+            [1] => JournalFile::Segment,
             _ => return None,
         };
         let sum = match at.take::<1>()? {
@@ -200,7 +209,7 @@ fn unmade(bytes: &[u8]) -> Option<Made> {
         files.push(Held {
             path,
             key,
-            segment,
+            kind,
             sum,
         });
     }
