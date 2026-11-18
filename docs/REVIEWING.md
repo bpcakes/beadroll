@@ -1459,6 +1459,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - Exported comment ids for comments made here come from a 48-bit hash range; a collision is a
   one-in-10^14 event and is then resolved by the ids alone.
 - `dep cycles` stops after 200 cycles.
+- An import keeps a dependency cycle its records form between them, as the Beads export has it
+  (the maintainer's decision of 2026-11-18): `dep add`, `create` and `update --parent` refuse to
+  close a loop, but an import is faithful to what it reads, and `dep cycles` reports the loop
+  afterwards, as it does one a merge forms. A record that depends on itself is still refused, as
+  `dep add` and br refuse it (`import::check`).
 - `ready ID` and `ready --epic ID` are one scope, ID's subtree, recursive as br's `--epic` (the
   maintainer's decision of 2026-10-09; until then `--epic` was another name for `--parent`): every
   issue beneath ID through parent-child edges, at any depth and through every parent link, whatever

@@ -475,6 +475,8 @@ it, and the file is committed again.
   alone and one of them moves. Beads readers accept these ids; `br` would not
   have minted them.
 - `dep cycles` lists every elementary cycle, up to 200.
+- An import keeps a dependency cycle its records form between them, as the export has it;
+  `dep cycles` reports it. Only a record that depends on itself is refused.
 - What each event had seen is kept as one clock per event over chains: every
   machine's journal is a chain, and the claims, releases and takeovers of
   attempt files join chains of their own, about one for each machine that
