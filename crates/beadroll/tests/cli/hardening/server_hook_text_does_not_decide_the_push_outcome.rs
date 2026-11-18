@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use beadroll_test_support::{
-    Gate, Json, Machine, Sandbox, beside, executable, parse_json, shell_quoted,
+    Gate, Json, Machine, Sandbox, beside, executable, git_on_path, parse_json, shell_quoted,
 };
 
 /// Post-receive runs after the ref update and after receive-pack sent
@@ -52,8 +52,15 @@ fn applied_release_is_not_reported_not_owner_because_a_hook_printed_rejected() {
     let gate = sandbox.root().join("g11-hook-fired");
     install_post_receive(&sandbox, &gate);
     let before = sandbox.remote_journal();
-    let released = a.run(["release", &key, "--json"]);
+    let (path, kept) = keeping_git_stderr(&sandbox);
+    let released = a.cmd(["release", &key, "--json"]).env("PATH", &path).run();
     assert!(gate.exists(), "the post-receive hook did not run");
+    // the hook's refusal reached bead's git, or bead never saw the text this test is about
+    let relayed = std::fs::read_to_string(&kept).unwrap_or_default();
+    assert!(
+        relayed.contains("remote: mirror: ! [rejected]"),
+        "the hook's line did not reach the pushing git: {relayed}"
+    );
     assert_ne!(
         sandbox.remote_journal(),
         before,
@@ -69,6 +76,25 @@ fn applied_release_is_not_reported_not_owner_because_a_hook_printed_rejected() {
         "the remote applied the release, but bead reported: {}",
         released.stderr.trim()
     );
+}
+
+/// A `PATH` whose `git` is the real one with a copy of everything it prints on standard error
+/// kept in the file returned beside it, and passed on unchanged: what reached bead's side of a
+/// push, `remote:` lines among it.
+fn keeping_git_stderr(sandbox: &Sandbox) -> (std::ffi::OsString, std::path::PathBuf) {
+    let shims = sandbox.root().join("stderr-keeping-shims");
+    std::fs::create_dir(&shims).unwrap();
+    let kept = sandbox.root().join("git-stderr.log");
+    let script = format!(
+        "#!/bin/sh\nerr=$(mktemp)\n{git} \"$@\" 2>\"$err\"\nstatus=$?\ncat \"$err\" >&2\n\
+         cat \"$err\" >> {kept}\nrm -f \"$err\"\nexit $status\n",
+        git = shell_quoted(git_on_path()),
+        kept = shell_quoted(&kept),
+    );
+    executable(shims.join("git"), script);
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let dirs = std::iter::once(shims).chain(std::env::split_paths(&path));
+    (std::env::join_paths(dirs).unwrap(), kept)
 }
 
 /// Every JSON line in files under `dir` whose names contain `.json`.
