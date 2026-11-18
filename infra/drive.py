@@ -31,6 +31,7 @@ import subprocess
 import sys
 import time
 
+import environment
 import selected
 
 TAG = time.strftime("%H%M%S")
@@ -67,6 +68,17 @@ STATE = "$HOME/.local/state/beads-poc-test"
 HOST_ENV = {}  # plain github.com:22 everywhere
 
 
+# What every process this driver starts here runs in, ssh's included: the caller's environment without what
+# would route bead or git elsewhere (environment.INHERITED); the commands name BEAD_HOME and the actor.
+ENV = environment.scrubbed()
+
+
+def ran(argv, **options):
+    """`argv` run here as subprocess.run runs it, in the scrubbed environment: how this driver starts every
+    process."""
+    return subprocess.run(argv, env=ENV, **options)
+
+
 def word(path):
     """`path` as one word of a bash command: quoted, its leading `~/` left for bash to expand."""
     return "~/" + shlex.quote(path[2:]) if path.startswith("~/") else shlex.quote(path)
@@ -92,7 +104,7 @@ def probe(host):
     """The preflight's record of `host`'s bead (selected.describe's fields, its role and its system) and of
     its clone's origin."""
     repo = word(REPO_LOCAL if HOSTS[host] is None else REPO_REMOTE)
-    proc = subprocess.run(over(host, PROBE.format(bead=word(BEADS[host]), repo=repo)), capture_output=True, text=True,
+    proc = ran(over(host, PROBE.format(bead=word(BEADS[host]), repo=repo)), capture_output=True, text=True,
                           timeout=120)
     lines = proc.stdout.split("\n")
     if proc.returncode or len(lines) < 8 or lines[7] != "end":
@@ -134,9 +146,9 @@ def run(host, *args, thread=None, agent="codex", env="", raw=False, timeout=120)
            + word(BEADS[host]) + " " + " ".join(shlex.quote(a) for a in args) + ("" if raw else " --json"))
     full = over(host, cmd)
     t = time.time()
-    proc = subprocess.run(full, capture_output=True, text=True, timeout=timeout)
+    proc = ran(full, capture_output=True, text=True, timeout=timeout)
     if proc.returncode == 255 and HOSTS[host] is not None and not proc.stderr.strip():
-        proc = subprocess.run(full, capture_output=True, text=True, timeout=timeout)  # ssh itself dropped: once more
+        proc = ran(full, capture_output=True, text=True, timeout=timeout)  # ssh itself dropped: once more
     ms = int((time.time() - t) * 1000)
     if raw:
         return {"rc": proc.returncode, "out": proc.stdout, "err": proc.stderr, "ms": ms}
@@ -290,12 +302,12 @@ def main(argv):
 
     section("S11 a linked worktree on this machine sees the same tracker and stays clean")
     wt = REPO_LOCAL + "-wt"
-    subprocess.run(["git", "-C", REPO_LOCAL, "worktree", "add", "-q", wt, "-b", f"feature-{TAG}"], check=True, capture_output=True,
+    ran(["git", "-C", REPO_LOCAL, "worktree", "add", "-q", wt, "-b", f"feature-{TAG}"], check=True, capture_output=True,
                    timeout=120)
     try:
         cmd = f"cd {word(wt)} && BEAD_HOME={STATE} {word(BEADS['local'])} info --json"
-        info = json.loads(subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, check=True, timeout=120).stdout)
-        status = subprocess.run(["git", "-C", wt, "status", "--porcelain"], capture_output=True, text=True).stdout
+        info = json.loads(ran(["bash", "-c", cmd], capture_output=True, text=True, check=True, timeout=120).stdout)
+        status = ran(["git", "-C", wt, "status", "--porcelain"], capture_output=True, text=True).stdout
         print("same workspace:", info["workspace"] == run("local", "info")["ok"]["workspace"], "| worktree clean:", status == "")
         results["S11"] = info["workspace"] == run("local", "info")["ok"]["workspace"] and status == ""
 
@@ -303,7 +315,7 @@ def main(argv):
         issue = ready_ids("local")[5]
         cmd = (f"cd {word(wt)} && BEAD_HOME={STATE} BEAD_AGENT=codex BEAD_THREAD=local-wt-thread {word(BEADS['local'])} "
                f"update {shlex.quote(issue)} --claim --add-label from-worktree --json")
-        claimed = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=120)
+        claimed = ran(["bash", "-c", cmd], capture_output=True, text=True, timeout=120)
         same, _ = settle()
         views = {h: show(h, issue) for h in HOSTS}
         branches = {h: (v.get("claim") or {}).get("where", {}).get("branch") for h, v in views.items()}
@@ -315,7 +327,7 @@ def main(argv):
         results["S12"] = (claimed.returncode == 0 and same and all(b == f"feature-{TAG}" for b in branches.values())
                           and all("from-worktree" in l for l in labels.values()) and rows and rows[0].get("branch") == f"feature-{TAG}")
     finally:
-        subprocess.run(["git", "-C", REPO_LOCAL, "worktree", "remove", "--force", wt], capture_output=True)
+        ran(["git", "-C", REPO_LOCAL, "worktree", "remove", "--force", wt], capture_output=True)
 
     print("\n### summary:", {k: ("PASS" if v else "FAIL") for k, v in results.items()})
     return 0 if all(results.values()) else 1
