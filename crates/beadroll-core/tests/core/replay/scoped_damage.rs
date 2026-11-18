@@ -141,10 +141,14 @@ fn malformed_duplicate_order_does_not_change_projection() {
         left.hydrated().unwrap().export_records(),
         right.hydrated().unwrap().export_records()
     );
-    assert!(
-        left.issue_named(&json_id(&create)).is_none(),
-        "ambiguous event must be ignored in either order"
-    );
+    // the projection itself, as the name says, and the event ignored in both orders
+    assert_eq!(projection(build(true)), projection(build(false)));
+    for state in [&left, &right] {
+        assert!(
+            state.issue_named(&json_id(&create)).is_none(),
+            "ambiguous event must be ignored in either order"
+        );
+    }
 }
 
 #[test]
@@ -341,7 +345,7 @@ fn partially_invalid_label_add_applies_nothing() {
 }
 
 #[test]
-fn all_registers_preserve_none_against_concurrent_value() {
+fn every_clearable_register_preserves_none_against_concurrent_value() {
     let mut f = Fixture::new();
     let (init, create) = f.fixture();
     let uid = json_id(&create);

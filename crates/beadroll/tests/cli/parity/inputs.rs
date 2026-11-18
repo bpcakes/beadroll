@@ -476,7 +476,7 @@ fn paths_are_normalized_consistently_for_reads_and_writes() {
 
 /// An unavailable TMPDIR falls back to `/tmp` for git's captured output.
 #[test]
-fn a_tmpdir_that_does_not_exist_uses_a_writable_fallback() {
+fn init_succeeds_when_tmpdir_does_not_exist() {
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "tmp");
     let missing = sandbox.root().join("no-such-tmp");

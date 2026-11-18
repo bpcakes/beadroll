@@ -457,6 +457,8 @@ fn an_estimate_and_a_reference_show_what_was_given_set_and_cleared() {
     events.push(set(4, json!({"estimated_minutes": null})));
     assert_eq!(shown(&events, Field::EstimatedMinutes), None);
     assert_eq!(shown(&events, Field::ExternalRef), Some(json!("gh-2")));
+    events.push(set(5, json!({"external_ref": null})));
+    assert_eq!(shown(&events, Field::ExternalRef), None);
     // never given: absent, and nothing for a reader to dispute
     let bare = created(json!({"title": "t"}), CreateOrigin::Local);
     assert_eq!(shown(&bare, Field::EstimatedMinutes), None);

@@ -168,7 +168,7 @@ fn missing_causes_hold_claim_and_close_of_pending_create() {
 }
 
 #[test]
-fn all_registers_keep_concurrent_clear_and_value_then_settle() {
+fn every_clearable_register_keeps_concurrent_clear_and_value_then_settle() {
     for field in REGISTERS {
         let mut f = Fixture::new();
         let uid = f.issue.clone();
