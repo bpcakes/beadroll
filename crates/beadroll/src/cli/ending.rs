@@ -241,7 +241,7 @@ fn a_write_whose_remote_cannot_be_chosen_keeps_what_it_held_and_says_why() {
 /// decides the free as well: the transaction is let go of first, and a remote that does not answer
 /// leaves the write unpublished and says so, on a tracker with a remote and on one with none.
 #[test]
-fn a_write_given_a_remote_is_published_there_and_lets_go_of_what_it_held_first() {
+fn a_write_given_an_unreachable_remote_tries_it_and_lets_go_of_what_it_held() {
     let (sandbox, machine) = tracker();
     let nowhere = Some(sandbox.root().join("nowhere.git").into_os_string());
     let said = Line::toned(

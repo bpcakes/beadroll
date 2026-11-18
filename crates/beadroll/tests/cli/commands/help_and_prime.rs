@@ -94,6 +94,10 @@ fn prime_and_onboard_work_with_and_without_a_tracker() {
         "{}",
         before.stdout
     );
+    // onboard too, before there is a tracker, as its name says
+    let onboard = a.run(["onboard"]);
+    assert_eq!(onboard.returncode(), 0, "{}", onboard.stderr);
+    assert!(!onboard.stdout.trim().is_empty(), "onboard printed nothing");
     a.bead(["init", "--prefix", "ex"]);
     let created = a.bead(["create", "primed"]).unwrap();
     let key = created["id"].as_str().unwrap();

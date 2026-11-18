@@ -39,14 +39,18 @@ fn a_lost_reply_drops_acceptance_whatever_the_exit_status() {
         ];
         git(args, None)
     };
-    for (failpoints, answer) in [
-        ("", PushOutcome::Ok),
-        ("push.reply=fail-reply", PushOutcome::Uncertain),
+    // git that exits 1 after pushing, and the real one, which exits 0: the lost reply is lost
+    // whatever the status said
+    let real_path = std::env::var("PATH").unwrap_or_default();
+    for (path, failpoints, answer) in [
+        (&path, "", PushOutcome::Ok),
+        (&path, "push.reply=fail-reply", PushOutcome::Uncertain),
+        (&real_path, "push.reply=fail-reply", PushOutcome::Uncertain),
     ] {
         let ws = workspace(
             &a,
             sandbox.origin(),
-            &[("PATH", &path), ("BEAD_FAILPOINTS", failpoints)],
+            &[("PATH", path), ("BEAD_FAILPOINTS", failpoints)],
         );
         let before = tip();
         let outcome = locked(&ws, || -> Result<PushOutcome, Error> {

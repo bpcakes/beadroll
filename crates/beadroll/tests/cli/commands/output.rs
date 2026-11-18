@@ -74,6 +74,14 @@ fn human_output_escapes_tab_and_line_separators() {
             created.stdout
         );
     }
+    // escaped, not dropped: the title is all there, as a reader can see it
+    assert!(
+        created
+            .stdout
+            .contains(r"col\x09FORGED\u2028line\u202etitle"),
+        "{:?}",
+        created.stdout
+    );
 }
 
 /// F06: a closed stderr on a failed command exits with the command status, not 120.
@@ -216,7 +224,7 @@ fn silent_create_still_honors_json_mode() {
 
 /// E06: accepted data must not make Beads JSONL violate RFC 8259.
 #[test]
-fn export_never_emits_nonfinite_json_numbers() {
+fn an_import_holding_nan_is_refused_whole_with_a_strict_json_error() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "e06-json");
     let source = sandbox.root().join("nonfinite.jsonl");
