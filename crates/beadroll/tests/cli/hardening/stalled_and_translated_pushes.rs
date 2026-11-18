@@ -3,6 +3,7 @@
 //! Runner timeout hygiene is tested in beadroll-git; shared helpers for the command tests live
 //! here.
 
+use crate::hardening::contains_bytes;
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::Path;
@@ -50,13 +51,6 @@ fn applied(env: &Env, setting: &Setting) -> Env {
     env
 }
 
-/// Whether `needle` occurs in `haystack`.
-fn contains(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack
-        .windows(needle.len())
-        .any(|window| window == needle)
-}
-
 /// Whether git answers in another language than English under `env`: a
 /// message from outside any repository, which every git translation covers.
 fn git_is_translated(env: &Env, place: &Path) -> bool {
@@ -73,7 +67,7 @@ fn git_is_translated(env: &Env, place: &Path) -> bool {
         .stdin(Stdio::null())
         .output()
         .unwrap();
-    !probe.status.success() && !contains(&probe.stderr, b"not a git repository")
+    !probe.status.success() && !contains_bytes(&probe.stderr, b"not a git repository")
 }
 
 /// Shell lines giving a hook's own commit an identity, whatever the user's

@@ -2,8 +2,7 @@
 //! set-url origin`. Both sync and ownership commands must follow the changed URL. Resolution of
 //! older stored spellings is checked in beadroll-store's `tests/store/hardening.rs`.
 
-use std::path::Path;
-
+use crate::hardening::reclone;
 use beadroll_test_support::{Machine, code, git, path_text, printed_id};
 
 /// `init --tracked` (prefix `fz`), committed and pushed, so every clone shares
@@ -16,20 +15,6 @@ fn track(machine: &Machine) {
     let commit = ["commit", "-q", "-m", "track bead"];
     git(identity.into_iter().chain(commit), Some(checkout));
     git(["push", "-q", "origin", "HEAD:main"], Some(checkout));
-}
-
-/// Reclones the machine's checkout from a different origin.
-fn fresh_clone(machine: &Machine, origin: &Path) {
-    std::fs::remove_dir_all(machine.checkout()).expect("the machine's first clone");
-    git(
-        [
-            "clone",
-            "-q",
-            path_text(origin),
-            path_text(machine.checkout()),
-        ],
-        None,
-    );
 }
 
 /// G25: after the repository moves and origin is re-pointed, git fetch works and bead sync and
@@ -85,7 +70,7 @@ fn moved_repository_does_not_split_the_crew() {
     );
     // a fresh clone of the new home
     let b = Machine::new(&sandbox, "b");
-    fresh_clone(&b, &new_home);
+    reclone(&b, &new_home);
     b.bead(["sync"]);
     b.bead(["claim", &issue]);
     let claim = a.run(["claim", &issue, "--json"]);

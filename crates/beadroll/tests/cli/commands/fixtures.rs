@@ -15,6 +15,13 @@ pub(crate) fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     machine
 }
 
+/// Runs `bead ARGS` on `machine`, which must succeed: its standard output.
+pub(crate) fn ok(machine: &Machine, args: &[&str]) -> String {
+    let run = machine.run(args);
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    run.stdout
+}
+
 /// `ops`: the operation of each of `key`'s events, as `bead log KEY --limit 0` lists them.
 pub(crate) fn ops(machine: &Machine, key: &str) -> Vec<String> {
     let log = machine.bead(["log", key, "--limit", "0"]).expect("a log");

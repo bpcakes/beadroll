@@ -7,6 +7,7 @@
 
 use std::path::Path;
 
+use super::fixtures::ok;
 use beadroll_store::{Clock, uuid7};
 use beadroll_test_support::{Json, Machine, json, json_line, json_lines, parse_json};
 
@@ -22,13 +23,6 @@ enum Journal {
 }
 
 const JOURNALS: [Journal; 3] = [Journal::Clean, Journal::Newer, Journal::Dangling];
-
-/// Runs `bead ARGS` on `machine`, which must succeed: its standard output.
-fn ok(machine: &Machine, args: &[&str]) -> String {
-    let run = machine.run(args);
-    assert_eq!(run.returncode(), 0, "{}", run.stderr);
-    run.stdout
-}
 
 /// Creates an issue titled `title` on `machine`, beneath `parent` when given: its key.
 fn create(machine: &Machine, title: &str, parent: Option<&str>) -> String {

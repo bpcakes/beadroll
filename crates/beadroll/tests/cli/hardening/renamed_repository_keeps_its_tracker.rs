@@ -4,8 +4,9 @@
 //! refused with WORKSPACE_MISMATCH, which names no remedy, and no command adopts it. A fix must
 //! still refuse a foreign tracker named with --remote.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
+use crate::hardening::reclone;
 use beadroll_test_support::{Machine, Sandbox, code, git, parse_json, path_text, printed_id};
 
 /// Before the move, machine a publishes its tracker (prefix `rn`), which
@@ -24,21 +25,6 @@ fn move_repository(sandbox: &Sandbox) -> PathBuf {
     let renamed = sandbox.root().join("renamed.git");
     std::fs::rename(sandbox.origin(), &renamed).expect("the repository moves");
     renamed
-}
-
-/// Reclones the machine's checkout from the moved origin. The machine was initially created
-/// while the sandbox's original remote still existed.
-fn fresh_clone(machine: &Machine, origin: &Path) {
-    std::fs::remove_dir_all(machine.checkout()).expect("the machine's first clone");
-    git(
-        [
-            "clone",
-            "-q",
-            path_text(origin),
-            path_text(machine.checkout()),
-        ],
-        None,
-    );
 }
 
 /// G24: after `git remote set-url origin <new URL>`, sync fails with WORKSPACE_MISMATCH against
@@ -68,7 +54,7 @@ fn fresh_clone_under_the_new_url_uses_the_published_tracker() {
     // made before the move, while test support can still clone `origin.git`
     let (c, d) = (Machine::new(&sandbox, "c"), Machine::new(&sandbox, "d"));
     let renamed = move_repository(&sandbox);
-    fresh_clone(&c, &renamed);
+    reclone(&c, &renamed);
     let sync = c.run(["sync", "--json"]);
     assert_eq!(sync.returncode(), 0, "{}", sync.stderr);
     assert_eq!(c.show(&issue)["title"].as_str(), Some("one"));
@@ -77,7 +63,7 @@ fn fresh_clone_under_the_new_url_uses_the_published_tracker() {
     assert_eq!(listed["total"].as_i64(), Some(1));
     // guard: adoption is for this checkout's own origin only
     let unrelated = sandbox.clone("unrelated", Some(&sandbox.bare("unrelated.git")));
-    fresh_clone(&d, &renamed);
+    reclone(&d, &renamed);
     let foreign = d
         .cmd(["sync", "--remote", path_text(&renamed), "--json"])
         .cwd(&unrelated)

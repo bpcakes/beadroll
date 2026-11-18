@@ -10,21 +10,11 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+use crate::hardening::scratch_git_config;
 use beadroll_test_support::{Machine, Sandbox, path_text, printed_id};
 
 /// Variables set for a run, over the environment it starts from.
 type Env = BTreeMap<OsString, OsString>;
-
-/// A scratch global git config for this sandbox (never the developer's), the
-/// file `name` holding `contents`, as the variables that make git read it and nothing else.
-fn config(sandbox: &Sandbox, name: &str, contents: &str) -> Env {
-    let path = sandbox.root().join(name);
-    std::fs::write(&path, contents).expect("the scratch config");
-    Env::from([
-        ("GIT_CONFIG_GLOBAL".into(), path.into_os_string()),
-        ("GIT_CONFIG_NOSYSTEM".into(), "1".into()),
-    ])
-}
 
 /// `git -c user.name=t -c user.email=t@example.invalid ARGS` in `cwd`, with the
 /// test's environment less every `GIT_*` variable, then `env`; what it printed, stripped. A
@@ -112,7 +102,7 @@ fn poison(machine: &Machine, plain: &Env) {
 #[test]
 fn sha256_project_syncs() {
     let sandbox = crate::sandbox();
-    let plain = config(&sandbox, "plain.gitconfig", "");
+    let plain = scratch_git_config(&sandbox, "");
     let origin = sandbox.root().join("origin256.git");
     let init = [
         "init",
@@ -164,7 +154,7 @@ fn sha256_project_syncs() {
 fn sha256_default_with_a_sha1_project_syncs() {
     let sandbox = crate::sandbox();
     let sha256 = "[init]\n\tdefaultObjectFormat = sha256\n";
-    let (a, b) = machines(&sandbox, &config(&sandbox, "sha256.gitconfig", sha256));
+    let (a, b) = machines(&sandbox, &scratch_git_config(&sandbox, sha256));
     // the user's own git works here
     git(&["fetch", "-q", "origin"], Some(a.checkout()), &a.extra);
     a.bead(["init", "--prefix", "of"]);
@@ -178,7 +168,7 @@ fn sha256_default_with_a_sha1_project_syncs() {
 #[test]
 fn sync_git_made_in_the_wrong_format_is_made_again() {
     let sandbox = crate::sandbox();
-    let plain = config(&sandbox, "plain.gitconfig", "");
+    let plain = scratch_git_config(&sandbox, "");
     let (a, b) = machines(&sandbox, &plain);
     a.bead(["init", "--prefix", "of"]);
     let issue = printed_id(a.bead(["create", "one"]));
