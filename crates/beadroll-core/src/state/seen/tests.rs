@@ -14,11 +14,7 @@ use crate::replay::replay;
 const REPLICAS: [&str; 4] = ["0000aa", "0000bb", "0000cc", "0000dd"];
 
 fn id(n: usize, millis: u64) -> String {
-    format!(
-        "{:08x}-{:04x}-7000-8000-{n:012x}",
-        millis >> 16,
-        millis & 0xffff
-    )
+    beadroll_test_support::events::id_at(millis, n as u64)
 }
 
 fn event(id: &str, replica: &str, deps: &[String], text: &str) -> Value {

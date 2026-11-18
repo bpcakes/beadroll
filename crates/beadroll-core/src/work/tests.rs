@@ -21,7 +21,6 @@ mod import;
 mod renamed;
 
 use super::{Work, counted};
-use crate::id::EventId;
 use crate::journal::{Journal, JournalOrder};
 use crate::json::{Object, Value};
 use crate::projection::{Extended, Projection, Record, project};
@@ -66,9 +65,7 @@ fn grows_linearly<T>(
 
 /// The id of event number `n`: a UUIDv7, ids in the order of their numbers.
 fn id(n: u64) -> String {
-    let n = u128::from(n);
-    let value = ((1_790_000_000_000 + n) << 80) | (7 << 76) | (2 << 62) | n;
-    EventId::from_u128(value).to_string()
+    beadroll_test_support::events::id_at(1_790_000_000_000 + n, n)
 }
 
 /// The machine whose journal every event is in.

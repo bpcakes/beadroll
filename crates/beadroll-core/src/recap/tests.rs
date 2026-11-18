@@ -170,11 +170,7 @@ fn two_reads_that_saw_different_events_mark_what_both_placed_once_joined() {
 
 /// The comment `n`, written by `replica` at `millis` on `deps`, saying `text`: its id and record.
 fn event(n: u64, millis: u64, replica: &str, deps: &[EventId], text: &str) -> (EventId, Value) {
-    let id = format!(
-        "{:08x}-{:04x}-7000-8000-{n:012x}",
-        millis >> 16,
-        millis & 0xffff
-    );
+    let id = beadroll_test_support::events::id_at(millis, n);
     let mut data = Object::new();
     data.insert("text".into(), Value::from(text));
     let mut event = Object::new();
