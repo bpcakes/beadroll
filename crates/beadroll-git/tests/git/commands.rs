@@ -6,7 +6,7 @@ mod sync_repo_damage {
     /// What counts as local damage: git's own read errors, never a line the remote relayed (the
     /// classifier half; the CLI half drives `claim` through a damaged sync.git).
     #[test]
-    fn a_claim_rebuilds_too_and_damage_twice_in_one_command_is_reported() {
+    fn local_damage_is_gits_own_read_errors_never_a_relayed_line() {
         assert!(local_damage(
             "error: object file objects/7d/04c9 is empty\nfatal: fetch-pack: invalid index-pack output"
         ));
