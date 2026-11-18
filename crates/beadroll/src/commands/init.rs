@@ -450,6 +450,13 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
 /// `init --import FILE --dry-run`: what the import would do, planned against the tracker this
 /// checkout has here, if any; the remote is not asked, and nothing is written.
 fn dry_run(ctx: &Context<'_>, args: &InitArgs) -> Result<Outcome, Failure> {
+    // it plans the import alone: what would start or choose a tracker is refused, not ignored
+    if args.tracked || args.remote.is_some() || args.prefix.is_some() {
+        return Err(Failure::usage(
+            "--dry-run plans only what --import would do: drop --tracked, --remote and --prefix",
+            "",
+        ));
+    }
     let Some(path) = args.import_path.as_ref().filter(|path| !path.is_empty()) else {
         return Err(Failure::usage(
             "--dry-run says what --import would do: give it --import FILE",

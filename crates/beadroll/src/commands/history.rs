@@ -16,7 +16,7 @@ use beadroll_store::{
     view_outline, write_atomic,
 };
 
-use super::{Context, Failure, Line, Outcome, Tone, resolve_arg, text};
+use super::{Context, Failure, Line, Outcome, Tone, need_tracker, resolve_arg, text};
 
 /// The tracker's events in causal order, excluding `init`, or one issue's events: time, machine,
 /// who (the actor's name when it was given one, as its claims are labelled, else its agent and
@@ -34,6 +34,7 @@ pub(crate) fn log(
 ) -> Result<Outcome, Failure> {
     let history = history(ctx.ws)?;
     let st = view_outline(ctx.ws)?;
+    need_tracker(&st)?;
     let aliases = machine_aliases(&ctx.ws.settings);
     let wanted = match key.filter(|k| !k.is_empty()) {
         Some(key) => Some(resolve_arg(&st, key)?.uid().to_string()),
@@ -185,7 +186,12 @@ pub(crate) fn machines(ctx: &Context<'_>, name: Option<&OsStr>) -> Result<Outcom
 /// replaced, and a name that is not UTF-8 is refused, as every text bead writes is.
 fn record_alias(ctx: &Context<'_>, name: &OsStr) -> Result<(), Failure> {
     let name = text(name)?;
-    let (ident, alias) = name.split_once('=').unwrap_or((&name, ""));
+    let Some((ident, alias)) = name.split_once('=') else {
+        return Err(Failure::usage(
+            format!("--name takes ID=NAME (ID= takes the name back), not {name}"),
+            "",
+        ));
+    };
     let path = ctx.ws.settings.home()?.join(layout::ALIASES);
     let shown = printed_text(path.as_os_str().as_bytes());
     let cannot = |problem: &str| {

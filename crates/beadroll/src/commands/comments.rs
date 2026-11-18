@@ -76,6 +76,18 @@ fn add(
     key: &OsString,
     rest: &[OsString],
 ) -> Result<Outcome, Failure> {
+    // one text, given one way: the others would be dropped without a word
+    let given = [
+        args.message.as_ref().is_some_and(|m| !m.is_empty()),
+        args.file.as_ref().is_some_and(|f| !f.is_empty()),
+        !rest.is_empty(),
+    ];
+    if given.iter().filter(|given| **given).count() > 1 {
+        return Err(Failure::usage(
+            "give the comment's text one way: as words, with -m or with -f",
+            "",
+        ));
+    }
     let (text, valid) = match (&args.message, &args.file) {
         (Some(message), _) if !message.is_empty() => arg_text(message),
         (_, Some(file)) if !file.is_empty() => (

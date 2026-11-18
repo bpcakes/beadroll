@@ -303,3 +303,29 @@ fn init_dry_run_needs_an_import() {
     assert_eq!(code(&refused), "USAGE");
     assert!(!sandbox.root().join("home-a").exists());
 }
+
+/// `--dry-run` plans only the import: `--tracked`, `--remote` or `--prefix` beside it is `USAGE`,
+/// rather than accepted and not applied.
+#[test]
+fn a_dry_run_refuses_what_it_would_not_apply() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    let export = sandbox.root().join("export.jsonl");
+    std::fs::write(&export, EXPORT).unwrap();
+    let export = export.to_str().unwrap();
+    for extra in [
+        &["--tracked"][..],
+        &["--remote", "origin"],
+        &["--prefix", "ex"],
+    ] {
+        let args = ["init", "--dry-run", "--import", export]
+            .into_iter()
+            .chain(extra.iter().copied());
+        let refused = machine.run(args.chain(["--json"]));
+        assert_eq!(code(&refused), "USAGE", "{extra:?}: {}", refused.stderr);
+    }
+    assert!(
+        !machine.checkout().join(".beadroll.json").exists(),
+        "a tracked file was written"
+    );
+}

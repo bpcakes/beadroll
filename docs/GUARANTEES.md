@@ -69,7 +69,11 @@ arguments. Comment options `-m`/`--message`, `-f`/`--file` and `--author` requir
 `comments add`; dependency `--type` requires `dep add` or `dep remove` (`rm`).
 `dep remove A B` of a dependency A does not have, of any type or of the `--type`
 named, is `VALIDATION` too, judged on what this machine has; an empty `--type`
-is none given. These errors write no events.
+is none given. A comment's text given more than one way (words, `-m`, `-f`),
+`init --dry-run` beside `--tracked`, `--remote` or `--prefix`, and `machines
+--name` without `ID=` are `USAGE`, never one kept and the rest dropped; `log`
+before any tracker is `NOT_INITIALIZED`, as the other reads are. These errors
+write no events.
 
 On a terminal bead's output is coloured: an issue's status mark, id and priority,
 its type and branch dimmed, warnings and errors, and the help pages. Into a pipe
