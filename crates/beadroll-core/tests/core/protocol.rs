@@ -1,4 +1,4 @@
-//! `test_protocol`'s test of the core: ancestry across ownership files and journals.
+//! The `protocol` subject's test of the core: ancestry across ownership files and journals.
 
 mod ancestry {
     use beadroll_core::journal::Journal;

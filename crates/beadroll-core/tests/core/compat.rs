@@ -1,4 +1,4 @@
-//! `test_compat`'s tests of the core: comment ids in the Beads export, what an import plans for
+//! The `compat` subject's tests of the core: comment ids in the Beads export, what an import plans for
 //! a file, and what its dry run says about one.
 
 mod export_extras;

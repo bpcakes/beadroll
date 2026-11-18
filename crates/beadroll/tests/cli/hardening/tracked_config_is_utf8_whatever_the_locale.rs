@@ -104,7 +104,7 @@ fn set_up(sandbox: &Sandbox) -> (Machine, Machine, String) {
     (a, b, key)
 }
 
-/// `test_ascii_locale_reads_a_valid_utf8_config` under `wanted`: `info` reads the valid UTF-8
+/// [`ascii_locale_reads_a_valid_utf8_config`] under `wanted`: `info` reads the valid UTF-8
 /// config, instead of refusing it as not valid JSON, and answers its ref.
 fn reads_a_valid_utf8_config(wanted: &str) {
     let Some(locale) = installed(wanted) else {

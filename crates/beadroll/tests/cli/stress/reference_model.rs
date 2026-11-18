@@ -70,11 +70,11 @@ const ALLOWED: [&str; 7] = [
 struct Model {
     /// The expected current claim for each owned issue.
     holder: BTreeMap<String, String>,
-    /// The machine that made it (`model_owner`).
+    /// The machine that made it.
     owner: BTreeMap<String, usize>,
-    /// Each issue's last claim generation (`generations`).
+    /// Each issue's last claim generation.
     generations: BTreeMap<String, i64>,
-    /// Every claim the remote accepted (`accepted`).
+    /// Every claim the remote accepted.
     accepted: BTreeSet<String>,
 }
 

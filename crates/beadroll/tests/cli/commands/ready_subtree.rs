@@ -15,7 +15,7 @@ const CREATED: &str = "2026-01-01T00:00:00Z";
 /// ex-e's ready descendants, in ready's order.
 const SUBTREE: [&str; 6] = ["ex-d1", "ex-t", "ex-f", "ex-s", "ex-c1", "ex-f1"];
 
-/// A Beads record as `tree_record` builds it: a child of each of its parents, waiting for each of
+/// A Beads record as [`tree`] builds it: a child of each of its parents, waiting for each of
 /// its blockers, its own fields over the common ones.
 struct Record {
     key: String,

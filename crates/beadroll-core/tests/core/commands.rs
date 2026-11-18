@@ -1,4 +1,5 @@
-//! The replay halves of `test_commands`' tests whose other half drives the CLI.
+//! The replay halves of the `commands` tests whose other half drives the CLI (the `beadroll`
+//! crate's).
 
 mod dangling_dependencies {
     use beadroll_core::journal::Journal;
