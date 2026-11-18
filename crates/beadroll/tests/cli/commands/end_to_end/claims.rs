@@ -72,6 +72,31 @@ fn claim_lasts_until_its_owner_releases_or_closes_it() {
     }
 }
 
+/// `update --status open` on an issue you hold ends your claim as `bead reopen` does, and publishes
+/// that at once, as a close does: the other machine's next sync sees neither held.
+#[test]
+fn update_to_open_ends_your_claim_as_reopen_does() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, y) = two_machines(&sandbox);
+    a.bead(["claim", &x]);
+    a.bead(["claim", &y]);
+    let updated = a.run(["update", &x, "--status", "open", "--json"]);
+    assert_eq!(updated.returncode(), 0, "{}", updated.stderr);
+    a.bead(["reopen", &y]);
+    assert!(
+        a.bead(["info"]).unwrap().get("unpublished").is_none(),
+        "not published at once"
+    );
+    b.bead(["sync"]);
+    for machine in [&a, &b] {
+        for key in [&x, &y] {
+            let shown = machine.show(key);
+            assert!(shown.get("claim").is_none(), "{key} still held: {shown:?}");
+            assert_eq!(shown["status"].as_str(), Some("open"), "{key}");
+        }
+    }
+}
+
 /// A takeover is online only: `--offline` is refused as `VALIDATION`, before anything is written,
 /// and the owner stays.
 #[test]

@@ -191,7 +191,7 @@ fn answer(
 }
 
 /// Validates every target first, then emits; nothing is written if any part is wrong. The keys of
-/// the issues whose claim a close ends.
+/// the issues whose claim a close or a reopen ends.
 fn edits(
     (st, mut tx): (&State, Emitter<'_>),
     me: &Label,
@@ -220,7 +220,12 @@ fn edits(
     let mut ended = Vec::new();
     for issue in &targets {
         check(st, issue, &change)?;
-        if status == Some(status::CLOSED) && (issue.claim().is_some() || ended_by(issue, me)) {
+        let ends = match status {
+            Some(status::CLOSED) => issue.claim().is_some() || ended_by(issue, me),
+            Some(status::OPEN) => issue.claim().is_some(),
+            _ => false,
+        };
+        if ends {
             ended.push(issue.key().to_owned());
         }
     }
@@ -254,7 +259,6 @@ fn check(st: &State, issue: &Issue, change: &Change<'_>) -> Result<(), Failure> 
         me,
         ..
     } = *change;
-    let held = issue.claim();
     if let Some(parent) = new_parent
         && (parent == issue.uid() || st.reaches(issue.uid(), parent))
     {
@@ -269,12 +273,6 @@ fn check(st: &State, issue: &Issue, change: &Change<'_>) -> Result<(), Failure> 
     }
     if status.is_some() && !args.force {
         refuse_foreign_claim(issue, me)?;
-    }
-    if status == Some(status::OPEN) && held.is_some_and(|held| me.is(&held.owner)) {
-        return Err(Failure::new(
-            Code::Validation,
-            format!("{}: use `bead release` to give up your claim", issue.key()),
-        ));
     }
     Ok(())
 }
@@ -312,7 +310,8 @@ fn edit(
             }
             tx.emit(OpName::Close, Some(&uid), data, None)?;
         }
-        Some(status::OPEN) if DONE.contains(&issue.status()) => {
+        // the same transition `bead reopen` makes, ending the claim it holds
+        Some(status::OPEN) if DONE.contains(&issue.status()) || issue.claim().is_some() => {
             tx.emit(OpName::Reopen, Some(&uid), Object::new(), None)?;
         }
         Some(status) => {

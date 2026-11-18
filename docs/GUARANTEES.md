@@ -185,7 +185,9 @@ A reader therefore sees all of an attempt or none of it.
 `in_progress` is reached only through a claim, so `update --status in_progress`
 claims. Any other status change on an issue someone else holds is refused
 (`--force` overrides), `--status closed` is the same transition as `bead close`,
-`--status tombstone` is refused in favour of `bead delete` (which ends the claim),
+`--status open` the same as `bead reopen` (on an issue you hold, it ends your
+claim and publishes at once), `--status tombstone` is refused in favour of
+`bead delete` (which ends the claim),
 and `ready` never offers an issue that has a confirmed owner. The owner is the
 full agent thread id. Ownership never expires. `bead claims` shows each owner's
 branch, last journal activity, and any of our own attempts still awaiting an
