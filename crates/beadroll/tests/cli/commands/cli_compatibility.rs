@@ -152,6 +152,7 @@ fn claiming_update_validates_parent_before_committing_claim() {
     let (_sandbox, a, x, _) = set_up();
     let p = a.run(["update", &x, "--claim", "--parent", "missing", "--json"]);
     assert_ne!(p.returncode(), 0);
+    assert_eq!(code(&p), "ISSUE_NOT_FOUND", "{}", p.stderr);
     assert!(
         a.show(&x).get("claim").is_none(),
         "failed update left an accepted online claim behind"
@@ -174,6 +175,12 @@ fn workspace_config_cannot_escape_home() {
         );
         assert_eq!(code(&p), "CONFIG", "{wid}");
     }
+    // and nothing written where either names
+    assert!(!absolute.exists(), "{}", absolute.display());
+    assert!(
+        !a.home().join("../escaped-relative").exists(),
+        "../escaped-relative"
+    );
 }
 
 #[test]

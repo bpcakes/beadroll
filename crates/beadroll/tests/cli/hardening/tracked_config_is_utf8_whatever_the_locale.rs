@@ -6,7 +6,7 @@
 
 use std::process::{Command, Stdio};
 
-use beadroll_test_support::{Invocation, Machine, Sandbox, parse_json};
+use beadroll_test_support::{Invocation, Machine, Sandbox, code, parse_json};
 
 /// The ref the committed `.beadroll.json` names.
 const REF: &str = "refs/beads/équipe";
@@ -163,9 +163,9 @@ fn latin1_claim_excludes_a_utf8_claim() {
     assert_eq!(first.returncode(), 0, "{}", first.stderr);
     let second = a.cmd(["claim", &key, "--json"]).thread("g13-a-agent").run();
     let refs = coordination_refs(&sandbox);
-    assert_ne!(
-        second.returncode(),
-        0,
+    assert_eq!(
+        code(&second),
+        "ALREADY_CLAIMED",
         "two agents both hold a confirmed claim on {key}; the remote has refs {refs:?}"
     );
     assert_eq!(refs, [REF], "one tracker, one coordination ref");

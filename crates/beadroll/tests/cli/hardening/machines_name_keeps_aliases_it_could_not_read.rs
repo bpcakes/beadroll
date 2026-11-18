@@ -77,7 +77,7 @@ fn check_kept(machine: &Machine, aliases: &Path, label: &str, text: &str, mode: 
 /// G50: a hand edit that leaves a trailing comma (or a BOM) makes `machines --name` drop every
 /// other name; a well-formed file is merged.
 #[test]
-fn hand_edited_file_with_a_trailing_comma_is_not_overwritten() {
+fn a_hand_edited_file_with_a_trailing_comma_keeps_every_name() {
     let sandbox = crate::sandbox();
     let (machine, aliases) = setup(&sandbox);
     let (named, after) = name_over(&machine, &aliases, &well_formed(), 0o600);
@@ -100,7 +100,7 @@ fn hand_edited_file_with_a_trailing_comma_is_not_overwritten() {
 
 /// G50: an aliases.json that is not an object is replaced by one holding only the new name.
 #[test]
-fn wrong_shape_is_not_overwritten() {
+fn a_file_of_the_wrong_shape_keeps_every_name() {
     let sandbox = crate::sandbox();
     let (machine, aliases) = setup(&sandbox);
     let text = "[[\"abcd0001\", \"desktop\"], [\"abcd0002\", \"ci\"]]\n";
@@ -110,7 +110,7 @@ fn wrong_shape_is_not_overwritten() {
 /// G50: an aliases.json bead cannot read (EACCES) is replaced, since renaming needs only the
 /// directory to be writable. Skipped as root, who reads files of mode 0.
 #[test]
-fn unreadable_file_is_not_overwritten() {
+fn an_unreadable_file_keeps_every_name() {
     if skipped_as_root("root reads mode-0 files") {
         return;
     }

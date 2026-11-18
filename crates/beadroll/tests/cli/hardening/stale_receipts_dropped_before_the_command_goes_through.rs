@@ -10,6 +10,7 @@
 
 use beadroll_test_support::{Invocation, Json, Machine, code, executable, printed_id};
 
+use crate::commands::fixtures::{count, ops};
 use crate::hardening::{TrackerSetup, tracker_machine};
 
 /// `bead ARGS` from `machine`, stopped by the crash hook right after its push was accepted.
@@ -44,6 +45,9 @@ fn crash_before_push_of_a_later_command_keeps_the_accepted_close() {
         "retry of the accepted close not recognised: {}",
         retry.stderr
     );
+    // recognised as the close already accepted, not written again
+    assert_eq!(count(&ops(&a, &x), "close"), 1);
+    assert_eq!(a.show(&x)["status"], Json::from("closed"));
 }
 
 /// G08: a later `claim Y` that ended UNRESOLVED (and never landed) did not go through; the
@@ -82,6 +86,12 @@ fn unresolved_later_command_keeps_the_accepted_release() {
         0,
         "retry of the accepted release not recognised: {}",
         retry.stderr
+    );
+    // recognised as the release already accepted, not written again
+    assert_eq!(count(&ops(&a, &x), "release"), 1);
+    assert!(
+        a.show(&x).get("claim").is_none(),
+        "the release did not stand"
     );
 }
 

@@ -108,6 +108,11 @@ fn bug_file_size_limit_partial_append_must_not_poison_next_write() {
         "partial failed write poisons the next accepted append: {}",
         read.stderr
     );
+    assert!(
+        read.stdout.contains("After full disk cleared"),
+        "{}",
+        read.stdout
+    );
 }
 
 /// Killing a writer during append must leave the journal readable and allow the next write and
@@ -138,6 +143,13 @@ fn bug_kill_mid_append_then_successful_write_must_stay_readable() {
         0,
         "killed append and next accepted write prevent sync: {}",
         result.stderr
+    );
+    let read = a.run(["list", "--all", "--json"]);
+    assert_eq!(read.returncode(), 0, "{}", read.stderr);
+    assert!(
+        read.stdout.contains("accepted after killed writer"),
+        "{}",
+        read.stdout
     );
 }
 
