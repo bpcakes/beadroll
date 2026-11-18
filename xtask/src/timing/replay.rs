@@ -3,7 +3,6 @@
 //! the heap. Measurements are evidence, not test gates.
 
 use std::ffi::OsStr;
-use std::time::Instant;
 
 use beadroll_core::replay::replay;
 
@@ -28,16 +27,14 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     let settled = parsed.settled_view();
     let events = settled.events().len();
     let attempted = events.saturating_sub(settled.order().values().map(Vec::len).sum());
-    let mut best = f64::INFINITY;
-    let mut issues = 0;
-    for _ in 0..RUNS {
-        let trial = parsed.clone();
-        let clock = Instant::now();
-        let state =
-            replay(trial).map_err(|error| Failure::Failed(format!("replay failed: {error}")))?;
-        best = best.min(clock.elapsed().as_secs_f64());
-        issues = state.issues().count();
-    }
+    let (best, state) = super::fastest_of(
+        RUNS,
+        || parsed.clone(),
+        |trial| replay(trial).map_err(|error| Failure::Failed(format!("replay failed: {error}"))),
+    )?;
+    let issues = state.issues().count();
+    // neither held while the memory of a load is measured below
+    drop(state);
     drop(parsed);
     let exe = std::env::current_exe()
         .map_err(|error| Failure::Failed(format!("cannot find xtask's own executable: {error}")))?;

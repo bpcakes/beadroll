@@ -13,8 +13,6 @@
 //! create, which replay reports and sets aside: a projection holding it is extended all the same
 //! (roll-lqjj.28). The fastest of [`RUNS`] runs counts. Evidence, never a gate.
 
-use std::time::Instant;
-
 use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::projection::{Extended, Projection, Record, project};
@@ -293,15 +291,8 @@ fn fastest(
     records: &[Record],
     apply: impl Fn(Projection, Vec<Record>) -> Result<Projection, Failure>,
 ) -> Result<f64, Failure> {
-    let mut best = f64::INFINITY;
-    for _ in 0..RUNS {
-        let (seed, records) = (seed.clone(), records.to_vec());
-        let clock = Instant::now();
-        let made = apply(seed, records)?;
-        best = best.min(clock.elapsed().as_secs_f64());
-        drop(made);
-    }
-    Ok(best)
+    let given = || (seed.clone(), records.to_vec());
+    super::fastest_of(RUNS, given, |(seed, records)| apply(seed, records)).map(|(best, _)| best)
 }
 
 /// Measures; returns the beginning of the line to record.

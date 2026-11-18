@@ -366,6 +366,29 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
 }
 
 /// A count given to `option`, of `what`.
+/// The fastest of `runs` runs (one at least) of `run` on what `given` makes for each, made before the
+/// clock starts, and what the last run made: the shape every in-process timing takes. What a run
+/// made is let go of after its clock stops, never while it runs.
+pub(crate) fn fastest_of<G, T, E>(
+    runs: usize,
+    mut given: impl FnMut() -> G,
+    mut run: impl FnMut(G) -> Result<T, E>,
+) -> Result<(f64, T), E> {
+    let mut timed = || -> Result<(f64, T), E> {
+        let input = given();
+        let clock = Instant::now();
+        let made = run(input)?;
+        Ok((clock.elapsed().as_secs_f64(), made))
+    };
+    let (mut best, mut last) = timed()?;
+    for _ in 1..runs {
+        let (seconds, made) = timed()?;
+        best = best.min(seconds);
+        last = made;
+    }
+    Ok((best, last))
+}
+
 fn number(text: &std::ffi::OsStr, option: &str, what: &str) -> Result<usize, Failure> {
     let text = text.to_string_lossy();
     text.parse()

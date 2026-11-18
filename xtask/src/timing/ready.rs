@@ -13,8 +13,6 @@
 //! How many blockers the lists hold in all is recorded too. Replay is not measured. The fastest of
 //! [`RUNS`] runs counts. Evidence, never a gate.
 
-use std::time::Instant;
-
 use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::query::ReadyScope;
@@ -193,14 +191,8 @@ fn state(shape: Shape, issues: usize) -> Result<State, Failure> {
 
 /// The fastest of [`RUNS`] runs of `ask`, and its answer.
 pub(super) fn fastest(ask: impl Fn() -> usize) -> (f64, usize) {
-    let mut best = f64::INFINITY;
-    let mut answer = 0;
-    for _ in 0..RUNS {
-        let clock = Instant::now();
-        answer = ask();
-        best = best.min(clock.elapsed().as_secs_f64());
-    }
-    (best, answer)
+    let Ok(timed) = super::fastest_of(RUNS, || (), |()| Ok::<_, std::convert::Infallible>(ask()));
+    timed
 }
 
 /// One way of asking: the name its figure is recorded under, and how many issues it counts (held,
