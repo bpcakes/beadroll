@@ -158,6 +158,15 @@ These were decided deliberately. Report problems *with* them, not their existenc
   inherited object and index routing can still write elsewhere. The isolation tests run existing
   fixture callers in child processes with routing pointed at an unrelated disposable repository,
   then compare its files, including staged work, refs, config, index and objects (AS13).
+
+- A machine's settings built in-process are written once in each crate whose tests need them:
+  `beadroll-sync`'s `tests/sync/support.rs` (`settings`, `workspace`), the binary's
+  `src/testing.rs` (the same two) and its CLI tests' `commands::fixtures::machine_settings`. The
+  rule that a helper two crates need moves down does not reach them: they take
+  `beadroll-test-support`'s `Machine` and `beadroll-store`'s `Settings` and `Workspace`, and the
+  only crate below both is core. Sharing them would take a test feature on a product crate, or
+  test support that depends on the store; fifteen lines a crate cost less. A fourth crate that
+  needs them writes them the same way.
   The probe creates that repository without a `Sandbox` or a bead binary, so Git-only callers
   such as the store's tests still build and run alone; child tests that run bead select their own
   binary through their fixtures (AS15). The child test retains `BEAD_UNDER_TEST` for that
