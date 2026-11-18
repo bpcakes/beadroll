@@ -4,10 +4,8 @@
 //! the order the issues were named, an issue named twice included; a key that names no issue still
 //! fails the command with ISSUE_NOT_FOUND and prints nothing else.
 
-use std::path::PathBuf;
-
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_lines};
+use beadroll_test_support::{Json, Machine, Sandbox, code, json};
 
 /// When every record was made and last changed.
 const CREATED: &str = "2026-01-01T00:00:00Z";
@@ -61,14 +59,6 @@ fn tracker() -> Vec<Json> {
     ]
 }
 
-/// `rows` as JSON lines in a file at the sandbox's root.
-fn records(sandbox: &Sandbox, rows: &[Json]) -> PathBuf {
-    let path = sandbox.root().join("records.jsonl");
-    let text = json_lines(rows);
-    std::fs::write(&path, text).unwrap();
-    path
-}
-
 /// A value as written, members in their order: `Json` equality does not see the order.
 fn text(value: &Json) -> String {
     write(value, Format::COMPACT).unwrap()
@@ -83,7 +73,7 @@ fn alone(machine: &Machine, keys: &[&str]) -> String {
 /// The machine with the tracker imported.
 fn machine(sandbox: &Sandbox) -> Machine {
     let a = Machine::new(sandbox, "a");
-    let path = records(sandbox, &tracker());
+    let path = sandbox.records("records.jsonl", &tracker());
     a.bead(["init", "--prefix", "ex", "--import", path.to_str().unwrap()]);
     a
 }

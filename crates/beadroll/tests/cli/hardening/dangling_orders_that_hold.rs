@@ -5,7 +5,7 @@
 //! End to end on two machines: the orders in which a retraction of an imported dependency
 //! already holds, and add-wins against a key-based retraction.
 
-use beadroll_test_support::{Json, Machine, Sandbox, converge, json, json_lines};
+use beadroll_test_support::{Json, Machine, Sandbox, converge, json, path_text};
 
 /// The Beads record `key`, titled in capitals, that depends on (is blocked by)
 /// each of `depends_on`.
@@ -33,15 +33,6 @@ fn record(key: &str, depends_on: &[&str]) -> Json {
     record
 }
 
-/// Writes records as spaced, ASCII-escaped JSON lines to `<name>.jsonl` in the sandbox and
-/// returns its path.
-fn write_records(sandbox: &Sandbox, name: &str, records: &[Json]) -> String {
-    let path = sandbox.root().join(format!("{name}.jsonl"));
-    let text = json_lines(records);
-    std::fs::write(&path, text).unwrap();
-    path.to_str().expect("a UTF-8 path").to_owned()
-}
-
 /// `pair`: m1 imports ex-a with a dependency on ex-b, which exists nowhere yet (a dangling
 /// entry); m2 syncs it.
 fn pair(sandbox: &Sandbox) -> (Machine, Machine) {
@@ -49,7 +40,7 @@ fn pair(sandbox: &Sandbox) -> (Machine, Machine) {
     m1.bead(["init", "--prefix", "ex"]);
     m1.bead([
         "import",
-        &write_records(sandbox, "a", &[record("ex-a", &["ex-b"])]),
+        path_text(&sandbox.records("a.jsonl", &[record("ex-a", &["ex-b"])])),
     ]);
     m1.bead(["sync"]);
     let m2 = Machine::new(sandbox, "m2");
@@ -96,7 +87,7 @@ fn key_retraction_that_sorts_first_holds() {
     m1.bead(["dep", "remove", "ex-a", "ex-b"]);
     m2.bead([
         "import",
-        &write_records(&sandbox, "b", &[record("ex-b", &["ex-a"])]),
+        path_text(&sandbox.records("b.jsonl", &[record("ex-b", &["ex-a"])])),
     ]);
     converge(&[&m1, &m2]);
     assert_eq!(edges(&m1, "ex-a"), []);
@@ -114,7 +105,7 @@ fn uid_retraction_after_the_target_arrived_holds() {
     let (m1, m2) = pair(&sandbox);
     m2.bead([
         "import",
-        &write_records(&sandbox, "b", &[record("ex-b", &["ex-a"])]),
+        path_text(&sandbox.records("b.jsonl", &[record("ex-b", &["ex-a"])])),
     ]);
     m2.bead(["sync"]);
     m1.bead(["sync"]);
@@ -135,7 +126,7 @@ fn concurrent_explicit_add_survives_a_key_retraction() {
     let (m1, m2) = pair(&sandbox);
     m2.bead([
         "import",
-        &write_records(&sandbox, "b", &[record("ex-b", &[])]),
+        path_text(&sandbox.records("b.jsonl", &[record("ex-b", &[])])),
     ]);
     m2.bead(["dep", "remove", "ex-a", "ex-b"]);
     m2.bead(["dep", "add", "ex-a", "ex-b"]);
