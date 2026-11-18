@@ -19,6 +19,8 @@ use std::collections::BTreeMap;
 use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 
+use beadroll_git::is_object_name;
+
 use crate::error::Error;
 use crate::fs::{read, read_keyed, write_atomic};
 use crate::workspace::Workspace;
@@ -373,7 +375,7 @@ fn fields_of(fields: &str) -> Option<(FileKey, Option<usize>, Option<&str>)> {
     };
     let blob = match blob? {
         "-" => None,
-        blob if is_object_name(blob) => Some(blob),
+        blob if is_object_name(blob.as_bytes()) => Some(blob),
         _ => return None,
     };
     Some((key, lines, blob))
@@ -404,7 +406,7 @@ fn fields_are_written(fields: &str) -> bool {
         && number_is_written::<u64>(inode, 19)
         && number_is_written::<u64>(device, 19)
         && (lines == "-" || number_is_written::<usize>(lines, 9))
-        && (blob == "-" || is_object_name(blob))
+        && (blob == "-" || is_object_name(blob.as_bytes()))
 }
 
 /// Whether `text` is a number of type `N` as [`Memo::render`] writes it ([`number`]); `safe` is
@@ -422,11 +424,6 @@ fn number<N: std::str::FromStr>(text: &str) -> Option<N> {
         return None;
     }
     text.parse().ok()
-}
-
-/// A SHA-1 or SHA-256 object name, as git prints it.
-fn is_object_name(text: &str) -> bool {
-    matches!(text.len(), 40 | 64) && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// The number of newline bytes in `data`.

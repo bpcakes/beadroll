@@ -171,16 +171,15 @@ const HEAD_ARGS: [&str; 4] = ["rev-parse", "HEAD", "--abbrev-ref", "HEAD"];
 /// the separate queries in order, covering unborn HEAD, ambiguous branch names and absent
 /// repositories.
 pub fn head_and_branch(env: &Env) -> Result<HeadAnswers, Error> {
-    if let Some([head, branch]) = answer_lines(env.git(HEAD_ARGS).run()).as_deref() {
-        let full_name = matches!(head.len(), 40 | 64)
-            && head.iter().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
-        if full_name && !branch.is_empty() {
-            let printed = |line: &[u8]| success([line, b"\n"].concat());
-            return Ok(HeadAnswers {
-                head: printed(head),
-                branch: Some(printed(branch)),
-            });
-        }
+    if let Some([head, branch]) = answer_lines(env.git(HEAD_ARGS).run()).as_deref()
+        && crate::objects::is_object_name(head)
+        && !branch.is_empty()
+    {
+        let printed = |line: &[u8]| success([line, b"\n"].concat());
+        return Ok(HeadAnswers {
+            head: printed(head),
+            branch: Some(printed(branch)),
+        });
     }
     let head = env.git(["rev-parse", "HEAD"]).run()?;
     let branch = if head.success() {

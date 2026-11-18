@@ -3,7 +3,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use beadroll_core::json::{Object, Value};
-use beadroll_git::{Ended, Env, Fact, HeadAnswers, head_and_branch};
+use beadroll_git::{Ended, Env, Fact, HeadAnswers, head_and_branch, is_object_name};
 
 use crate::error::Error;
 use crate::settings::Settings;
@@ -69,7 +69,9 @@ pub fn merged_into_default(
     if !refs.is_empty() {
         let (named, other): (Vec<&str>, Vec<&str>) = asked
             .into_iter()
-            .partition(|commit| object_name(commit.as_bytes()));
+            // a full name, as `rev-parse HEAD` prints it, is that object whatever refs there are, so
+            // `cat-file` and `merge-base` read it alike; an abbreviation would not be
+            .partition(|commit| is_object_name(commit.as_bytes()));
         let mut alone = match named.len() {
             0 | 1 => named,
             _ => screened(git, &refs, named, &mut answers)?,
@@ -130,14 +132,6 @@ fn hex(text: &[u8]) -> bool {
     (text.iter()).all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-/// Whether `commit` is a full object name in lowercase hex, SHA-1 or SHA-256, as `rev-parse HEAD`
-/// prints it: the commits answered together. git takes such a name as that object whatever refs
-/// there are, so `cat-file` and `merge-base` read it alike; an abbreviation would not be, as
-/// `^{commit}` makes git prefer a commit among the objects it could name.
-fn object_name(commit: &[u8]) -> bool {
-    matches!(commit.len(), 40 | 64) && hex(commit)
-}
-
 /// How many commits of the default branch's history [`screened`] walks for each commit it has
 /// left to settle: walking one costs git a microsecond or a few, starting a git to ask one alone a
 /// millisecond or more.
@@ -174,7 +168,7 @@ fn screened<'c>(
         .run()?;
     // one line for each name: its commit's name, or the name and why there is none
     let commits: Vec<Option<&[u8]>> = (lines(&peeled.stdout))
-        .map(|line| object_name(line).then_some(line))
+        .map(|line| is_object_name(line).then_some(line))
         .collect();
     if !peeled.success() || commits.len() != named.len() {
         return Ok(named);
