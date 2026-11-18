@@ -417,7 +417,8 @@ pub(crate) fn issue_line(verb: &str, item: &Object) -> String {
 }
 
 /// The data of a `dep_add` of an edge of kind `kind` to `to`, an issue's id or a key no issue has
-/// yet: what every command that adds an edge emits, from a transaction or what it lends.
+/// yet: what `create`, `update` and `dep add` emit for an edge they add, from a transaction or what
+/// it lends. An import emits its plan's own payload instead.
 pub(crate) fn edge_data(to: &str, kind: &str) -> Object {
     let mut data = Object::new();
     data.insert("to".into(), Value::from(to));

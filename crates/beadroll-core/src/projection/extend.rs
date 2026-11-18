@@ -242,7 +242,8 @@ impl Projection {
         true
     }
 
-    /// Whether issue `uid`'s texts are in it, if it is an issue, to be written again when `changes`:
+    /// Whether issue `uid`'s texts are in it, if it is an issue, to be written again when `changes`
+    /// is `TextAccess::Change`:
     /// `false` when they are only in the text file. Texts read in that change are then to be placed
     /// anew, which marks the issue; otherwise it is left as it is.
     fn texts_here(&mut self, uid: EventId, changes: TextAccess) -> bool {

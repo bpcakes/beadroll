@@ -5,7 +5,7 @@ use super::parse::command;
 use super::spec::CommandSpec;
 use crate::cli::paint::Color;
 
-/// `spec`'s help page, `width` wide (none: unwrapped), coloured when `color`.
+/// `spec`'s help page, `width` wide (none: unwrapped), coloured when `color` is `Color::Ansi`.
 pub(crate) fn page(spec: &CommandSpec, width: Option<usize>, color: Color) -> String {
     let mut root = command(width);
     root.build();

@@ -24,8 +24,8 @@ const BEADS_FILE: &str = ".beads/issues.jsonl";
 /// At most this many problems, and of each list of keys, are shown to a human.
 const SHOWN: usize = 20;
 
-/// `bead import PATH`: the export's records brought into this tracker, published at once; with
-/// `dry_run`, what that would do, nothing imported.
+/// `bead import PATH`: the export's records brought into this tracker, published at once; when
+/// `mode` is `ImportMode::DryRun`, what that would do, nothing imported.
 pub(crate) fn import(
     ctx: &Context<'_>,
     path: &OsStr,

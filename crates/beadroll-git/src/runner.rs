@@ -394,7 +394,8 @@ fn wait_for(
 }
 
 /// Kills git (with [`KillScope::ProcessGroup`], its whole process group: git and every helper it
-/// started) after a timeout. Already gone is fine.
+/// started) after a timeout, or when one nothing waited for is dropped (a session ended, a git run
+/// alongside). Already gone is fine.
 pub(crate) fn kill(pid: u32, scope: KillScope) {
     let Some(pid) = i32::try_from(pid)
         .ok()
