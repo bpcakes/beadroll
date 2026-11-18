@@ -1,6 +1,6 @@
 //! Ancestry represented by one clock per event over chains. Each machine's journal is a chain;
-//! unsequenced attempt events join a chain whose last event is already an ancestor, preferring
-//! their machine's chain, or start a new chain. Every ancestor set within a chain is a prefix, so
+//! unsequenced attempt events join a chain of unsequenced events whose last event is already an
+//! ancestor, preferring the one their machine's last joined, or start a new chain. Every ancestor set within a chain is a prefix, so
 //! one position represents it. Writers build on all events they hold, keeping chain counts near
 //! the number of active writers.
 //!
@@ -168,9 +168,9 @@ impl Ancestry {
     }
 
     /// Records `clock` as what the event at `at` had seen, sharing the clock of one of its `causes`
-    /// when it is the same. An unsequenced event then joins a chain: its machine's (`replica`), if
-    /// that chain's last event is among its ancestors; else the first chain whose last event is;
-    /// else a chain of its own.
+    /// when it is the same. An unsequenced event then joins a chain of unsequenced events, never a
+    /// journal's: the one its machine's (`replica`) last joined, if that chain's last event is among
+    /// its ancestors; else the first such chain whose last event is; else a chain of its own.
     pub(crate) fn record(
         &mut self,
         at: usize,
