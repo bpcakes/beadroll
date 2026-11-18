@@ -178,23 +178,8 @@ impl Shape {
 /// Event `n` of `machine`, doing `op` on itself, built on `after`, as the events of one machine's
 /// journal are.
 fn event(n: u64, machine: &str, after: Option<u64>, op: &str, data: Object) -> Value {
-    let mut actor = Object::new();
-    actor.insert("agent".into(), Value::from("timing"));
-    actor.insert("thread".into(), Value::from(machine));
-    let mut members = Object::new();
-    members.insert("v".into(), Value::from(1));
-    members.insert("id".into(), Value::from(id(n)));
-    members.insert("replica".into(), Value::from(machine));
-    let deps: Vec<Value> = after
-        .map(|after| Value::from(id(after)))
-        .into_iter()
-        .collect();
-    members.insert("deps".into(), Value::Array(deps));
-    members.insert("actor".into(), Value::from(actor));
-    members.insert("op".into(), Value::from(op));
-    members.insert("issue".into(), Value::from(id(n)));
-    members.insert("data".into(), Value::from(data));
-    Value::from(members)
+    let deps = after.map(id).into_iter().collect();
+    super::history::event(id(n), machine, deps, op, &id(n), Value::from(data))
 }
 
 /// The create of an imported issue under `key`, importing a dependency on `awaited` when given.

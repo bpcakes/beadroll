@@ -111,6 +111,33 @@ pub(crate) fn id(n: u64) -> String {
     stamped(1_791_558_245_123 + n, n)
 }
 
+/// A timing's event as `Tx.emit` writes it: `id`, written by `machine` on the events whose ids are
+/// `deps`, doing `op` on `issue`, by the agent `timing` on the machine's own thread. Each timing
+/// names its events its own way ([`id`], or one millisecond for all), so the ids are given.
+pub(crate) fn event(
+    id: String,
+    machine: &str,
+    deps: Vec<String>,
+    op: &str,
+    issue: &str,
+    data: Value,
+) -> Value {
+    let mut actor = Object::new();
+    actor.insert("agent".into(), Value::from("timing"));
+    actor.insert("thread".into(), Value::from(machine));
+    let mut members = Object::new();
+    members.insert("v".into(), Value::from(1));
+    members.insert("id".into(), Value::from(id));
+    members.insert("replica".into(), Value::from(machine));
+    let deps = deps.into_iter().map(Value::from).collect();
+    members.insert("deps".into(), Value::Array(deps));
+    members.insert("actor".into(), Value::from(actor));
+    members.insert("op".into(), Value::from(op));
+    members.insert("issue".into(), Value::from(issue));
+    members.insert("data".into(), data);
+    Value::from(members)
+}
+
 /// [`id`] of a history's event `n`, counted from its first.
 pub(crate) fn event_id(n: usize) -> String {
     id(u64::try_from(n).unwrap_or(0))

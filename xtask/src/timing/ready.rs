@@ -119,23 +119,10 @@ pub(super) fn key(n: usize) -> String {
 /// An event as `Tx.emit` writes it: numbered `n`, doing `op` on itself, built on the event before
 /// it, as the events of one machine's journal are.
 pub(super) fn event(n: u64, op: &str, data: Object) -> Value {
-    let mut actor = Object::new();
-    actor.insert("agent".into(), Value::from("timing"));
-    actor.insert("thread".into(), Value::from("a"));
-    let mut members = Object::new();
-    members.insert("v".into(), Value::from(1));
-    members.insert("id".into(), Value::from(id(n)));
-    members.insert("replica".into(), Value::from(MACHINE));
-    let deps: Vec<Value> = (n > 1)
-        .then(|| Value::from(id(n - 1)))
-        .into_iter()
-        .collect();
-    members.insert("deps".into(), Value::Array(deps));
-    members.insert("actor".into(), Value::from(actor));
-    members.insert("op".into(), Value::from(op));
-    members.insert("issue".into(), Value::from(id(n)));
-    members.insert("data".into(), Value::from(data));
-    Value::from(members)
+    // built on the event before it, as one machine's journal is
+    let after = n.checked_sub(1).filter(|earlier| *earlier > 0);
+    let deps = after.map(id).into_iter().collect();
+    super::history::event(id(n), MACHINE, deps, op, &id(n), Value::from(data))
 }
 
 /// The create of issue `n`, imported, with a dependency of each type on each key in `linked`,
