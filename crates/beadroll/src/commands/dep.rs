@@ -17,10 +17,9 @@ use beadroll_store::view_outline;
 use beadroll_sync::writing_spent;
 
 use super::{
-    Context, Failure, Line, Outcome, Tone, arg_text, edge_data, encodable, need_tracker,
-    remove_edge, resolve_arg, row,
+    Context, Failure, Line, Outcome, TextValidity, Tone, arg_text, edge_data, encodable,
+    need_tracker, remove_edge, resolve_arg, row,
 };
-use crate::commands::args::TextValidity;
 
 /// What `dep` was asked to do, by the word that asked it: `rm` and `remove` take an edge back
 /// alike, and the answer names the one given.

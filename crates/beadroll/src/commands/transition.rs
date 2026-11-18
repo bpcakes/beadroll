@@ -16,10 +16,9 @@ use beadroll_core::text::str_of;
 use beadroll_store::{Label, view_outline};
 use beadroll_sync::{NetworkMode, publish_soon, writing_spent};
 
-use super::args::Payload;
 use super::{
-    Context, Failure, Line, Outcome, Tone, encodable, ended_by, issue_line, issue_not_found,
-    need_tracker, refuse_foreign_claim, resolve_arg, texts_in,
+    Context, Failure, Line, Outcome, Payload, Tone, encodable, ended_by, issue_line,
+    issue_not_found, need_tracker, refuse_foreign_claim, resolve_arg, texts_in,
 };
 
 /// The arguments `close`, `reopen` and `delete` take.
@@ -73,8 +72,9 @@ impl Transition {
         }
     }
 
-    /// Whether it ends a claim the issue holds: a close or a delete does, a reopen not.
-    fn ends_claims(self) -> bool {
+    /// Whether its event names the claim it ends: a close or a delete does; a reopen ends a claim
+    /// its writer had seen without naming it (`replay::apply::claims::reopen`).
+    fn names_claim(self) -> bool {
         match self {
             Transition::Close | Transition::Delete => true,
             Transition::Reopen => false,
@@ -96,21 +96,21 @@ pub(crate) fn transition(
     let kind = op.op();
     let (verb, status, said) = op.words();
     let written = writing_spent(ctx.ws, ctx.actor, |tx| {
-        need_tracker(tx.state()?)?;
         let me = ctx.actor.label(&tx.replica);
         let st = tx.state()?;
+        need_tracker(st)?;
         let mut plan = plan(st, args)?;
         if args.recursive && !args.force {
             // the issues left as they are too: one deleted without seeing a claim still holds it
             let subtree: Vec<EventId> = plan.issues.iter().chain(&plan.left).copied().collect();
             refuse_claimed(st, &subtree, &me)?;
         }
-        let ends_claims = op.ends_claims();
+        let names_claim = op.names_claim();
         let mut decided = Decided {
             // a repeat of this actor's close that ended a claim still publishes it, as a plain
             // close does, though the issue beneath is left out of the answer; nothing is written
             // to those
-            ended: ends_claims
+            ended: names_claim
                 && (plan.left.iter())
                     .filter_map(|uid| st.issue(*uid))
                     .any(|issue| ended_by(issue, &me)),
@@ -124,18 +124,18 @@ pub(crate) fn transition(
         // the events decided and not yet written
         let mut events: Vec<(EventId, Object)> = Vec::new();
         // the issues of those events
-        let mut written: HashSet<EventId> = HashSet::new();
+        let mut unwritten: HashSet<EventId> = HashSet::new();
         let mut failure = None;
         for &uid in &plan.issues {
-            if written.contains(&uid) {
+            if unwritten.contains(&uid) {
                 for (uid, data) in events.drain(..) {
                     tx.emit(kind, Some(&uid.to_string()), data, None)?;
                 }
-                written.clear();
+                unwritten.clear();
             }
             match decide(tx.state()?, uid, (op, status), args, &me, &mut decided) {
                 Ok(Some(data)) => {
-                    written.insert(uid);
+                    unwritten.insert(uid);
                     events.push((uid, data));
                 }
                 Ok(None) => {}
@@ -223,7 +223,7 @@ fn decide(
     me: &Label,
     decided: &mut Decided,
 ) -> Result<Option<Object>, Failure> {
-    let ends_claims = op.ends_claims();
+    let names_claim = op.names_claim();
     let issue = known(st, uid)?;
     let held = issue.claim();
     if !args.force {
@@ -234,14 +234,14 @@ fn decide(
     if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
         data.set_text("reason", reason);
     }
-    if ends_claims && let Some(held) = held.filter(|held| me.is(&held.owner)) {
+    if names_claim && let Some(held) = held.filter(|held| me.is(&held.owner)) {
         (data.values).insert("claim".into(), Value::from(held.id.to_string()));
         match decided.named.iter_mut().find(|(issue, _)| *issue == uid) {
             Some(entry) => entry.1 = held.id,
             None => decided.named.push((uid, held.id)),
         }
     }
-    decided.ended = decided.ended || held.is_some() || (ends_claims && ended_by(issue, me));
+    decided.ended = decided.ended || held.is_some() || (names_claim && ended_by(issue, me));
     let settled = already(st, issue, status);
     decided.unchanged.push(settled);
     if settled {
