@@ -287,12 +287,16 @@ impl Drop for Sandbox {
 
 /// `git` for a fixture, with none of the `GIT_*` variables among `inherited`: one that a hook or a
 /// wrapper the tests were started under exports (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`)
-/// would turn a fixture's commit and push on the repository they were started from.
+/// would turn a fixture's commit and push on the repository they were started from. It starts no
+/// auto maintenance (`maintenance.auto`): after a commit git would start it detached, and it would
+/// take `objects/maintenance.lock` in the fixture's repository whenever it got to it, a file a test
+/// that compares a repository before and after (`assert_git_isolation`) then sees changed.
 fn fixture_git(inherited: impl Iterator<Item = OsString>) -> Command {
     let mut command = Command::new("git");
     for name in inherited.filter(|name| name.as_encoded_bytes().starts_with(b"GIT_")) {
         command.env_remove(name);
     }
+    command.args(["-c", "maintenance.auto=false"]);
     command
 }
 
@@ -365,6 +369,27 @@ mod tests {
             broken.is_err(),
             "a remote that is no repository answered {broken:?}"
         );
+    }
+
+    /// A fixture's commit starts no auto maintenance, which git would otherwise start detached and
+    /// which would take a lock in the repository whenever it got to it: what made
+    /// `assert_git_isolation` see a fixture's own repository changed, now and then, on CI.
+    #[test]
+    fn a_fixtures_commit_starts_no_auto_maintenance() {
+        let dir = tempfile::tempdir().unwrap();
+        git(["init", "-q", "-b", "main"], Some(dir.path()));
+        let traced = git_command()
+            .args(["-c", "user.name=t", "-c", "user.email=t@example.invalid"])
+            .args(["commit", "-q", "--allow-empty", "-m", "m"])
+            .current_dir(dir.path())
+            .env("GIT_TRACE", "1")
+            .stdin(Stdio::null())
+            .output()
+            .expect("git starts");
+        assert!(traced.status.success(), "{traced:?}");
+        let trace = String::from_utf8_lossy(&traced.stderr);
+        assert!(trace.contains("commit"), "no trace: {trace}");
+        assert!(!trace.contains("maintenance run"), "{trace}");
     }
 
     #[test]
