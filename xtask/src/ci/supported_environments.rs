@@ -44,3 +44,45 @@ fn the_suite_runs_on_linux_macos_and_the_oldest_supported_git() {
         "the nightly tests a bead other than the one Cargo builds"
     );
 }
+
+/// The versions of cargo-nextest `workflow` installs, each as written after its `@`.
+fn nextest_installs(workflow: &str) -> Vec<String> {
+    let pinned = Regex::new(r"cargo-nextest@([0-9][0-9A-Za-z.+-]*)").expect("a valid pattern");
+    (pinned.captures_iter(workflow))
+        .map(|found| found[1].to_owned())
+        .collect()
+}
+
+/// Every job that runs the tests installs the cargo-nextest `.config/nextest.toml` requires, the
+/// one version: a job left on another after a bump would run the suite under a nextest the
+/// repository's settings were not written for, in one workflow and not the other.
+#[test]
+fn every_workflow_installs_the_nextest_the_settings_require() {
+    let settings = read(".config/nextest.toml");
+    let required = Regex::new(r#"(?m)^nextest-version = "([^"]+)"$"#)
+        .expect("a valid pattern")
+        .captures(&settings)
+        .map(|found| found[1].to_owned())
+        .expect(".config/nextest.toml sets nextest-version");
+    for path in [
+        ".github/workflows/rust.yml",
+        ".github/workflows/rust-nightly.yml",
+    ] {
+        let installed = nextest_installs(&read(path));
+        assert!(
+            !installed.is_empty(),
+            "{path} installs no cargo-nextest@VERSION"
+        );
+        for version in installed {
+            assert_eq!(version, required, "{path} installs cargo-nextest@{version}");
+        }
+    }
+}
+
+/// An install's version is read whole, alone or among other tools.
+#[test]
+fn a_nextest_install_is_read_with_its_whole_version() {
+    let workflow =
+        "tool: cargo-nextest@0.9.130\ntool: cargo-nextest@0.9.1300,cargo-llvm-cov@0.8.7\n";
+    assert_eq!(nextest_installs(workflow), ["0.9.130", "0.9.1300"]);
+}
