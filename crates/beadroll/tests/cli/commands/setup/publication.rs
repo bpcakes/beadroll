@@ -1,6 +1,6 @@
 //! Init acknowledges publication only when its write reached the coordination remote.
 
-use beadroll_test_support::{Machine, git, parse_json, path_text};
+use beadroll_test_support::{Machine, code, git, parse_json, path_text};
 
 use super::commit;
 
@@ -72,6 +72,22 @@ fn init_acknowledges_the_chosen_remote_and_ref() {
         )
         .is_empty()
     );
+}
+
+/// A repository with neither a remote nor a `.beadroll.json` keeps a machine-local tracker that
+/// cannot sync: `sync` is `NO_REMOTE`, and the tracker is left as it was.
+#[test]
+fn a_tracker_without_a_remote_cannot_sync() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    commit(&a, &["remote", "remove", "origin"]);
+    let init = a.run(["init", "--prefix", "ex"]);
+    assert_eq!(init.returncode(), 0, "{}", init.stderr);
+    a.bead(["create", "local only"]);
+    let before = a.export();
+    let synced = a.run(["sync", "--json"]);
+    assert_eq!(code(&synced), "NO_REMOTE", "{}", synced.stderr);
+    assert_eq!(a.export(), before);
 }
 
 #[test]

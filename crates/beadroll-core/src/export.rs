@@ -180,3 +180,6 @@ struct CommentIds {
     ids: BTreeMap<EventId, u64>,
     taken: HashSet<u64>,
 }
+
+#[cfg(test)]
+mod tests;

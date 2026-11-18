@@ -181,6 +181,30 @@ fn help_on_a_terminal_is_coloured_unless_no_color_and_never_shows_a_code() {
     }
 }
 
+/// On a terminal, `CLICOLOR=0` turns colour off, and so does `TERM=dumb`, as `NO_COLOR` does.
+#[test]
+fn clicolor_zero_and_a_dumb_terminal_turn_colour_off() {
+    let sandbox = crate::sandbox();
+    let machine = set_up(&sandbox);
+    let args = ["help", "create"];
+    let (status, out) = run_on_terminal(command(&machine, &args, ("TERM", "xterm-256color")));
+    assert_eq!(status, 0, "{out}");
+    assert!(
+        out.contains('\u{1b}'),
+        "not coloured to begin with: {:?}",
+        start(&out)
+    );
+    let mut clicolor = command(&machine, &args, ("TERM", "xterm-256color"));
+    clicolor.env("CLICOLOR", "0");
+    let dumb = command(&machine, &args, ("TERM", "dumb"));
+    for (name, plain) in [("CLICOLOR=0", clicolor), ("TERM=dumb", dumb)] {
+        let (status, out) = run_on_terminal(plain);
+        assert_eq!(status, 0, "{name}: {out}");
+        assert!(!out.contains('\u{1b}'), "{name}: {:?}", start(&out));
+        assert!(out.contains("Usage: bead create"), "{name}: {out}");
+    }
+}
+
 /// G59: with `FORCE_COLOR=1` (common in CI, and set by some agent harnesses), `help create`
 /// through a pipe shows no colour codes, escaped or raw, and `--json help create` embeds none
 /// in its help string: bead follows `CLICOLOR_FORCE` and `--color`, not `FORCE_COLOR`.

@@ -134,6 +134,18 @@ fn a_recap_of_everything_marks_where_a_tracker_first_seen_after_it_starts() {
     );
 }
 
+/// A home with no tracker in it: `No local trackers`, status 0, and no trackers with `--json`.
+#[test]
+fn a_home_without_trackers_says_so_and_succeeds() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let told = a.run(["recap"]);
+    assert_eq!(told.returncode(), 0, "{}", told.stderr);
+    assert!(told.stdout.contains("No local trackers"), "{}", told.stdout);
+    let answer = a.bead(["recap"]).expect("bead recap prints a record");
+    assert_eq!(answer["workspaces"], Json::Array(Vec::new()), "{answer:?}");
+}
+
 #[test]
 fn a_tracker_that_cannot_be_read_is_reported_and_the_others_still_show() {
     let sandbox = crate::sandbox();
@@ -143,7 +155,13 @@ fn a_tracker_that_cannot_be_read_is_reported_and_the_others_still_show() {
     b.bead(["init", "--prefix", "two"]);
     create(&a, "In the damaged store");
     create(&b, "In the healthy store");
-    recap(&a);
+    let healthy_id = b.bead(["info"]).unwrap()["workspace"].clone();
+    let named = |answer: &Json| {
+        let trackers = answer["workspaces"].as_array().unwrap();
+        let tracker = trackers.iter().find(|t| t["workspace"] == healthy_id);
+        tracker.expect("the healthy tracker")["name"].clone()
+    };
+    let name = named(&recap(&a));
     create(&a, "Unseen behind the damage");
     create(&b, "Unseen and readable");
     let path = |m: &Machine| {
@@ -169,6 +187,9 @@ fn a_tracker_that_cannot_be_read_is_reported_and_the_others_still_show() {
         .filter_map(|tracker| tracker["error"]["code"].as_str())
         .collect();
     assert_eq!(errors, ["IO", "CONFIG"], "{answer:?}");
+    // its meta.json unreadable, the healthy tracker is named as its own journal names it
+    assert_eq!(named(&answer), name);
+    assert_ne!(name, healthy_id, "named by its id, not its journal");
     let told = a.run(["recap"]).stdout;
     assert!(told.contains("old copy\n  cannot be read: "), "{told}");
     assert!(told.contains("is not a workspace id"), "{told}");
