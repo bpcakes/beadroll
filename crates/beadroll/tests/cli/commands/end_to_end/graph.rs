@@ -166,3 +166,42 @@ fn an_empty_dependency_type_is_no_type_given() {
         "the edge was not taken back"
     );
 }
+
+/// `dep remove` of a dependency the issue does not have, of any type or of the one named, is
+/// refused as `VALIDATION` and writes nothing, rather than saying it took back what was never there.
+#[test]
+fn removing_a_dependency_that_is_not_there_is_refused() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let x = json_id(&a.bead(["create", "x"]).unwrap());
+    let y = json_id(&a.bead(["create", "y"]).unwrap());
+    let events = |a: &Machine| a.bead(["info"]).unwrap()["events"].clone();
+    let before = events(&a);
+    let none = a.run(["dep", "remove", &x, &y, "--json"]);
+    assert_eq!(code(&none), "VALIDATION", "{}", none.stderr);
+    assert!(
+        none.stderr.contains("does not depend on"),
+        "{}",
+        none.stderr
+    );
+    a.bead(["dep", "add", &x, &y]);
+    let wrong = a.run(["dep", "remove", &x, &y, "--type", "related", "--json"]);
+    assert_eq!(code(&wrong), "VALIDATION", "{}", wrong.stderr);
+    let listed = a.bead(["dep", "list", &x]).expect("a list");
+    assert_eq!(
+        listed["dependencies"].as_array().map(<[_]>::len),
+        Some(1),
+        "the edge was lost"
+    );
+    a.bead(["dep", "remove", &x, &y]);
+    let removed = a.run(["dep", "remove", &x, &y, "--json"]);
+    assert_eq!(
+        code(&removed),
+        "VALIDATION",
+        "a second removal: {}",
+        removed.stderr
+    );
+    // the refusals wrote nothing: an add and one removal since
+    assert_eq!(events(&a).as_i64(), before.as_i64().map(|n| n + 2));
+}

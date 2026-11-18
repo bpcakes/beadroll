@@ -67,7 +67,9 @@ Extra positional arguments fail with `VALIDATION` (exit 1), with the explicit
 `add` syntax in the error; `dep tree ISSUE` and `dep cycles` also reject surplus
 arguments. Comment options `-m`/`--message`, `-f`/`--file` and `--author` require
 `comments add`; dependency `--type` requires `dep add` or `dep remove` (`rm`).
-These errors write no events.
+`dep remove A B` of a dependency A does not have, of any type or of the `--type`
+named, is `VALIDATION` too, judged on what this machine has; an empty `--type`
+is none given. These errors write no events.
 
 On a terminal bead's output is coloured: an issue's status mark, id and priority,
 its type and branch dimmed, warnings and errors, and the help pages. Into a pipe
