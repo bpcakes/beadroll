@@ -764,7 +764,7 @@ both are recorded here, the second as Q12.
 | A14 | Medium | Malformed events crashed replay; unknown versions ran silently | fixed | Validation; newer format and unknown ops are inert and reported | `beadroll-core`: `replay::quarantine::bad_event_schema_has_scoped_damage`, `replay::unknown_operations::unknown_event_version_is_not_applied_silently`, `replay::unknown_operations::unknown_operation_is_reported_and_does_not_mutate_timestamp` |
 | A15 | Low | Comment id zero broke export | fixed | `is not None` checks | `beadroll`: `commands::cli_compatibility::imported_comment_zero_id_roundtrips` |
 | A16 | Low | Missing `ps` crashed harness detection | fixed | Tolerated | `beadroll`: `commands::nested_agent_identity::missing_ps_does_not_crash_nested_actor_detection` |
-| A17 | Low | `BP_THREAD` alone did not override detection | fixed | | `beadroll-store`: `commands::actor_detection::bp_thread_overrides_detected_thread_without_bp_agent` |
+| A17 | Low | `BP_THREAD` alone did not override detection | fixed | | `beadroll-store`: `commands::actor_detection::bead_thread_overrides_detected_thread_without_bead_agent` |
 | A18 | Low | Global flags consumed operands after `--` | fixed | | `beadroll`: `commands::cli_compatibility::global_options_respect_end_of_options` |
 | A19 | Low | Parser errors bypassed the JSON error envelope | fixed | | `beadroll`: `commands::cli_compatibility::parser_error_json_envelope` |
 

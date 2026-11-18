@@ -47,7 +47,7 @@ mod actor_detection {
     }
 
     #[test]
-    fn bp_thread_overrides_detected_thread_without_bp_agent() {
+    fn bead_thread_overrides_detected_thread_without_bead_agent() {
         assert_eq!(
             actor(
                 &[("BEAD_THREAD", "override"), ("CODEX_THREAD_ID", "detected")],

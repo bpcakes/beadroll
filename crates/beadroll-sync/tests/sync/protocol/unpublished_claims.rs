@@ -196,4 +196,20 @@ fn nonzero_applied_push_with_interleaved_writer_must_not_fork() {
         "accepted claim was rolled back on ambiguous git failure; local writer now forks the \
          journal: {result:?}"
     );
+    // and no fork: both machines converge on one journal, neither reporting a fork of it
+    s.a.bead(["sync"]);
+    s.b.bead(["sync"]);
+    assert_eq!(
+        s.a.export(),
+        s.b.export(),
+        "the two machines' trackers differ"
+    );
+    for machine in [&s.a, &s.b] {
+        let info = machine.bead(["info"]).expect("info");
+        assert_eq!(
+            info["integrity"].as_array().map(|rows| rows.len()),
+            Some(0),
+            "{info:?}"
+        );
+    }
 }
