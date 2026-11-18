@@ -5,7 +5,7 @@ use crate::json::{Object, Value};
 use crate::projection::{Projection, Record};
 
 use super::super::Work;
-use super::{History, SMALL, applied, grows_linearly, key, one_at_a_time};
+use super::{History, SMALL, applied, counted, grows_linearly, key, one_at_a_time};
 
 /// A tracker of `issues` issues, each with two labels and, unless it is the first of its ten, a
 /// parent in that first, which is the shape `timing --extend` measures: its history, and the
@@ -57,6 +57,13 @@ fn closes_applied_one_at_a_time_derive_no_labels_and_no_index() {
         |issues| each_issue(issues, "close", |_| Object::new()),
         |(projection, closes)| drop(one_at_a_time(projection, closes)),
     );
+    // and none at all, which a bound on growth alone would let through: a close that relabelled
+    // its own issue each time grows linearly
+    let (projection, closes) = each_issue(SMALL, "close", |_| Object::new());
+    let ((), done) = counted(|| drop(one_at_a_time(projection, closes)));
+    for work in [Work::Relabel, Work::Index] {
+        assert_eq!(done.of(work), 0, "{work:?} for closes");
+    }
 }
 
 #[test]

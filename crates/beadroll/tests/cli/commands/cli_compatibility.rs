@@ -239,7 +239,13 @@ fn metadata_excludes_local_machine_identifiers() {
         hostname(),
         format!("{}@", user()),
     ];
-    for event in journal_events(&a.store()) {
+    let events = journal_events(&a.store());
+    // a journal read as none, its layout changed, would leave every check below unmade
+    assert!(
+        !events.is_empty(),
+        "no event read from the store's journals"
+    );
+    for event in events {
         let mut metadata = event.as_object().unwrap().clone();
         metadata.shift_remove("data");
         let text = json_line(&Json::from(metadata));

@@ -75,9 +75,15 @@ fn remote_url_shapes_that_are_already_safe() {
 
     let ssh = Machine::new(&sandbox, "ssh");
     let url = "ssh://alice:supersecret@example.invalid/private.git";
-    ssh.run(["init", "--prefix", "ex", "--remote", url]);
+    let made = ssh.run(["init", "--prefix", "ex", "--remote", url]);
+    assert_eq!(made.returncode(), 0, "{}", made.stderr);
     let stored = meta(&ssh);
     assert!(!stored.contains("supersecret"), "{stored}");
+    // the password dropped, the user kept: what an ssh URL needs to reach the same host
+    assert!(
+        stored.contains("\"ssh://alice@example.invalid/private.git\""),
+        "{stored}"
+    );
     let plain = Machine::new(&sandbox, "ssh-user");
     let url = "ssh://alice@example.invalid/private.git";
     plain.run(["init", "--prefix", "ex", "--remote", url]);
