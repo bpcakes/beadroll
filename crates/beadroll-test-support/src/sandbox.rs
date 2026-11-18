@@ -11,7 +11,7 @@ pub const UNDER_TEST: &str = "BEAD_UNDER_TEST";
 
 /// Selects a nonempty under_test value, otherwise default. Both must be absolute paths because
 /// commands run from multiple directories; relative paths panic during setup.
-pub fn select_bead(under_test: Option<&OsStr>, default: &Path) -> PathBuf {
+fn select_bead(under_test: Option<&OsStr>, default: &Path) -> PathBuf {
     let (path, source) = match under_test.filter(|value| !value.is_empty()) {
         Some(value) => (PathBuf::from(value), UNDER_TEST),
         None => (default.to_path_buf(), "the default bead"),
