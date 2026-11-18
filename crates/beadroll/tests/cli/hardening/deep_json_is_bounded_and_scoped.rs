@@ -3,9 +3,6 @@
 //! refuses records beyond the writing limit. A peer must keep working beside the refused import.
 
 use std::collections::BTreeSet;
-use std::io::Write as _;
-use std::path::Path;
-use std::process::{Command, Stdio};
 
 use beadroll_core::json::{Format, Object, write};
 use beadroll_test_support::{
@@ -47,50 +44,6 @@ fn record(key: &str, depth: usize, field: &str) -> String {
 fn last_chars(text: &str, count: usize) -> String {
     let skip = text.chars().count().saturating_sub(count);
     text.chars().skip(skip).collect()
-}
-
-/// Plumbing on the sandbox's bare remote `origin` (`GIT_DIR`), run from inside it
-/// rather than the caller's cwd, with the test's environment less every `GIT_*` variable and
-/// `t` as author and committer, `data` on its standard input; what it printed, stripped. A
-/// failure fails the test.
-fn plumbing(origin: &Path, args: &[&str], data: Option<&[u8]>) -> String {
-    let inherited = std::env::vars_os();
-    let kept = inherited.filter(|(key, _)| !key.as_encoded_bytes().starts_with(b"GIT_"));
-    let mut command = Command::new("git");
-    command
-        .args(args)
-        .current_dir(origin)
-        .env_clear()
-        .envs(kept)
-        .env("GIT_DIR", origin)
-        .env("GIT_AUTHOR_NAME", "t")
-        .env("GIT_AUTHOR_EMAIL", "t@example.invalid")
-        .env("GIT_COMMITTER_NAME", "t")
-        .env("GIT_COMMITTER_EMAIL", "t@example.invalid")
-        .stdin(if data.is_some() {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = command.spawn().expect("git starts");
-    let input = child.stdin.take();
-    let output = std::thread::scope(|scope| {
-        // written from another thread, so that git never waits for us while we wait for it
-        if let (Some(mut pipe), Some(data)) = (input, data) {
-            scope.spawn(move || pipe.write_all(data));
-        }
-        child.wait_with_output().expect("git's output")
-    });
-    assert!(
-        output.status.success(),
-        "git {}: {}",
-        args.join(" "),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let printed = String::from_utf8(output.stdout).expect("git's output is UTF-8");
-    printed.trim().to_owned()
 }
 
 /// Machine `g30`'s tracker (prefix `ex`) holds `ordinary work`.
@@ -155,23 +108,14 @@ fn deep_tracked_config_or_manifest_is_a_structured_error() {
     let sandbox = crate::sandbox();
     let m = set_up(&sandbox);
     m.bead(["sync"]);
-    let origin = sandbox.origin();
-    let tip = plumbing(origin, &["rev-parse", "refs/beads/journal"], None);
+    let tip = sandbox.origin_plumbing(&["rev-parse", "refs/beads/journal"], None);
     let deep = foreign();
-    let blob = plumbing(
-        origin,
-        &["hash-object", "-w", "--stdin"],
-        Some(deep.as_bytes()),
-    );
+    let blob = sandbox.origin_plumbing(&["hash-object", "-w", "--stdin"], Some(deep.as_bytes()));
     let listing = format!("100644 blob {blob}\tmanifest.json\n");
-    let tree = plumbing(origin, &["mktree"], Some(listing.as_bytes()));
+    let tree = sandbox.origin_plumbing(&["mktree"], Some(listing.as_bytes()));
     let commit_tree = ["commit-tree", &tree, "-p", &tip, "-m", "deep manifest"];
-    let commit = plumbing(origin, &commit_tree, None);
-    plumbing(
-        origin,
-        &["update-ref", "refs/beads/journal", &commit, &tip],
-        None,
-    );
+    let commit = sandbox.origin_plumbing(&commit_tree, None);
+    sandbox.origin_plumbing(&["update-ref", "refs/beads/journal", &commit, &tip], None);
     let sync = m.run(["sync", "--json"]);
     assert_no_crash(&sync, "sync against a deep manifest");
     assert_eq!(code(&sync), "MANIFEST_MISSING");
