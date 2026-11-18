@@ -6,6 +6,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A store write that fails part-way names the file it was writing, as every other operating-system
+  error does (`{strerror}: {path}`): an append to a journal segment, an atomic write's contents
+  and flush, and the machine identity. A full volume or a file-size limit reported only
+  `No space left on device` or `File too large` before.
+
 - Upgrade the pinned Rust toolchain and minimum supported Rust version to 1.100.0 (roll-foyo).
   The shared test helper recognizes Cargo's new test executable layout.
 

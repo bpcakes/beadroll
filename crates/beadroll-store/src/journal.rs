@@ -260,21 +260,22 @@ pub fn append_events(
         .map_err(|e| IoError::at(&e, &path))?;
     // Seek to the end before writing so Darwin checks the file-size limit against the correct
     // descriptor offset.
-    file.seek(SeekFrom::End(0)).map_err(|e| IoError::bare(&e))?;
+    file.seek(SeekFrom::End(0))
+        .map_err(|e| IoError::at(&e, &path))?;
     let failpoints = &ws.settings.failpoints;
     let mut rest: &[u8] = &data;
     if failpoints.has("append.mid") {
         let (half, after) = data.split_at(data.len() / 2);
-        file.write_all(half).map_err(|e| IoError::bare(&e))?;
-        file.flush().map_err(|e| IoError::bare(&e))?;
+        file.write_all(half).map_err(|e| IoError::at(&e, &path))?;
+        file.flush().map_err(|e| IoError::at(&e, &path))?;
         if failpoints.hit("append.mid") == Some(Fired::TornSigkill) {
-            fsync(&file)?;
+            fsync(&file, &path)?;
             kill_self();
         }
         rest = after;
     }
-    file.write_all(rest).map_err(|e| IoError::bare(&e))?;
-    fsync(&file)?;
+    file.write_all(rest).map_err(|e| IoError::at(&e, &path))?;
+    fsync(&file, &path)?;
     if !data.is_empty() {
         ws.record_commit();
     }
@@ -291,9 +292,10 @@ pub fn extend_segment(path: &Path, more: &[u8]) -> Result<(), Error> {
         .append(true)
         .open(path)
         .map_err(|e| IoError::at(&e, path))?;
-    file.seek(SeekFrom::End(0)).map_err(|e| IoError::bare(&e))?;
-    file.write_all(more).map_err(|e| IoError::bare(&e))?;
-    fsync(&file)?;
+    file.seek(SeekFrom::End(0))
+        .map_err(|e| IoError::at(&e, path))?;
+    file.write_all(more).map_err(|e| IoError::at(&e, path))?;
+    fsync(&file, path)?;
     Ok(())
 }
 

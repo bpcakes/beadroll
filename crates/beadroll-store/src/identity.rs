@@ -108,8 +108,8 @@ fn mint(path: &Path, settings: &Settings) -> Result<(), Error> {
         .map_err(|e| IoError::at(&e, &tmp))
         .and_then(|mut file| {
             file.write_all(text.as_bytes())
-                .map_err(|e| IoError::bare(&e))?;
-            fsync(&file)
+                .map_err(|e| IoError::at(&e, path))?;
+            fsync(&file, path)
         });
     if let Err(error) = written {
         // nothing was linked: what was written of the temporary file goes with the attempt

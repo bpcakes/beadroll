@@ -71,13 +71,13 @@ pub(super) fn parts(
         .as_ref()
         .ok_or_else(|| Error::io_message("missing prepared file"))?;
     for part in parts {
-        file.write_all(part).map_err(|e| IoError::bare(&e))?;
+        file.write_all(part).map_err(|e| IoError::at(&e, path))?;
     }
     if matches!(durability, Durability::Durable) {
         if let Some(Fired::Errno(errno)) = failpoints.hit_path("atomic-flush", path) {
-            return Err(IoError::bare(&io::Error::from_raw_os_error(errno)).into());
+            return Err(IoError::at(&io::Error::from_raw_os_error(errno), path).into());
         }
-        fsync(file)?;
+        fsync(file, path)?;
         failpoints.hit_path("atomic-flushed", path);
     }
     Ok(prepared)
@@ -91,7 +91,8 @@ impl PreparedAtomic {
 
     pub(super) fn install_file(mut self, failpoints: &Failpoints) -> Result<File, Error> {
         if let Some(Fired::Errno(errno)) = failpoints.hit_path("atomic-write", &self.target) {
-            return Err(IoError::bare(&io::Error::from_raw_os_error(errno)).into());
+            // as the rename it stands in for would fail: naming its target
+            return Err(IoError::at(&io::Error::from_raw_os_error(errno), &self.target).into());
         }
         std::fs::rename(&self.temporary, &self.target)
             .map_err(|e| IoError::at(&e, &self.target))?;

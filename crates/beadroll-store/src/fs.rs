@@ -175,9 +175,10 @@ fn temporary(path: &Path) -> PathBuf {
     path.with_file_name(OsStr::from_bytes(&raw))
 }
 
-/// Uses fsync(2), never F_FULLFSYNC (`docs/REVIEWING.md` §2).
-pub fn fsync(file: &File) -> Result<(), IoError> {
-    rustix::fs::fsync(file).map_err(|e| IoError::bare(&io::Error::from(e)))
+/// Flushes `file`, open on `path`, which a failure names. Uses fsync(2), never F_FULLFSYNC
+/// (`docs/REVIEWING.md` §2).
+pub fn fsync(file: &File, path: &Path) -> Result<(), IoError> {
+    rustix::fs::fsync(file).map_err(|e| IoError::at(&io::Error::from(e), path))
 }
 
 /// A directory's entries, sorted by name. Absent is empty; one that cannot be read, or is not a
