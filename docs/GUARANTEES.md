@@ -464,7 +464,8 @@ it, and the file is committed again.
   or two against GitHub). A routine `sync` fetches before taking the lock.
 - A `--status` change made with `update` follows the same ownership rules and
   publishes an owner's close immediately, like `bead close`; `--parent` refuses a
-  loop, like `dep add`.
+  loop, like `dep add`. So does `create`, whether it names the new issue's parent by
+  `--parent` or as a `parent-child` dependency in `--deps`.
 - Exported Beads comment ids: an imported comment keeps its id; a comment made
   here exports an integer derived from its event id (48 bits, from 2^47), so
   every machine and every later export agrees. Two such comments sharing a
