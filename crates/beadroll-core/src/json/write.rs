@@ -52,7 +52,8 @@ impl Format {
         ascii: true,
         sorted: false,
     };
-    /// The quarantine comparison: sorted keys, compact, raw UTF-8.
+    /// Sorted keys, compact, raw UTF-8: `journal::canonical`'s, for comparing values whatever the
+    /// order of their members. Quarantine compares digests of compact lines instead.
     pub const CANONICAL: Format = Format {
         style: Style::Compact,
         ascii: false,

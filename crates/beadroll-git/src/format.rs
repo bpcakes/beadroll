@@ -4,9 +4,9 @@
 //! extensions only under repository format version 1; version 0 without an object format is
 //! SHA-1. Without core.repositoryformatversion, git ignores extensions.
 //!
-//! Return [`StoredFormat::Unsure`] for unusual syntax or a format differing from the requested
-//! one, so the caller asks git. A matching format can be used directly: if git later refuses the
-//! repository for another reason, bead leaves it alone.
+//! Return [`StoredFormat::Unsure`] for syntax this reader does not follow; the caller asks git
+//! then, and when the format named differs from the one it wants. A matching format can be used
+//! directly: if git later refuses the repository for another reason, bead leaves it alone.
 
 use std::path::Path;
 
