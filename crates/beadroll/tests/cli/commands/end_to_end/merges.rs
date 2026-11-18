@@ -205,6 +205,54 @@ fn an_online_child_answers_the_key_its_publish_settled() {
     );
 }
 
+/// Two machines that close one issue with different reasons, neither seeing the other's, dispute
+/// its status as two different statuses do: `show` lists each close with its reason, what depends
+/// on it is not ready, and a close made after seeing both settles it on every machine.
+#[test]
+fn closes_with_different_reasons_are_a_conflict_a_new_close_settles() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, _) = two_machines(&sandbox);
+    let after = json_id(&a.bead(["create", "after x"]).unwrap());
+    a.bead(["dep", "add", &after, &x]);
+    b.bead(["sync"]);
+    a.bead(["close", &x, "-r", "fixed in abc", "--offline"]);
+    b.bead(["close", &x, "-r", "duplicate of another"]);
+    settle(&[&a, &b]);
+    let shown = a.show(&x);
+    let reasons: Vec<&str> = (shown["conflicts"]["status"].as_array())
+        .unwrap_or_else(|| panic!("no status conflict: {shown:?}"))
+        .iter()
+        .map(|alternative| alternative["close_reason"].as_str().unwrap())
+        .collect();
+    assert_eq!(reasons.len(), 2, "{shown:?}");
+    assert!(reasons.contains(&"fixed in abc") && reasons.contains(&"duplicate of another"));
+    let ready = a.bead(["ready"]).unwrap();
+    let ready: Vec<String> = ready.as_array().unwrap().iter().map(json_id).collect();
+    assert!(!ready.contains(&after), "{after} is ready: {ready:?}");
+    a.bead(["close", &x, "-r", "fixed in abc; the other is a duplicate"]);
+    settle(&[&a, &b]);
+    for machine in [&a, &b] {
+        let shown = machine.show(&x);
+        assert!(shown.get("conflicts").is_none(), "{shown:?}");
+        assert_eq!(
+            shown["close_reason"],
+            json!("fixed in abc; the other is a duplicate")
+        );
+    }
+}
+
+/// Two closes with the same reason agree: nothing is disputed.
+#[test]
+fn closes_with_the_same_reason_agree() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, _) = two_machines(&sandbox);
+    a.bead(["close", &x, "-r", "done", "--offline"]);
+    b.bead(["close", &x, "-r", "done"]);
+    settle(&[&a, &b]);
+    let shown = a.show(&x);
+    assert!(shown.get("conflicts").is_none(), "{shown:?}");
+}
+
 /// Three machines syncing at the same moment all succeed, and converge on everything they made.
 #[test]
 fn concurrent_sync_from_three_machines_all_succeed() {

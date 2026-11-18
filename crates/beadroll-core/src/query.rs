@@ -30,6 +30,8 @@ pub fn blocking(kind: &str) -> bool {
 pub struct Alternative {
     /// The value (for `status`, the status alone).
     pub value: Value,
+    /// For a done `status`, the reason it was closed with, when it was given one.
+    pub close_reason: Option<Value>,
     /// Who wrote it.
     pub by: String,
     /// When.
@@ -43,6 +45,9 @@ impl Alternative {
     pub fn to_value(&self) -> Object {
         let mut out = Object::new();
         out.insert("value".into(), self.value.clone());
+        if let Some(reason) = &self.close_reason {
+            out.insert("close_reason".into(), reason.clone());
+        }
         out.insert("by".into(), Value::from(self.by.as_str()));
         out.insert("at".into(), Value::from(self.at.as_str()));
         out.insert("event".into(), Value::from(self.event.to_string()));
@@ -80,6 +85,7 @@ impl State {
                     .iter()
                     .map(|(event, value)| Alternative {
                         value: shown(*field, value),
+                        close_reason: given_reason(*field, value),
                         by: self.who(*event),
                         at: event_time(event.millis()),
                         event: *event,
@@ -330,12 +336,32 @@ fn shown(field: Field, value: &Value) -> Value {
     }
 }
 
+/// The reason a `status` value of a done status was closed with, when it was given one: what tells
+/// two closes apart, beside the status.
+fn given_reason(field: Field, value: &Value) -> Option<Value> {
+    (field == Field::Status)
+        .then(|| value.get("close_reason"))
+        .flatten()
+        .filter(|reason| reason.truthy())
+        .cloned()
+}
+
+/// What two values of `field` are compared by: a `status` by the status and the reason it was
+/// closed with (two closes with different reasons are a conflict, settled by a close that saw
+/// both), never by `closed_at`, which two closes give apart always; any other field whole.
+fn compared(field: Field, value: &Value) -> Value {
+    match given_reason(field, value) {
+        Some(reason) => Value::from(vec![shown(field, value), reason]),
+        None => shown(field, value),
+    }
+}
+
 /// Whether `register`, of `field`, holds values two writers left different, as conflicts compare
 /// them: what a projection keeps of a long field whose texts it has not read (roll-lqjj.6).
 pub(crate) fn split(field: Field, register: &IdMap<Value>) -> bool {
     register.len() > 1 && {
         let distinct: HashSet<String> = (register.values())
-            .map(|value| dumps(&shown(field, value)))
+            .map(|value| dumps(&compared(field, value)))
             .collect();
         distinct.len() > 1
     }

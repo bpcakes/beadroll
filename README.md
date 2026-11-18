@@ -208,6 +208,7 @@ output equivalence and remaining first-read cost.
 | Edit different fields | Both edits are kept. |
 | Edit the same field | Both values are kept under `conflicts`; the newer one is shown. A later write that has seen both settles the conflict. |
 | Set different statuses | The conflict also prevents readiness, claims, and unblocking other issues until settled. |
+| Close with different reasons | A conflict as different statuses are, each close shown with its reason; a close made after seeing both settles it. |
 | Add comments | All comments are kept. |
 | Add and remove a label or dependency | A removal affects only additions its writer had seen. |
 | Create children of the same parent | A colliding child key is renumbered, for example `app-x.1` to `app-x.2`, and sync reports it. |
