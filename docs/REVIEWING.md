@@ -1980,7 +1980,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - The Rust bead keeps CPython's semantics wherever Python's bead had them, as the port plan's
   ledger of them decided (the rows not stated above): replay takes a boolean where an integer is due
   (`"v": true` is format 1; a `true` priority sorts as 1, keeps its JSON and prints as 1 in both
-  `list` and `show` (AF02), as
+  `list` and `show` (AF02), and exports as 1, an estimate out of range or not a whole number being
+  left out of the export, so that bead's own import and br read it back (the maintainer's decision
+  of 2026-11-18, `export::beads_readable`), as
   Python's `True` until roll-lqjj.53.2), as histories
   written before `write_problem` had it, while writes refuse one; a lone surrogate in a line,
   escaped or raw, is not UTF-8 (until roll-lqjj.53 it read as one U+FFFD and was reported); a

@@ -156,3 +156,44 @@ fn dry_run_preserves_problem_phases_and_first_record_numbers() {
         ]
     );
 }
+
+/// An export of a history written before writes refused a boolean priority or an estimate out of
+/// range is one bead's own import takes back, as a Beads reader does: the priority as its number,
+/// the estimate left out, every other field as it was.
+#[test]
+fn an_export_of_legacy_integers_is_imported_again() {
+    let legacy = state(&[
+        Event::new(&id(1), "init")
+            .data(json!({"prefix": "ex"}))
+            .json(),
+        Event::new(&id(2), "create")
+            .deps(&[&id(1)])
+            .data(json!({
+                "key": "ex-old",
+                "fields": {"title": "old", "priority": true, "estimated_minutes": (-7)}
+            }))
+            .json(),
+    ]);
+    let records = legacy.hydrated().unwrap().export_records();
+    let exported = &records[0];
+    assert_eq!(exported["priority"], json!(1), "{exported:?}");
+    assert!(exported.get("estimated_minutes").is_none(), "{exported:?}");
+    assert_eq!(exported["title"], json!("old"));
+    let text: String = (records.iter())
+        .map(|record| {
+            beadroll_core::json::write(
+                &Value::from(record.clone()),
+                beadroll_core::json::Format::COMPACT,
+            )
+            .unwrap()
+                + "\n"
+        })
+        .collect();
+    // into a tracker of its own, which holds none of it yet
+    let fresh = state(&[Event::new(&id(9), "init")
+        .data(json!({"prefix": "ex"}))
+        .json()]);
+    assert!(problems(&fresh, &text, "f").is_empty(), "{text}");
+    let plan = plan_import(&fresh, &read_records(&text, "f").unwrap()).unwrap();
+    assert_eq!(plan.imported, 1);
+}

@@ -43,3 +43,50 @@ fn extra_cannot_override_canonical_export_fields() {
             .is_none_or(|comments| comments.as_array().is_some())
     );
 }
+
+/// A deleted issue exports its deletion (`deleted_at`, `deleted_by`, `delete_reason`); reopened, it
+/// is alive again, and its record says nothing of the delete a Beads reader would take it for.
+#[test]
+fn a_reopened_issue_exports_no_deletion() {
+    let id = |n: u64| format!("019a4444-4444-7000-8000-{n:012x}");
+    let event = |n: u64, op: &str, issue: u64, data: beadroll_test_support::Json| {
+        let deps: Vec<beadroll_test_support::Json> = (1..n)
+            .last()
+            .map(|before| json!(id(before)))
+            .into_iter()
+            .collect();
+        json!({
+            "v": 1, "id": (id(n)), "replica": "peer", "deps": (beadroll_test_support::Json::Array(deps)),
+            "actor": {"agent": "test", "thread": "peer"}, "op": op, "issue": (id(issue)), "data": data
+        })
+    };
+    let history = [
+        event(1, "init", 1, json!({"prefix": "ex", "name": "test"})),
+        event(
+            2,
+            "create",
+            2,
+            json!({"key": "ex-one", "fields": {"title": "one"}}),
+        ),
+        event(3, "delete", 2, json!({"reason": "duplicate"})),
+    ];
+    let exported = |events: &[beadroll_test_support::Json]| {
+        let mut journal = Journal::new();
+        for event in events {
+            journal.add(event.clone(), "peer", "", JournalOrder::Sequenced);
+        }
+        let state = replay(journal).unwrap();
+        state.hydrated().unwrap().export_records().remove(0)
+    };
+    let deleted = exported(&history);
+    assert_eq!(deleted["status"], json!("tombstone"));
+    assert_eq!(deleted["delete_reason"], json!("duplicate"));
+    assert!(deleted.get("deleted_at").is_some(), "{deleted:?}");
+    let mut reopened = history.to_vec();
+    reopened.push(event(4, "reopen", 2, json!({})));
+    let alive = exported(&reopened);
+    assert_eq!(alive["status"], json!("open"));
+    for member in ["deleted_at", "deleted_by", "delete_reason"] {
+        assert!(alive.get(member).is_none(), "{member} in {alive:?}");
+    }
+}
