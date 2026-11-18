@@ -288,6 +288,17 @@ mod tests {
         git(&env, &["checkout", "-q", "-b", "moved"]);
         let branch = head_and_branch(&env).unwrap().branch.unwrap();
         assert_eq!(branch.stdout, b"moved\n");
+        // and the new commit once one is made there, HEAD read again too
+        let identity = crate::testing::IDENTITY;
+        git(
+            &env,
+            &identity
+                .into_iter()
+                .chain(["commit", "-q", "--allow-empty", "-m", "n"])
+                .collect::<Vec<_>>(),
+        );
+        let committed = env.git(["rev-parse", "HEAD"]).run().unwrap();
+        assert_eq!(head_and_branch(&env).unwrap().head, committed);
     }
 
     #[test]

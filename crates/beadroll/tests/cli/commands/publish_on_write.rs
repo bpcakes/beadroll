@@ -25,7 +25,7 @@ fn listed(machine: &Machine, field: &str) -> Vec<String> {
 }
 
 #[test]
-fn writes_reach_the_other_machine_without_a_sync() {
+fn writes_reach_the_other_machine_without_the_writer_syncing() {
     let sandbox = crate::sandbox();
     let (a, b) = set_up(&sandbox);
     let x = printed_id(a.bead(["create", "x"]));

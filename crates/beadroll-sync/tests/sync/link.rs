@@ -47,7 +47,7 @@ fn the_gits_a_link_keeps_end_with_it() {
 /// ref writer for the next fetch. A failed bookkeeping transaction still has the established
 /// best-effort fallback: a locked remote ref does not turn a successful fetch into a failure.
 #[test]
-fn fetched_heads_are_kept_and_temporary_refs_removed_even_after_a_failed_transaction() {
+fn fetched_heads_are_kept_temporary_refs_removed_and_failed_bookkeeping_fails_no_fetch() {
     let sandbox = sandbox();
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
