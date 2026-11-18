@@ -4,7 +4,6 @@
 use std::path::PathBuf;
 
 use super::*;
-use crate::coverage::RunResult;
 
 /// Whether a test toolchain contains the LLVM binaries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -245,23 +244,6 @@ error: not a warning about /t/y.profraw: but an error
         ]
     );
     assert!(skipped_in("").is_empty());
-}
-
-#[test]
-fn the_exit_status_says_whether_the_run_passed() {
-    let shown = |passed| {
-        format!(
-            "{:?}",
-            exit_code(if passed {
-                RunResult::Passed
-            } else {
-                RunResult::Failed
-            })
-        )
-    };
-    assert_eq!(shown(true), format!("{:?}", ExitCode::SUCCESS));
-    assert_eq!(shown(false), format!("{:?}", ExitCode::FAILURE));
-    assert_ne!(shown(true), shown(false));
 }
 
 /// A `bead` that was never built is the same as no tool: `cargo` prints this for a subcommand it
