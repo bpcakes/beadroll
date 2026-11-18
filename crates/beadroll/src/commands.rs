@@ -76,7 +76,7 @@ pub(crate) use list::{FilterArgs, ListArgs, ReadyArgs, list, ready};
 pub(crate) use ownership::{OwnershipArgs, claim, release, takeover};
 pub(crate) use queries::{blocked, lint, search};
 pub(crate) use recap::{Layout, RecapArgs, recap};
-pub(crate) use select::{Filters, first, row, select};
+pub(crate) use select::{Filters, first, listed, row, select};
 pub(crate) use show::show;
 pub(crate) use sync::sync;
 pub(crate) use transition::{Transition, TransitionArgs, transition};

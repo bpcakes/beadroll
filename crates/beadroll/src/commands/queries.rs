@@ -8,7 +8,7 @@ use beadroll_core::state::Issue;
 use beadroll_core::text::str_of;
 use beadroll_store::{view, view_outline};
 
-use super::{Context, Failure, Line, Outcome, Tone, need_tracker, row};
+use super::{Context, Failure, Line, Outcome, Tone, listed, need_tracker, row};
 use crate::commands::SearchScope;
 
 /// Open issues something holds back, by key, each with the issues blocking it: every issue's
@@ -92,11 +92,7 @@ pub(crate) fn search(
             .cmp(&b.priority())
             .then_with(|| a.key().cmp(b.key()))
     });
-    let result = Value::Array(hits.iter().map(|i| Value::from(st.brief(i))).collect());
-    let mut lines: Vec<Line> = hits.iter().map(|i| row(&st, i)).collect();
-    if lines.is_empty() {
-        lines.push("No matches".into());
-    }
+    let (result, lines) = listed(&st, &hits, "No matches");
     Ok(Outcome::new(result, lines).answered_from(st))
 }
 
