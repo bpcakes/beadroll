@@ -444,7 +444,7 @@ impl State {
 }
 
 /// An event's actor label: its explicit name, else agent:thread@machine or agent@machine.
-pub fn actor_of(event: &Event) -> String {
+pub(crate) fn actor_of(event: &Event) -> String {
     actor_label(event.actor(), event.replica())
 }
 

@@ -13,7 +13,7 @@ use crate::text::strip_bytes;
 /// Reads one journal or attempt line. A line that is not strict JSON (not UTF-8, a lone
 /// surrogate, a number beyond a float, nesting beyond [`json::MAX_DEPTH`]) is an error the
 /// caller reports.
-pub fn loads_line(line: &[u8]) -> Result<Value, ParseError> {
+fn loads_line(line: &[u8]) -> Result<Value, ParseError> {
     json::parse(line).map(|parsed| parsed.value)
 }
 
