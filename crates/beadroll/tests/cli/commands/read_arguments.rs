@@ -273,3 +273,31 @@ fn removing_a_label_the_issue_does_not_have_writes_nothing() {
         "{shown:?}"
     );
 }
+
+/// A missing argument reads as clap means it, `not provided: <ID>...`, never `provided:; <ID>`;
+/// `comments add` with nothing after it gives `add`'s own syntax, not a pointer to the `add` typed.
+#[test]
+fn missing_arguments_say_what_is_missing_and_how_to_give_it() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    machine.bead(["init", "--prefix", "ex"]);
+    let claim = machine.run(["claim", "--json"]);
+    assert_eq!(code(&claim), "USAGE", "{}", claim.stderr);
+    assert!(
+        claim.stderr.contains("not provided: <ID>"),
+        "{}",
+        claim.stderr
+    );
+    let add = machine.run(["comments", "add", "--json"]);
+    assert_eq!(code(&add), "VALIDATION", "{}", add.stderr);
+    assert!(
+        add.stderr.contains("usage: bead comments add ISSUE TEXT"),
+        "{}",
+        add.stderr
+    );
+    assert!(
+        !add.stderr.contains("to add a comment, use"),
+        "{}",
+        add.stderr
+    );
+}

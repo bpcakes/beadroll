@@ -196,6 +196,9 @@ fn write_tracked(ws: &Workspace, remote: Option<&OsStr>, id: WorkspaceId) -> Res
     let workspace = match config.get("workspace") {
         Some(value) if value.truthy() => value.clone(),
         _ if id == WorkspaceId::Keep => Value::from(ws.id.as_str()),
+        // the workspace `BEAD_WORKSPACE` names is the one this init starts: the file names it,
+        // never a new id that no tracker has
+        _ if settings.var("BEAD_WORKSPACE").is_some() => Value::from(ws.id.as_str()),
         _ => Value::from(uuid7(&settings.clock)),
     };
     config.insert("workspace".into(), workspace);

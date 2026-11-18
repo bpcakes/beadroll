@@ -427,12 +427,20 @@ fn usage(error: &clap::Error, args: &[OsString]) -> Usage {
         Some(at) => (&body[..at], body[at + 2..].trim_end()),
         None => (body, ""),
     };
-    let said = said
+    // clap's lines as one: a line that ends introducing the next (`not provided:`) runs on into it,
+    // others are parted by `; `
+    let mut said_once = String::new();
+    for line in said
         .split('\n')
         .map(str::trim)
         .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("; ");
+    {
+        if !said_once.is_empty() {
+            said_once.push_str(if said_once.ends_with(':') { " " } else { "; " });
+        }
+        said_once.push_str(line);
+    }
+    let said = said_once;
     let mut message = said.into_bytes();
     for arg in args.iter().filter(|arg| arg.to_str().is_none()) {
         let shown = String::from_utf8_lossy(arg.as_bytes());

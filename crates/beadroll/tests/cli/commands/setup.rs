@@ -515,3 +515,21 @@ fn an_adopted_tracker_does_not_remember_origin_by_its_push_url() {
     let meta = parse_json(&std::fs::read_to_string(meta).expect("a meta.json")).expect("JSON");
     assert_eq!(meta.get("remote"), None, "{meta:?}");
 }
+
+/// `init --tracked` under `BEAD_WORKSPACE` writes the workspace that variable named, the tracker
+/// this init starts, never a new id no tracker has: without the variable, the checkout still finds
+/// its tracker.
+#[test]
+fn init_tracked_writes_the_workspace_bead_workspace_named() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let started = a
+        .cmd(["init", "--tracked", "--prefix", "ex", "--json"])
+        .env("BEAD_WORKSPACE", "chosen-ws")
+        .run();
+    assert_eq!(started.returncode(), 0, "{}", started.stderr);
+    assert_eq!(tracked_file(&a)["workspace"].as_str(), Some("chosen-ws"));
+    let made = a.run(["create", "found again", "--json"]);
+    assert_eq!(made.returncode(), 0, "{}", made.stderr);
+    assert_eq!(workspace(&a), "chosen-ws");
+}

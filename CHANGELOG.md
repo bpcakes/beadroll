@@ -6,6 +6,15 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A claiming command the remote refuses (`update --claim --notes …`, `claim`, `release`) says it
+  was not recorded, nor the edits made with it, and to run it again; it said "nothing was lost",
+  which an agent read as its notes being safe.
+- `init --tracked` under `BEAD_WORKSPACE` writes that workspace to `.beadroll.json`, the tracker
+  it starts; it wrote a new id no tracker had, so the checkout lost its tracker without the
+  variable.
+- A missing argument reads `…not provided: <ID>...`, and `comments add` with nothing after it gives
+  `add`'s own syntax.
+
 - `init --import FILE` without `--prefix` takes the prefix the records share, so issues made after
   the migration join the imported ones; it took the repository's name, leaving `bd-*` beside
   `repo-*`. Records under several prefixes are refused, asking for `--prefix`.
