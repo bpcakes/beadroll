@@ -466,7 +466,9 @@ it, and the file is committed again.
   publishes an owner's close immediately, like `bead close`; `--parent` refuses a
   loop, like `dep add`. So does `create`, whether it names the new issue's parent by
   `--parent` or as a `parent-child` dependency in `--deps`.
-- Exported Beads comment ids: an imported comment keeps its id; a comment made
+- Exported Beads comment ids: an imported comment keeps its id, unless a
+  comment made here derived the same one, when the imported one moves on to the
+  next free number; a comment made
   here exports an integer derived from its event id (48 bits, from 2^47), so
   every machine and every later export agrees. Two such comments sharing a
   number is a one-in-10^14 event; if it happens, the tie is broken by the ids

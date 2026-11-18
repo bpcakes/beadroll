@@ -78,11 +78,11 @@ fn a_parent_change_cannot_form_a_loop() {
     assert_eq!(cycles["count"].as_i64(), Some(0));
 }
 
-/// A new issue whose parent, given as a `parent-child` dependency rather than by `--parent`,
-/// already waits on one of its blocking dependencies would close a loop through it: refused as a
-/// cycle, as `dep add` refuses the same edge, and no loop left behind.
+/// A new issue whose parent, named by `--parent` or as a `parent-child` dependency, already waits on
+/// one of its blocking dependencies would close a loop through it: refused as a cycle, as `dep add`
+/// refuses the same edge, and no loop left behind (AT03).
 #[test]
-fn a_new_issue_cannot_close_a_loop_through_a_parent_child_dependency() {
+fn a_new_issue_cannot_close_a_loop_through_its_parent() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
@@ -90,11 +90,20 @@ fn a_new_issue_cannot_close_a_loop_through_a_parent_child_dependency() {
     let y = json_id(&a.bead(["create", "y"]).expect("y"));
     a.bead(["dep", "add", &y, &x]); // y waits for x
     // x as the new issue's parent waits for it, and it waits for y
-    let deps = format!("parent-child:{x},blocks:{y}");
-    let looped = a.run(["create", "new", "--deps", &deps, "--json"]);
-    assert_eq!(code(&looped), "CYCLE", "{}", looped.stdout);
-    let cycles = a.bead(["dep", "cycles"]).expect("the cycles");
-    assert_eq!(cycles["count"].as_i64(), Some(0), "{cycles:?}");
+    let as_dependency = format!("parent-child:{x},blocks:{y}");
+    let blocking = format!("blocks:{y}");
+    let ways: [&[&str]; 2] = [
+        &["create", "new", "--deps", &as_dependency, "--json"],
+        &[
+            "create", "new", "--parent", &x, "--deps", &blocking, "--json",
+        ],
+    ];
+    for args in ways {
+        let looped = a.run(args);
+        assert_eq!(code(&looped), "CYCLE", "{args:?}: {}", looped.stdout);
+        let cycles = a.bead(["dep", "cycles"]).expect("the cycles");
+        assert_eq!(cycles["count"].as_i64(), Some(0), "{args:?}: {cycles:?}");
+    }
 }
 
 /// `dep add`, `dep remove` and `dep rm` each answer with the action by the word that asked for it,

@@ -68,6 +68,31 @@ fn cycle_enumerator_matches_every_graph_through_four_nodes() {
     }
 }
 
+/// `dep cycles` lists up to 200 elementary cycles: a complete digraph on six nodes has 409, and
+/// the enumerator stops at 200, each a real one and none twice.
+#[test]
+fn cycle_enumerator_stops_at_two_hundred() {
+    let size = 6;
+    let edges: Vec<BTreeSet<usize>> = (0..size)
+        .map(|source| (0..size).filter(|target| *target != source).collect())
+        .collect();
+    let every = brute_force(size, &edges);
+    assert_eq!(every.len(), 409);
+    let nodes: Vec<String> = (0..size).map(|n| n.to_string()).collect();
+    let follow = |uid: &String| -> Vec<String> {
+        let source = uid.parse::<usize>().unwrap();
+        edges[source].iter().map(usize::to_string).collect()
+    };
+    let found = find_cycles(&nodes, &follow);
+    assert_eq!(found.len(), 200);
+    let distinct: BTreeSet<Vec<String>> = found.into_iter().collect();
+    assert_eq!(distinct.len(), 200, "a cycle listed twice");
+    assert!(
+        distinct.is_subset(&every),
+        "a listed cycle is not an elementary one"
+    );
+}
+
 #[test]
 fn cycle_scan_reports_each_elementary_cycle() {
     let mut f = actors::Fixture::new();
