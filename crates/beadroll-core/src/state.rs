@@ -190,6 +190,12 @@ impl State {
         self.prefix.as_ref()
     }
 
+    /// The prefix as a key is made of it: `str_of` of it, and `None` for a tracker no `init` named,
+    /// as Python's f-string made such keys (`docs/REVIEWING.md` §2, CPython's semantics).
+    pub fn key_prefix(&self) -> String {
+        str_of(self.prefix.as_ref().unwrap_or(&Value::Null))
+    }
+
     /// The tracker's name, set with its prefix.
     pub fn name(&self) -> Option<&Value> {
         self.name.as_ref()
@@ -269,13 +275,8 @@ impl State {
 
     /// The issue named by a full key or bare suffix.
     pub fn resolve(&self, key: &str) -> Option<&Issue> {
-        let uid = self.by_key.get(key).or_else(|| {
-            let prefix = self
-                .prefix
-                .as_ref()
-                .map_or_else(|| "None".to_owned(), str_of);
-            self.by_key.get(&format!("{prefix}-{key}"))
-        })?;
+        let uid = (self.by_key.get(key))
+            .or_else(|| self.by_key.get(&format!("{}-{key}", self.key_prefix())))?;
         self.issue(*uid)
     }
 
@@ -360,11 +361,7 @@ impl State {
     pub fn mint_key(&self, seed: &str, parent: Option<&Issue>) -> Result<String, key::MintError> {
         let taken = self.claimed_keys();
         let taken: Vec<&str> = taken.into_iter().collect();
-        let prefix = self
-            .prefix
-            .as_ref()
-            .map_or_else(|| "None".to_owned(), str_of);
-        key::mint_key(&prefix, seed, parent.map(Issue::key), &taken)
+        key::mint_key(&self.key_prefix(), seed, parent.map(Issue::key), &taken)
     }
 
     /// The children of `uid`: issues with a parent-child edge to it, in replay order.
