@@ -243,7 +243,12 @@ fn relations(item: &Object) -> Vec<String> {
                     let value = o.get("value").unwrap_or(&Value::Null);
                     let shown = json::write(value, Format::COMPACT)
                         .unwrap_or_else(|_| format!("{value:?}"));
-                    format!("{shown} by {}", text_of(o, "by"))
+                    // a close's reason, which is what two closes are told apart by
+                    let reason = match o.get("close_reason") {
+                        Some(reason) => format!(" ({})", str_of(reason)),
+                        None => String::new(),
+                    };
+                    format!("{shown}{reason} by {}", text_of(o, "by"))
                 })
                 .collect();
             lines.push(format!(

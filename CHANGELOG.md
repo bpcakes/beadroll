@@ -6,6 +6,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Two machines closing one issue with different reasons, neither seeing the other's, dispute its
+  status, as different statuses do: `show` lists each close with its reason (`close_reason` on each
+  alternative in `--json`), what depends on the issue is not ready, and a close made after seeing
+  both settles it. The later event's reason won silently, dropping the other from `show` and
+  `export`.
+
 - An online `create --parent` answers the key its own publish settled: when another machine's
   child of that number was published first, it printed that child's key, so a comment or a commit
   message meant for the new issue named the other.

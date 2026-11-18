@@ -103,16 +103,19 @@ pub(crate) const BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 /// (`export::beads_readable`): the export's answers alone changed. The four of the histories were
 /// made again, with the `edges/answers` they pin, where a done issue's detail stopped saying it
 /// is `blocked` and an export began giving a dependency waiting for its key br's six members: those
-/// answers alone changed, as each changed line of the fixtures' pinned answers shows.
-pub(crate) const DIFFERENTIAL: u64 = 0xb1ed_3b84_6589_fa8e;
+/// answers alone changed, as each changed line of the fixtures' pinned answers shows. All five were
+/// made again where two closes with different reasons became a status conflict (`query::split`),
+/// whose alternatives give each `close_reason`: the histories' concurrent closes now dispute the
+/// status, and the fixtures' pinned answers changed only by an existing conflict's reasons.
+pub(crate) const DIFFERENTIAL: u64 = 0xded8_aca6_100c_db24;
 /// See [`DIFFERENTIAL`].
-pub(crate) const FLAWED: u64 = 0xd75f_1d8b_b39f_3d0a;
+pub(crate) const FLAWED: u64 = 0xb1f6_ddca_3823_a4ae;
 /// See [`DIFFERENTIAL`].
-pub(crate) const DELIVERED: u64 = 0x3de9_2322_25d3_167e;
+pub(crate) const DELIVERED: u64 = 0x8eff_3790_b1bd_fee7;
 /// See [`DIFFERENTIAL`].
-pub(crate) const DELIVERED_FLAWED: u64 = 0x87f0_6944_7c1b_d661;
+pub(crate) const DELIVERED_FLAWED: u64 = 0x8d53_da17_becc_8858;
 /// See [`DIFFERENTIAL`]: of the world of [`next_batch`].
-const OWNED: u64 = 0xca2f_f808_17d9_9d1a;
+const OWNED: u64 = 0x616a_347f_a435_210a;
 
 /// What replay answered at 9cbd60a of the issues of the journals of three stores bead built: the
 /// golden tracker and the fleet of two machines `shown` pins the fields of ([`FIXTURES`]), and two

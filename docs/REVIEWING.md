@@ -145,6 +145,14 @@ agents and tests match parts of them; `bead prime` lists the codes.
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
+- Two closes (or a close and a delete) that did not see each other and give different reasons
+  dispute the status, as two different statuses do (`query::split` compares a done status with its
+  `close_reason`, never its `closed_at`, which two closes give apart always): the issue is not done
+  until a close made after seeing both settles it, so what depends on it is not ready and its claim
+  is held up meanwhile. The maintainer chose this on 2026-11-18 over keeping the larger event's
+  reason silently, which `show` and `export` did while `recap` kept the other. Each alternative of
+  the conflict carries its `close_reason`; closes with the same reason agree.
+
 - A missing `add` is an error when a `comments` or `dep` read has extra positional
   arguments or writing options (AS18, roll-23jk.7). The maintainer approved this
   compatibility change on 2026-11-11: such calls previously exited successfully while
