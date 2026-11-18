@@ -90,3 +90,24 @@ fn an_unreadable_numeric_setting_refuses_even_version() {
         assert_eq!(fine.returncode(), 0, "{flag}: {}", fine.stderr);
     }
 }
+
+/// A `.beadroll.json` that cannot be read, a directory here, is `IO` naming it, not a file whose
+/// JSON is wrong (`CONFIG`), which a file that does not parse still is.
+#[test]
+fn an_unreadable_tracked_file_is_io_not_bad_json() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    let tracked = machine.checkout().join(".beadroll.json");
+    std::fs::create_dir(&tracked).expect("a directory where the file goes");
+    let refused = machine.run(["info", "--json"]);
+    assert_eq!(code(&refused), "IO", "{}", refused.stderr);
+    assert!(
+        refused.stderr.contains(".beadroll.json"),
+        "{}",
+        refused.stderr
+    );
+    std::fs::remove_dir(&tracked).expect("the directory gone");
+    std::fs::write(&tracked, "{").expect("a file that does not parse");
+    let refused = machine.run(["info", "--json"]);
+    assert_eq!(code(&refused), "CONFIG", "{}", refused.stderr);
+}

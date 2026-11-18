@@ -85,7 +85,9 @@ pub(super) fn sync_round(ws: &Workspace, link: &mut Link<'_>, report: SyncReport
                     PushOutcome::Ok => {
                         // Absent at a head we just advanced: they can never land.
                         drop_pending(ws, &load_pending(ws)?)?;
-                        let repacked = link.maintain()?;
+                        // the publication took effect: maintenance that fails leaves sync.git
+                        // unpacked for the next sync, never this one failed
+                        let repacked = link.maintain().unwrap_or(false);
                         // Later offline writes must not be counted as part of this publication.
                         let counts = link.published_counts()?;
                         Ok(Some((pushed, repacked, counts)))

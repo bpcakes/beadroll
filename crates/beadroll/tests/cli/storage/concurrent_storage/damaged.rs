@@ -175,6 +175,45 @@ fn rewritten_foreign_file_preserves_local_backup_and_published_bytes() {
     assert_eq!(a.export(), b.export());
 }
 
+/// A file forked twice keeps both copies: the backup is named by the real clock, which the `clock`
+/// failpoint does not stop, so a second fork at the same event time never overwrites the first.
+#[test]
+fn a_file_forked_twice_keeps_both_copies_whatever_the_event_clock() {
+    let sandbox = crate::sandbox();
+    let (a, _) = set_up(&sandbox, crate::rust_only);
+    let b = two(&sandbox, &a, crate::rust_only);
+    let segment = segment(&a);
+    let relative = relative(&segment, &a);
+    let foreign = b.store().join(&relative);
+    let original = bytes(&foreign);
+    let pinned = "clock@always=at(1800000000000000000)";
+    for n in 1..=2 {
+        // diverged, not extended: the last event retitled, as a damaged copy is
+        let text = String::from_utf8(original.clone()).expect("a segment is UTF-8");
+        let mut rows: Vec<Json> = (text.lines())
+            .map(|line| parse_json(line).expect("an event"))
+            .collect();
+        retitle(
+            rows.last_mut().expect("the last event"),
+            &format!("changed here {n}"),
+        );
+        let changed = json_lines(&rows);
+        std::fs::write(&foreign, &changed).expect("the changed copy");
+        let synced = b
+            .cmd(["sync", "--json"])
+            .env("BEAD_FAILPOINTS", pinned)
+            .run();
+        assert_eq!(synced.returncode(), 0, "{n}: {}", synced.stderr);
+        assert_eq!(
+            bytes(&foreign),
+            original,
+            "{n}: the remote's copy did not win"
+        );
+    }
+    let kept = named(parent(&foreign), ".fork-");
+    assert_eq!(kept.len(), 2, "{kept:?}");
+}
+
 /// An attempt file is immutable once accepted: a confirmed copy changed here is replaced by the
 /// remote's on the next sync, the changed bytes kept beside it as `*.fork-*` and reported.
 #[test]

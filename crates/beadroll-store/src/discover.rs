@@ -9,8 +9,8 @@ use crate::layout;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::text::repr_str;
 use beadroll_git::{
-    Fact, Git, Object as GitObject, Output, batch_answers, is_local_path, normalize_remote,
-    realpath,
+    Fact, Git, IoError, Object as GitObject, Output, batch_answers, is_local_path,
+    normalize_remote, realpath,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -346,14 +346,11 @@ pub fn find_workspace(settings: &Arc<Settings>) -> Result<Workspace, Error> {
     let config = match &tracked_file {
         Some(file) if file.exists() => {
             let shown = file.display().to_string();
-            let config = match std::fs::read(file)
-                .ok()
-                .and_then(|bytes| beadroll_core::configuration::read(&bytes).ok())
-            {
-                Some(value) => value,
-                None => {
-                    return Err(Error::Config(format!("{shown} is not valid JSON")));
-                }
+            // a file that cannot be read (a directory, no permission) is that, with its path, not
+            // a file whose JSON is wrong
+            let bytes = std::fs::read(file).map_err(|error| IoError::at(&error, file))?;
+            let Ok(config) = beadroll_core::configuration::read(&bytes) else {
+                return Err(Error::Config(format!("{shown} is not valid JSON")));
             };
             checked_config(config, &shown)?
         }

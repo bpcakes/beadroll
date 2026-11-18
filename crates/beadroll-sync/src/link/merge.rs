@@ -57,7 +57,7 @@ fn segment_shaped(path: &str) -> bool {
 /// `NAME.fork-<ns>` beside `target`.
 fn fork_path(link: &Link<'_>, target: &Path) -> PathBuf {
     let name = target.file_name().unwrap_or_default().to_string_lossy();
-    target.with_file_name(format!("{name}.fork-{}", link.ws.settings.clock.now_ns()))
+    target.with_file_name(format!("{name}.fork-{}", link.ws.settings.clock.real_ns()))
 }
 
 /// The filename without its final suffix.

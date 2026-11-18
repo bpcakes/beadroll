@@ -178,7 +178,7 @@ pub fn repair_tail(ws: &Workspace, path: &Path) -> Result<(), Error> {
     if !fixed.starts_with(&data) {
         // an incomplete fragment, not just a missing newline
         let name = path.file_name().unwrap_or_default().to_string_lossy();
-        let torn = path.with_file_name(format!("{name}.torn-{}", ws.settings.clock.now_ns()));
+        let torn = path.with_file_name(format!("{name}.torn-{}", ws.settings.clock.real_ns()));
         write_atomic(
             &torn,
             &data[fixed.len()..],
