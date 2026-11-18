@@ -120,6 +120,50 @@ impl Sandbox {
         &self.origin
     }
 
+    /// What `git --git-dir ORIGIN ARGS` printed, run on the bare remote as [`git`] runs git: a
+    /// failure panics with git's standard error.
+    pub fn origin_git<I, S>(&self, args: I) -> String
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let at = [OsStr::new("--git-dir"), self.origin.as_os_str()];
+        git(
+            at.into_iter()
+                .map(OsStr::to_owned)
+                .chain(args.into_iter().map(|a| a.as_ref().to_owned())),
+            None,
+        )
+    }
+
+    /// The commit the remote's `refs/beads/journal` names, or `None` when it names none: no
+    /// publish has reached it yet. Any other failure of git's panics, so that it is never taken
+    /// for a remote without a journal.
+    pub fn remote_journal(&self) -> Option<String> {
+        let output = git_command()
+            .arg("--git-dir")
+            .arg(&self.origin)
+            .args(["rev-parse", "--verify", "--quiet", "refs/beads/journal"])
+            .stdin(Stdio::null())
+            .output()
+            .expect("git starts");
+        match output.status.code() {
+            Some(0) => Some(
+                String::from_utf8(output.stdout)
+                    .expect("a commit id")
+                    .trim()
+                    .to_owned(),
+            ),
+            // --verify --quiet: the ref does not exist, and git says nothing
+            Some(1) if output.stdout.is_empty() => None,
+            _ => panic!(
+                "git rev-parse refs/beads/journal on the remote failed ({}): {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        }
+    }
+
     /// The `bead` this sandbox's machines run unless they have their own.
     pub fn bead(&self) -> &Path {
         &self.bead
@@ -230,6 +274,33 @@ mod tests {
             .map(|(name, value)| (name.to_str().unwrap(), value.is_none()))
             .collect();
         assert_eq!(removed, [("GIT_DIR", true), ("GIT_INDEX_FILE", true)]);
+    }
+
+    /// A remote no publish reached has no journal; one whose `refs/beads/journal` names a commit
+    /// answers that commit; a remote git cannot read at all panics, never passing for one without
+    /// a journal.
+    #[test]
+    fn the_remote_journal_is_its_commit_or_none_and_a_broken_remote_panics() {
+        let sandbox = Sandbox::selecting("/bin/sh", None);
+        assert_eq!(sandbox.remote_journal(), None);
+        let tree = sandbox.origin_git(["hash-object", "-t", "tree", "-w", "/dev/null"]);
+        let identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
+        let commit =
+            sandbox.origin_git(
+                identity
+                    .into_iter()
+                    .chain(["commit-tree", tree.trim(), "-m", "j"]),
+            );
+        let commit = commit.trim();
+        sandbox.origin_git(["update-ref", "refs/beads/journal", commit]);
+        assert_eq!(sandbox.remote_journal().as_deref(), Some(commit));
+        std::fs::remove_dir_all(sandbox.origin()).unwrap();
+        std::fs::create_dir(sandbox.origin()).unwrap();
+        let broken = std::panic::catch_unwind(|| sandbox.remote_journal());
+        assert!(
+            broken.is_err(),
+            "a remote that is no repository answered {broken:?}"
+        );
     }
 
     #[test]

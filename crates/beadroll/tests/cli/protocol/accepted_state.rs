@@ -313,19 +313,14 @@ fn future_manifest_is_refused_without_remote_rewrite() {
         ["push", "-q", "--force", "origin", "HEAD:refs/beads/journal"],
         at,
     );
-    let origin = sandbox.origin().to_str().expect("a UTF-8 path");
-    // Runs git against the sandbox's bare remote.
-    let at_origin = |args: &[&str]| git(["--git-dir", origin].iter().chain(args), None);
-    let future_tip = at_origin(&["rev-parse", "refs/beads/journal"]);
-    let future_tip = future_tip.trim();
+    let future_tip = sandbox.remote_journal().expect("the future journal");
 
     let fresh = Machine::new(&sandbox, "q04-fresh");
     let result = fresh.run(["sync", "--json"]);
-    let after = at_origin(&["rev-parse", "refs/beads/journal"]);
-    let after = after.trim();
-    let listing = at_origin(&["ls-tree", "-r", "--name-only", after]);
+    let after = sandbox.remote_journal().expect("a journal");
+    let listing = sandbox.origin_git(["ls-tree", "-r", "--name-only", after.as_str()]);
     let names = splitlines(&listing);
-    let shown = at_origin(&["show", &format!("{after}:manifest.json")]);
+    let shown = sandbox.origin_git(["show", format!("{after}:manifest.json").as_str()]);
     let manifest = parse_json(&shown).expect("the manifest is JSON");
     assert_ne!(
         result.returncode(),

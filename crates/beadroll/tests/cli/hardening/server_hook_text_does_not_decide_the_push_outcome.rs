@@ -28,18 +28,6 @@ fn install_post_receive(sandbox: &Sandbox, gate: &Path) {
     executable(&hook, lines.join("\n") + "\n");
 }
 
-/// The commit the remote's `refs/beads/journal` names, as `git rev-parse`
-/// prints it; nothing when it names none.
-fn remote_head(sandbox: &Sandbox) -> String {
-    let output = beadroll_test_support::git_command()
-        .arg("--git-dir")
-        .arg(sandbox.origin())
-        .args(["rev-parse", "refs/beads/journal"])
-        .output()
-        .expect("git starts");
-    String::from_utf8_lossy(&output.stdout).trim().to_owned()
-}
-
 /// Machine `g11` (made by `make`) has initialised tracker `ex`, created
 /// the issue `one` and synced. Returns the machine and the issue's key.
 fn set_up(sandbox: &Sandbox, make: fn(&Sandbox, &str) -> Machine) -> (Machine, String) {
@@ -63,11 +51,11 @@ fn applied_release_is_not_reported_not_owner_because_a_hook_printed_rejected() {
     a.bead(["claim", &key]);
     let gate = sandbox.root().join("g11-hook-fired");
     install_post_receive(&sandbox, &gate);
-    let before = remote_head(&sandbox);
+    let before = sandbox.remote_journal();
     let released = a.run(["release", &key, "--json"]);
     assert!(gate.exists(), "the post-receive hook did not run");
     assert_ne!(
-        remote_head(&sandbox),
+        sandbox.remote_journal(),
         before,
         "the release did not reach the remote"
     );

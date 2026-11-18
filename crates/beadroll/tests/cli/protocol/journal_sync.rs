@@ -11,10 +11,10 @@ mod remote_ref;
 mod segments;
 mod stalls;
 
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use beadroll_test_support::{Machine, Sandbox, executable, git, git_on_path, shell_quoted};
+use beadroll_test_support::{Machine, Sandbox, executable, git_on_path, shell_quoted};
 
 /// Where a test wrapper pauses relative to its git command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,15 +79,9 @@ fn jsonl(dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Runs git against the sandbox remote and returns stdout.
-fn remote_git(sandbox: &Sandbox, args: &[&str]) -> String {
-    let words = [OsStr::new("--git-dir"), sandbox.origin().as_os_str()];
-    git(words.into_iter().chain(args.iter().map(OsStr::new)), None)
-}
-
 /// `remote_blob`: the file `path` of the journal as the remote's `refs/beads/journal` holds it.
 fn remote_blob(sandbox: &Sandbox, path: &str) -> String {
-    remote_git(sandbox, &["show", &format!("refs/beads/journal:{path}")])
+    sandbox.origin_git(["show", format!("refs/beads/journal:{path}").as_str()])
 }
 
 /// A git wrapper delays push or fetch for 20 seconds. With `after`, run the operation before

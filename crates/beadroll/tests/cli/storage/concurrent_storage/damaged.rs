@@ -2,14 +2,12 @@
 //! tails, rewritten remote copies and copied machine identities that diverge across rotation.
 //! Commands run through the selected bead binary.
 
-use std::ffi::OsStr;
 use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use beadroll_test_support::{
-    Json, Machine, Sandbox, code, copy_tree, git, json, json_line, json_lines, json_member,
-    parse_json,
+    Json, Machine, code, copy_tree, json, json_line, json_lines, json_member, parse_json,
 };
 
 use super::{segments, set_up, two};
@@ -76,18 +74,6 @@ fn retitle(event: &mut Json, title: &str) {
         }
         other => panic!("{other:?} is not an object"),
     }
-}
-
-/// The commit the remote's coordination ref names:
-/// `git --git-dir ORIGIN rev-parse refs/beads/journal`.
-fn journal_tip(sandbox: &Sandbox) -> String {
-    let args: [&OsStr; 4] = [
-        "--git-dir".as_ref(),
-        sandbox.origin().as_os_str(),
-        "rev-parse".as_ref(),
-        "refs/beads/journal".as_ref(),
-    ];
-    git(args, None)
 }
 
 /// Replay scopes JSON null, but remote_own must use the same validation boundary.
@@ -202,10 +188,10 @@ fn copied_identity_divergence_across_rotation_refuses_remote_change() {
     twin.bead(["update", &key, "--title", "twin branch", "--offline"]);
     a.bead(["update", &key, "--title", "original branch", "--offline"]);
     a.bead(["sync"]);
-    let tip = journal_tip(&sandbox);
+    let tip = sandbox.remote_journal();
     let attempted = twin.run(["sync", "--json"]);
     assert_eq!(code(&attempted), "JOURNAL_FORK");
-    assert_eq!(journal_tip(&sandbox), tip);
+    assert_eq!(sandbox.remote_journal(), tip);
     assert_eq!(
         json_member(&a.show(&key), "title"),
         &json!("original branch")

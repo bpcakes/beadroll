@@ -8,7 +8,7 @@ use std::path::Path;
 use beadroll_sync::ROUNDS;
 use beadroll_test_support::{Machine, Sandbox, code, executable, git_on_path, shell_quoted};
 
-use super::{remote_git, setup, setup_with, two_with};
+use super::{setup, setup_with, two_with};
 
 /// A git wrapper advances the remote journal before every push by adding a commit with the same
 /// tree under identity `audit`, recording each in `counter`. The real push then fails as
@@ -50,17 +50,17 @@ fn remote_rollback_and_deleted_ref_restore_from_surviving_copy() {
     let sandbox = crate::sandbox();
     let (a, _) = setup(&sandbox);
     a.bead(["sync"]);
-    let old_tip = remote_git(&sandbox, &["rev-parse", "refs/beads/journal"]);
+    let old_tip = sandbox.origin_git(["rev-parse", "refs/beads/journal"]);
     let old_tip = old_tip.trim();
     a.bead(["create", "survives rollback"]);
     a.bead(["sync"]);
     let expected = a.export();
-    remote_git(&sandbox, &["update-ref", "refs/beads/journal", old_tip]);
+    sandbox.origin_git(["update-ref", "refs/beads/journal", old_tip]);
     a.bead(["sync"]);
     let b = Machine::new(&sandbox, "b");
     b.bead(["sync"]);
     assert_eq!(b.export(), expected);
-    remote_git(&sandbox, &["update-ref", "-d", "refs/beads/journal"]);
+    sandbox.origin_git(["update-ref", "-d", "refs/beads/journal"]);
     a.bead(["sync"]);
     let c = Machine::new(&sandbox, "c");
     c.bead(["sync"]);
@@ -75,13 +75,10 @@ fn manifest_missing_and_foreign_workspace_are_refused() {
     let sandbox = crate::sandbox();
     let (a, _) = setup(&sandbox);
     a.bead(["sync"]);
-    let code_tip = remote_git(&sandbox, &["rev-parse", "main"]);
-    remote_git(
-        &sandbox,
-        &["update-ref", "refs/beads/journal", code_tip.trim()],
-    );
+    let code_tip = sandbox.origin_git(["rev-parse", "main"]);
+    sandbox.origin_git(["update-ref", "refs/beads/journal", code_tip.trim()]);
     assert_eq!(code(&a.run(["sync", "--json"])), "MANIFEST_MISSING");
-    remote_git(&sandbox, &["update-ref", "-d", "refs/beads/journal"]);
+    sandbox.origin_git(["update-ref", "-d", "refs/beads/journal"]);
     a.bead(["sync"]);
     let elsewhere = a.cmd(["sync", "--json"]);
     let elsewhere = elsewhere.env("BEAD_WORKSPACE", "a-different-workspace");

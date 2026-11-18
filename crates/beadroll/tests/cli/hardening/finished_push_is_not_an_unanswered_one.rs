@@ -3,10 +3,9 @@
 
 use std::ffi::OsString;
 use std::path::PathBuf;
-use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::{Machine, Sandbox, executable};
+use beadroll_test_support::{Machine, executable};
 use rustix::process::{Pid, Signal, kill_process};
 
 /// A transport whose background job keeps git's stderr open after git has
@@ -35,19 +34,6 @@ impl Drop for Helpers {
             }
         }
     }
-}
-
-/// The commit the remote's `refs/beads/journal` names, or nothing when git
-/// cannot say.
-fn remote_head(sandbox: &Sandbox) -> String {
-    let output = beadroll_test_support::git_command()
-        .arg("--git-dir")
-        .arg(sandbox.origin())
-        .args(["rev-parse", "refs/beads/journal"])
-        .stdin(Stdio::null())
-        .output()
-        .unwrap();
-    String::from_utf8(output.stdout).unwrap().trim().to_owned()
 }
 
 /// G58: bead waits for git, not for the end of git's pipes. When a transport helper's
@@ -84,12 +70,12 @@ fn finished_push_is_not_reported_unanswered_when_a_helper_keeps_stderr() {
     // the sync below, under the slow helper, publishes it
     a.bead(["comments", "add", key, "publish me", "--offline"]);
     a.extra.insert("G58_BG_SECONDS".into(), "15".into());
-    let before = remote_head(&sandbox);
+    let before = sandbox.remote_journal();
     let started = Instant::now();
     let synced = a.run(["sync", "--json"]);
     let took = started.elapsed();
     assert_ne!(
-        remote_head(&sandbox),
+        sandbox.remote_journal(),
         before,
         "the push did not reach the remote"
     );
