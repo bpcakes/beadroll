@@ -112,6 +112,17 @@ pub(crate) fn first<T>(items: Vec<T>, limit: &Int) -> Vec<T> {
     items.into_iter().take(keep as usize).collect()
 }
 
+/// `issues` as a listing answers them: each one's brief, in order, and each one's [`row`], or the
+/// single line `empty` when there are none.
+pub(crate) fn listed(st: &State, issues: &[&Issue], empty: &str) -> (Value, Vec<Line>) {
+    let briefs = Value::Array(issues.iter().map(|i| Value::from(st.brief(i))).collect());
+    let mut lines: Vec<Line> = issues.iter().map(|i| row(st, i)).collect();
+    if lines.is_empty() {
+        lines.push(empty.into());
+    }
+    (briefs, lines)
+}
+
 /// An issue's one-line summary ([`State::row`]) as parts: its status icon, id and priority
 /// toned, its type and branch dim, its assignee and any conflict marked.
 pub(crate) fn row(st: &State, issue: &Issue) -> Line {
