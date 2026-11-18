@@ -11,7 +11,7 @@ use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 
 use beadroll_core::json::Value;
-use beadroll_git::{Fact, is_local_path, normalize_remote, realpath, without_password};
+use beadroll_git::{is_local_path, normalize_remote, realpath, without_password};
 
 use super::Workspace;
 use crate::MetadataRead;
@@ -166,9 +166,7 @@ impl Workspace {
                 let base = if typed == RemoteSource::Typed {
                     Some(self.settings.cwd.as_os_str().as_bytes().to_vec())
                 } else {
-                    let top = self.settings.fact(Fact::Toplevel)?;
-                    top.success()
-                        .then(|| beadroll_core::text::strip_bytes(&top.stdout).to_vec())
+                    (self.settings.toplevel()?).map(|top| top.into_os_string().into_vec())
                 };
                 if let Some(base) = base {
                     value = joined(base, &value);
@@ -293,11 +291,10 @@ impl Workspace {
             return Ok(url.to_owned());
         }
         let mut path = url.to_owned();
-        if !url.as_bytes().starts_with(b"/") {
-            let top = self.settings.fact(Fact::Toplevel)?;
-            if top.success() {
-                path = joined(beadroll_core::text::strip_bytes(&top.stdout).to_vec(), url);
-            }
+        if !url.as_bytes().starts_with(b"/")
+            && let Some(top) = self.settings.toplevel()?
+        {
+            path = joined(top.into_os_string().into_vec(), url);
         }
         Ok(realpath(&path, &self.settings.cwd).into_os_string())
     }

@@ -24,12 +24,11 @@ pub use publish::PublishMode;
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
-use std::os::unix::ffi::OsStrExt as _;
 use std::path::PathBuf;
 
 use beadroll_core::json::{Object, Value};
 use beadroll_git::{
-    CountRules, Env, Fact, IoError, local_damage, sync_env, transport_config, transport_settings,
+    CountRules, Env, IoError, local_damage, sync_env, transport_config, transport_settings,
     with_settings,
 };
 use beadroll_store::{
@@ -124,11 +123,8 @@ fn link_env(ws: &Workspace) -> Result<Env, Error> {
         &carried,
         &rules,
     )?;
-    let top = settings.fact(Fact::Toplevel)?;
-    Ok(if top.success() {
-        // the line git prints, without its end: a directory's name may end in a space
-        let top = top.stdout.strip_suffix(b"\n").unwrap_or(&top.stdout);
-        env.with_dir(PathBuf::from(OsStr::from_bytes(top)))
+    Ok(if let Some(top) = settings.toplevel()? {
+        env.with_dir(top)
     } else {
         env
     })

@@ -183,6 +183,17 @@ impl Settings {
         self.checkout.fact(&self.git, fact)
     }
 
+    /// The top of the checkout bead runs in, as git names it (`rev-parse --show-toplevel`): its
+    /// line without the newline that ends it, and nothing more, since a directory's name may begin
+    /// or end with whitespace; `None` outside a checkout.
+    pub fn toplevel(&self) -> Result<Option<PathBuf>, beadroll_git::Error> {
+        let top = self.fact(Fact::Toplevel)?;
+        Ok(top.success().then(|| {
+            let line = top.stdout.strip_suffix(b"\n").unwrap_or(&top.stdout);
+            PathBuf::from(OsStr::from_bytes(line))
+        }))
+    }
+
     /// The store's root: `BEAD_HOME` (`~` expanded), else `~/.local/state/beadroll`. A `BEAD_HOME`
     /// that is not absolute is refused: the store never lives in a checkout.
     pub fn home(&self) -> Result<PathBuf, Error> {
