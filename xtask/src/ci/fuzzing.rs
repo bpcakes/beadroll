@@ -144,6 +144,14 @@ fn the_nightly_keeps_the_corpus_it_grew_and_what_failed() {
     // which the corpus keeps, with what failed, until a fix makes it pass.
     let merged = step_with(&steps, &["cargo fuzz run \"$target\"", "-merge=1"]);
     let minimizing = steps[merged].join("\n");
+    // every target fuzz/Cargo.toml declares, as it has a run step of its own: one the loop missed
+    // would be fuzzed each night and its corpus never minimized, nor what failed kept in it
+    let manifest = read("fuzz/Cargo.toml");
+    let looped = format!("for target in {}; do", targets(&manifest).join(" "));
+    assert!(
+        minimizing.contains(&looped),
+        "the minimizing loop is not `{looped}`"
+    );
     assert!(minimizing.contains("if [ ! -e \"$RUNNER_TEMP/passed-$target\" ]; then"));
     assert!(minimizing.contains("find \"artifacts/$target\" -type f -exec cp {} \"$corpus/\""));
     assert!(steps[merged].contains(&"        if: ${{ !cancelled() }}"));
