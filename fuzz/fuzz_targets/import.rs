@@ -143,12 +143,14 @@ fuzz_target!(|data: &[u8]| {
         );
     }
 
-    let mut export = String::new();
-    for record in imported.hydrated().unwrap().export_records() {
-        let line = json::write(&Value::from(record), Format::COMPACT).expect("export is written");
-        export.push_str(&line);
-        export.push('\n');
-    }
+    let export = beadroll_fuzz::lines(
+        imported
+            .hydrated()
+            .unwrap()
+            .export_records()
+            .into_iter()
+            .map(Value::from),
+    );
     let exported = match read_records(&export, "export.jsonl") {
         Ok(exported) => exported,
         Err(error) => panic!("bead's own export is refused: {error}"),

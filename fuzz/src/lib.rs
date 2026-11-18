@@ -11,6 +11,17 @@ use beadroll_core::state::State;
 
 /// Whether `a` and `b` are the same value member for member, in the same order, every float the
 /// same bits.
+/// `values`, each one compact JSON line ended by a newline: a segment, an attempt file or an export
+/// as bead writes them.
+pub fn lines<V: std::borrow::Borrow<Value>>(values: impl IntoIterator<Item = V>) -> String {
+    let mut text = String::new();
+    for value in values {
+        text.push_str(&json::write(value.borrow(), Format::COMPACT).expect("a value is written"));
+        text.push('\n');
+    }
+    text
+}
+
 pub fn identical(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Float(a), Value::Float(b)) => a.to_bits() == b.to_bits(),
