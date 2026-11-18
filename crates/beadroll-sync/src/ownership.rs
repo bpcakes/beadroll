@@ -15,7 +15,7 @@ use beadroll_store::{
 use crate::error::Error;
 use crate::link::Link;
 use crate::receipts::{Request, RetireAfterSuccess, settle};
-use crate::synchronise::{ROUNDS, conflict_detail, pause, refused};
+use crate::synchronise::{ROUNDS, conflict_detail, pause, refused, refused_attempt};
 use crate::tx::{Spent, Tx, drop_pending, locked, writing};
 use crate::{NetworkMode, PublishMode};
 
@@ -186,7 +186,7 @@ pub fn coordinated<E: From<Error>>(
                     published(ws, &mut link, &remote)?;
                     Ok(Some(answer))
                 }
-                AttemptOutcome::Refused => Err(refused(&link).into()),
+                AttemptOutcome::Refused => Err(refused_attempt(&link).into()),
                 // someone else got there first; decide again against the new head
                 AttemptOutcome::Rejected => Ok(None),
                 AttemptOutcome::Uncertain(pending) => {

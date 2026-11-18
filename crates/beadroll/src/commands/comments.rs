@@ -35,7 +35,13 @@ pub(crate) fn comments(ctx: &Context<'_>, args: &CommentArgs) -> Result<Outcome,
         _ => (&b"list"[..], &args.words[..]),
     };
     let Some(key) = words.first() else {
-        return Err(Failure::new(Code::Validation, USAGE));
+        // `add` given and nothing after it: its own syntax, not a pointer to the `add` just typed
+        let usage = if action == b"add" {
+            "usage: bead comments add ISSUE TEXT"
+        } else {
+            USAGE
+        };
+        return Err(Failure::new(Code::Validation, usage));
     };
     if action == b"add" {
         return add(ctx, args, key, &words[1..]);

@@ -189,6 +189,35 @@ fn a_refused_claim_counts_nothing_it_fetched_as_unpublished() {
     );
 }
 
+/// A claiming update the remote refuses is not recorded, nor its edits, which land with the claim or
+/// not at all: its answer says so and to run it again, never that nothing was lost.
+#[test]
+fn a_refused_claiming_update_says_its_edits_were_not_recorded() {
+    let sandbox = crate::sandbox();
+    let (a, _b, x, _) = two_machines(&sandbox);
+    let hook = sandbox.origin().join("hooks").join("pre-receive");
+    beadroll_test_support::executable(&hook, "#!/bin/sh\nexit 1\n");
+    let refused = a.run(["update", &x, "--claim", "--notes", "important", "--json"]);
+    std::fs::remove_file(&hook).unwrap();
+    assert_eq!(code(&refused), "REMOTE_REFUSED", "{}", refused.stderr);
+    assert!(
+        refused.stderr.contains("not recorded"),
+        "{}",
+        refused.stderr
+    );
+    assert!(
+        !refused.stderr.contains("nothing was lost"),
+        "{}",
+        refused.stderr
+    );
+    let shown = a.show(&x);
+    assert!(
+        shown.get("notes").is_none(),
+        "the refused edit is there after all: {shown:?}"
+    );
+    assert!(shown.get("claim").is_none(), "{shown:?}");
+}
+
 /// A takeover is online only: `--offline` is refused as `VALIDATION`, before anything is written,
 /// and the owner stays.
 #[test]

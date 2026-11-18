@@ -89,6 +89,17 @@ pub fn refused(link: &Link<'_>) -> Error {
     ))
 }
 
+/// The remote refused a coordinated command's own attempt: its claim, release or takeover, and
+/// the edits made with it, which land together or not at all, were not recorded. Where `refused`
+/// says nothing was lost, of a sync's local writes that stay, this says what the command must do.
+pub(crate) fn refused_attempt(link: &Link<'_>) -> Error {
+    Error::RemoteRefused(format!(
+        "the remote refuses bead's update of {}, so this command was not recorded, nor the edits \
+         made with it: run it again once the remote allows it: {}",
+        link.ref_name, link.last_error
+    ))
+}
+
 /// What a sync did, in the order `bead sync --json` reports it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Synced {
