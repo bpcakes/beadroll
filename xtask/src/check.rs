@@ -55,13 +55,7 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(&home).map_err(|error| Failure::io("cannot create", &home, &error))?;
     let bead = if options.real {
-        Some(
-            match std::env::var_os("BEAD_UNDER_TEST").filter(|b| !b.is_empty()) {
-                Some(bead) => std::path::absolute(&bead)
-                    .map_err(|error| Failure::io("cannot resolve", Path::new(&bead), &error))?,
-                None => build(&root)?,
-            },
-        )
+        Some(workspace::bead()?)
     } else {
         None
     };
