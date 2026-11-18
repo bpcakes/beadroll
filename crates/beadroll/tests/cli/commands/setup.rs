@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use beadroll_test_support::{
-    Gate, Json, Machine, Sandbox, beside, code, git, parse_json, path_text,
+    Gate, Json, Machine, Sandbox, beside, code, executable, git, parse_json, path_text,
 };
 
 mod chosen;
@@ -348,9 +348,7 @@ fn init_reports_what_it_left_unpublished_in_the_adopted_tracker() {
     mirror(&sandbox, &moved);
     // from now on the moved remote refuses every push
     let hook = moved.join("hooks").join("pre-receive");
-    std::fs::write(&hook, "#!/bin/sh\necho refused >&2\nexit 1\n").expect("a hook");
-    let executable = std::os::unix::fs::PermissionsExt::from_mode(0o755);
-    std::fs::set_permissions(&hook, executable).expect("an executable hook");
+    executable(&hook, "#!/bin/sh\necho refused >&2\nexit 1\n");
     let b = Machine::new(&sandbox, "b");
     set_origin(&b, &moved);
     let records = sandbox.root().join("import.jsonl");
