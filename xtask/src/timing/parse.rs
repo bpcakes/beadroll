@@ -15,13 +15,11 @@ use beadroll_core::json::{Format, Object, ParseError, Value, parse, write};
 use beadroll_core::metadata::Metadata;
 use indexmap::IndexMap;
 
-use super::decode::{fastest, fastest_of};
+// the runs `decode::fastest` takes, which the record states
+use super::decode::{RUNS, fastest, fastest_of};
 use super::history::{Files, ROTATE_BYTES, Shape, event_id, history, segments};
 use super::world::profile;
 use crate::workspace::{Failure, json_string};
-
-/// How many times each text is parsed; the fastest run counts.
-pub(crate) const RUNS: usize = 7;
 
 /// How many machines the published map's files are spread over, as the histories' are.
 const MACHINES: usize = 6;

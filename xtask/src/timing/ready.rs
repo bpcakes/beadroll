@@ -25,7 +25,7 @@ use super::world::profile;
 use crate::workspace::{Failure, json_string};
 
 /// How many times each question is asked; the fastest run counts.
-const RUNS: usize = 3;
+pub(super) const RUNS: usize = 3;
 
 /// How many issues a row of the lattice holds.
 const WIDTH: usize = 4;
