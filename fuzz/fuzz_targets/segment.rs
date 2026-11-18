@@ -72,11 +72,7 @@ fuzz_target!(|data: &[u8]| {
     if !attempt.is_empty() {
         assert!(all_identical(&attempt, &read), "an attempt read otherwise");
     }
-    let mut lines = String::new();
-    for value in &read {
-        lines.push_str(&json::write(value, Format::COMPACT).expect("a value read is written"));
-        lines.push('\n');
-    }
+    let lines = beadroll_fuzz::lines(&read);
     problems.clear();
     let again = read_segment(
         lines.as_bytes(),
@@ -130,20 +126,11 @@ fuzz_target!(|data: &[u8]| {
     // keeps of a line is what it keeps of the value read from it.
     let mut typed = Journal::new();
     for (machine, records) in &machines {
-        let mut segment = String::new();
-        for record in records {
-            segment
-                .push_str(&json::write(record, Format::COMPACT).expect("a value read is written"));
-            segment.push('\n');
-        }
+        let segment = beadroll_fuzz::lines(records.iter().copied());
         let origin = format!("events/{machine}/000001.jsonl");
         typed.add_segment(segment.as_bytes(), machine, &origin);
     }
-    let mut file = String::new();
-    for record in &attempt {
-        file.push_str(&json::write(record, Format::COMPACT).expect("a value read is written"));
-        file.push('\n');
-    }
+    let file = beadroll_fuzz::lines(&attempt);
     typed.add_attempt(file.as_bytes(), HERE, "events/0000aa01/claims/a.json");
     let typed = replay(typed).expect("replay is alike read either way");
     if let Some(difference) = first_difference(&said, &answers(&typed)) {
@@ -158,12 +145,14 @@ fuzz_target!(|data: &[u8]| {
         }
     }
 
-    let mut export = String::new();
-    for record in state.hydrated().unwrap().export_records() {
-        let line = json::write(&Value::from(record), Format::COMPACT).expect("export is written");
-        export.push_str(&line);
-        export.push('\n');
-    }
+    let export = beadroll_fuzz::lines(
+        state
+            .hydrated()
+            .unwrap()
+            .export_records()
+            .into_iter()
+            .map(Value::from),
+    );
     if let Err(error) = read_records(&export, "export.jsonl") {
         panic!("bead's own export is refused: {error}");
     }
