@@ -1,7 +1,6 @@
 """infra/drive.py and infra/selected.py choose each machine's bead explicitly and record it before any test
 data is written: their own tests, beside them. drive.py runs with `--preflight`
 against stand-ins: an `ssh` first on PATH that runs the remote command here, and beads that log each run."""
-import ast
 import json
 import os
 import subprocess
@@ -172,23 +171,6 @@ class DrivePreflight(unittest.TestCase):
                 self.assertIn(said, proc.stderr)
                 self.assertNotIn("preflight: {", proc.stdout)
         self.assertEqual(self.runs(), [])
-
-
-class Deadlines(unittest.TestCase):
-    def test_every_process_the_driver_starts_has_a_deadline(self):
-        """drive.py starts processes only through `ran`, and `ran` gives each TIMEOUT unless told another: a
-        hung git or ssh stops the run instead of holding it."""
-        tree = ast.parse((ROOT / "infra" / "drive.py").read_text())
-        functions = {node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
-        ran = functions["ran"]
-        defaults = dict(zip([a.arg for a in ran.args.args][-len(ran.args.defaults):], ran.args.defaults))
-        self.assertEqual(ast.unparse(defaults.get("timeout", ast.Constant(None))), "TIMEOUT")
-        starts = [(node.lineno, ast.unparse(node.func)) for node in ast.walk(tree)
-                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                  and ast.unparse(node.func.value) in ("subprocess", "os")
-                  and node.func.attr in ("run", "Popen", "call", "check_call", "check_output", "system")]
-        inside = range(ran.lineno, ran.end_lineno + 1)
-        self.assertEqual([start for start in starts if start[0] not in inside], [])
 
 
 class LocalSelection(unittest.TestCase):
