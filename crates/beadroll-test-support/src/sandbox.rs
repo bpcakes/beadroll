@@ -145,6 +145,22 @@ impl Sandbox {
         )
     }
 
+    /// An ssh stand-in for `GIT_SSH_COMMAND`, `fake-ssh` at the sandbox's root: it answers `-G`
+    /// (the configuration ssh would use) with nothing, and runs the remote command locally, with
+    /// git's own programs on `PATH`, in the directory `$FAKE_SSH_ROOT` names. Its path.
+    pub fn fake_ssh(&self) -> PathBuf {
+        let path = self.root.join("fake-ssh");
+        let script = concat!(
+            "#!/bin/sh\n",
+            "[ \"$1\" = \"-G\" ] && exit 0\n",
+            "for last; do :; done\n",
+            "PATH=\"$(git --exec-path):$PATH\"\n",
+            "cd \"$FAKE_SSH_ROOT\" && exec sh -c \"$last\"\n",
+        );
+        crate::executable(&path, script);
+        path
+    }
+
     /// What `git ARGS` printed, stripped, run as plumbing on the bare remote (`GIT_DIR`, from inside
     /// it) as author and committer `t`, `input` on its standard input: objects and refs a test
     /// writes there by hand. A failure panics with git's standard error.

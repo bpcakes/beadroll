@@ -3,12 +3,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, ExitStatus};
 use std::time::Duration;
 
 use beadroll_test_support::{
-    Json, Machine, ProcessGroup, Spawned, executable, git, json_member, parse_json, shell_quoted,
+    Json, Machine, ProcessGroup, Spawned, git, json_member, parse_json, shell_quoted,
 };
 
 /// Environment variables for a child process.
@@ -55,16 +55,6 @@ fn git_env(root: &Path, more: &[(&str, &str)]) -> Env {
         env.insert(key.into(), value.into());
     }
     env
-}
-
-/// An ssh stand-in for `GIT_SSH_COMMAND`: it runs the remote command locally,
-/// in `$V7_SSH_ROOT`.
-fn fake_ssh(root: &Path) -> PathBuf {
-    let path = root.join("v7-fake-ssh");
-    let script = "#!/bin/sh\n[ \"$1\" = \"-G\" ] && exit 0\nfor last; do :; done\n\
-                  PATH=\"$(git --exec-path):$PATH\"\ncd \"$V7_SSH_ROOT\" && exec sh -c \"$last\"\n";
-    executable(&path, script);
-    path
 }
 
 /// What `bead info --json` printed, run by `machine` in `cwd` (its checkout when
@@ -145,15 +135,15 @@ fn shapes_with_a_user_or_scheme_give_one_workspace_everywhere() {
 fn scp_origin_with_a_user_syncs_over_ssh() {
     let sandbox = crate::sandbox();
     let url = "git@myhost:origin.git";
-    let ssh = shell_quoted(fake_ssh(sandbox.root()));
+    let ssh = shell_quoted(sandbox.fake_ssh());
     let root = sandbox.root().to_str().expect("a UTF-8 path");
     let env = git_env(
         sandbox.root(),
-        &[("GIT_SSH_COMMAND", &ssh), ("V7_SSH_ROOT", root)],
+        &[("GIT_SSH_COMMAND", &ssh), ("FAKE_SSH_ROOT", root)],
     );
     let git_only: Vec<(OsString, OsString)> = env
         .iter()
-        .filter(|(key, _)| key.as_encoded_bytes().starts_with(b"GIT_") || *key == "V7_SSH_ROOT")
+        .filter(|(key, _)| key.as_encoded_bytes().starts_with(b"GIT_") || *key == "FAKE_SSH_ROOT")
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect();
     let mut a = Machine::new(&sandbox, "a");
