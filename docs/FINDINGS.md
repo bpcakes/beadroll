@@ -22,6 +22,25 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Weeding audit (2026-11-17, ids AT)
+
+Not reported by a review: an audit for workarounds and copied patterns that the next change would
+copy as the established way (PRs #143 to #222), each candidate checked against the code. Most of
+its slices changed no behaviour; these rows are the bugs it found on the way, each fixed with a
+test that fails without the fix.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AT01 | Low | A store write that failed part-way (an append to a journal segment, an atomic write's contents or flush, the machine identity) reported only the OS's words, `File too large` or `No space left on device`, with no file named | fixed | Every OS error of the store and sync names its path, `{strerror}: {path}`; `hygiene::pathless_errors` fails on an `IoError::bare` there (#150) | `beadroll`: `hardening::refusals_of_the_system::file_size_limit::file_size_limit_is_io_and_the_next_write_and_sync_are_clean`; `xtask`: `hygiene::pathless_errors` |
+| AT02 | Medium | A checkout whose directory's name begins or ends with whitespace lost its `.beadroll.json`: discovery stripped the whitespace off git's answer, looked in a directory that does not exist and fell back to the local path's workspace without a word | fixed | `Settings::toplevel` reads git's checkout top once, stripping only the newline git ends it with, for discovery, the remotes and `init --tracked` (#162) | `beadroll`: `hardening::tracked_config_read_from_working_tree_only::a_checkout_whose_name_ends_in_a_space_reads_its_tracked_config` |
+| AT03 | Medium | `create` let a new issue close a dependency loop through a parent named as a `parent-child` dependency in `--deps`, which `dep add` refuses for the same edge: with Y waiting on X, `create new --deps parent-child:X,blocks:Y` was accepted and `dep cycles` then reported it | fixed | `create` checks every blocking dependency against each of the new issue's parents, `--parent` and every `parent-child` dependency (#214) | `beadroll`: `commands::end_to_end::graph::a_new_issue_cannot_close_a_loop_through_a_parent_child_dependency` |
+| AT04 | Medium | `infra/drive.py` required `BEAD_TEST_REMOTE` but compared it with nothing: a clone whose origin, or push URL, named a real repository would have received the test data | fixed | The preflight records each machine's clone's origin fetch and push URLs, as git reads them there, and stops the run unless both are `BEAD_TEST_REMOTE` (#171) | `DrivePreflight` (`infra/test_drive.py`) |
+| AT05 | Low | `infra/drive.py` started its processes in the caller's whole environment, so a caller's `GIT_DIR` or `BEAD_WORKSPACE` reached this machine's git and bead, where every other driver hands them `environment.scrubbed()` | fixed | Every process the driver starts goes through `ran`, in the scrubbed environment (#172) | `DrivePreflight` (`infra/test_drive.py`) |
+| AT06 | Low | `infra/roundtrip.py` without `RT_HOME` used one fixed `$TMPDIR/bead-roundtrip-home` for every run, so a second run imported each tracker on top of what the first had left | fixed | A run without `RT_HOME` makes a store of its own, empty, and removes it (#173) | `RoundtripFailureReporting` (`infra/test_roundtrip.py`) |
+| AT07 | Low | `infra/soak.py`'s copy of the preflight stopped on a Python traceback, before logging anything, for a bead that was missing or would not run | fixed | It records the bead as `selected.py`'s `describe` does, `missing` or `(does not run: …)`, and a missing bead stops the soak (#208) | `SoakPreflight` (`infra/test_drive.py`) |
+| AT08 | Low | `infra/compat_real.py` made a scratch directory on every run, as argparse evaluated its `--out` default when parsing, so a run given `--out` left an empty one behind | fixed | The scratch directory is made only when `--out` names none (#209) | `CompatRealOutput` (`infra/test_compat_real.py`) |
+| AT09 | Low | The differential tests over 10,000 seeded histories that `REVIEWING.md` cites as evidence were ignored and run by nothing | fixed | The nightly workflow's `seeds` job runs them in release under nextest's slow-test override (#207) | `xtask`: `ci::growth_guards::the_nightly_runs_cores_many_seeds_in_release` |
+
 ## Published-count race (roll-byaq, 2026-11-12)
 
 | Id | Severity | Finding | Status | Resolution | Tests |
