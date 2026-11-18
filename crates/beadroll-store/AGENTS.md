@@ -17,8 +17,10 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 
 - `src/settings.rs`: `Settings` (the variables, the environment git inherits, the working directory,
   the clock; `home()` with the `BEAD_HOME` rules; `checkout` and `fact`: what checkout-side git says
-  of the repository, asked once, `crates/beadroll-git/AGENTS.md`), `Clock`, `normalize_path`,
-  `join_path`.
+  of the repository, asked once, `crates/beadroll-git/AGENTS.md`; `toplevel`, the checkout's top as
+  git names it, whitespace and all), `Clock`, `normalize_path`, `join_path`. For the store's unit
+  tests, `Settings::at_home`, a machine whose home is a directory, under failpoints when given;
+  `src/testing.rs`, what they share besides: `set_modified`, a file's or directory's time moved.
 - `src/fs.rs`: `private_dirs`, `private_dir`, `write_atomic`, `write_cache_parts`, `fsync`,
   `dir_entries`, `glob_ending`, `abandoned::remove` (the temporary files a killed writer left
   beside the caches, which the projection's write-back removes, `src/fs/abandoned.rs`,
