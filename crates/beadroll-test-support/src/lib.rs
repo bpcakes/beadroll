@@ -37,7 +37,7 @@ pub use machine::{
 };
 pub use pool::pool_map;
 pub use sandbox::{Sandbox, UNDER_TEST, built_bead, git, git_command};
-pub use shell::{git_on_path, shell_quoted};
+pub use shell::{git_on_path, shell_quoted, ulimit_block};
 pub use spawned::{Drained, ProcessGroup, Spawned, drain};
 pub use wait::{REMOTE_SETTLES, exited_within, wait_until, within};
 
