@@ -93,16 +93,23 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
 - `src/hygiene.rs`: the repository lint (a test only): no private names in tracked files, and no
   lint exemption on an item but the two `CONTRIBUTING.md` accepts, no Rust source past 800
   lines, no function or module named for a finding in `docs/FINDINGS.md`, no module imported
-  in two `use` lines, and no path-less `IoError::bare` in the store or sync.
-- `src/ci.rs` and its modules in `src/ci/`: `supported_environments`, the CI matrix the workflows keep,
+  in two `use` lines, no path-less `IoError::bare` in the store or sync, and no Python that
+  catches every exception. A new scan of the tracked files reads them through `sources` (or
+  `tracked`), which fails a listing that lacks the file it must hold.
+- `src/ci.rs` and its modules in `src/ci/`, every one reading a workflow through `ci::workflow`, its
+  comments left out, so that a comment saying what a job does never passes for it:
+  `supported_environments`, the CI matrix the workflows keep and the cargo-nextest every job
+  installs, the version `.config/nextest.toml` requires,
   `growth_guards`, the nightly step that runs the growth guards, `coverage_report`, the
   nightly job that makes the coverage report with the cargo-llvm-cov `CARGO_LLVM_COV` names and
   keeps it, and `fuzzing`, read from the workflows' steps: the nightly job that runs every target
   `fuzz/Cargo.toml` declares in a step of its own after the corpus is seeded, for a budget above
-  zero its timeout leaves room for, and keeps a crash's input and the corpus; and the per-push
-  check, lints and cargo-deny of `fuzz/` (tests only).
-- `src/workspace.rs`: paths, failures and JSON strings for all of them, and `fake_tool`, the
-  executable script the tests of `check` and `coverage` run in place of `cargo`.
+  zero its timeout leaves room for, and keeps a crash's input and the corpus, minimizing every
+  target's; the per-push check, lints and cargo-deny of `fuzz/`; and `fuzz/Cargo.toml`'s lints,
+  the workspace's but for the five a fuzz target breaks by design (tests only).
+- `src/workspace.rs`: paths, failures and JSON strings for all of them, and for their tests
+  `fake_tool`, the executable script the tests of `check` and `coverage` run in place of
+  `cargo`, and `args`, words as a subcommand's arguments.
 - `python/printable_table.py`: writes `crates/beadroll-core/src/text/printable.rs` with the Unicode
   non-printable table that `repr()` uses, generated with CPython 3.14.7's `str.isprintable()`
   under Unicode 16.0.0.
@@ -117,7 +124,11 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
 - A step of the baseline: `steps` in `src/check.rs`; a test of an `infra/` driver: `infra/test_*.py`
   beside it, which `check` runs.
 - A timing: `src/timing.rs`, or the histories in `timing/history.rs` (the plain one's digest is
-  pinned, so that earlier records stay comparable).
+  pinned, so that earlier records stay comparable). A new measurement is a `Mode` variant, a row
+  of `MODES` (its flag, usage name, unit and variant) and an arm of the dispatch in
+  `src/timing.rs`. An in-process one times through `timing::fastest_of`, writes under
+  `timing::scratch`, and names and builds its events with `timing::history`'s `id`, `stamped` and
+  `event`, rather than a loop, a directory or an envelope of its own.
 
 ## Invariants
 

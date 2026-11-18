@@ -49,7 +49,8 @@ consumer on tokio calls through `spawn_blocking`.
   `parse` (serde_json), `write`, `Format`.
 - `src/text.rs`: `repr`, `str_of`, `strip`, `b36`, and `surrogateescaped`, `repr_bytes`,
   `printed_text` and `json_ascii_bytes` for bytes `surrogateescape` decodes (command lines,
-  paths).
+  paths); `is_lower_hex`, whether every byte is a lowercase hex digit, as an id or an object
+  name is.
 - `src/event.rs`: `event_problem`, `payload_problem`, `write_problem`, `Field`; `event/envelope.rs`:
   `Envelope`, an event's envelope as read, which a journal line is read straight into by serde_json
   and a value built in memory walks into, and whose rules `event_problem` judges (roll-lqjj.53.1);
@@ -135,6 +136,10 @@ consumer on tokio calls through `spawn_blocking`.
   values (roll-k2wy.14.4).
 - `src/replay/tests.rs`: replay is invariant under delivery order, on histories of the
   differential tests' generator (`projection::tests::history`, roll-k2wy.14.4).
+- What core's unit tests share: `projection::tests` (`history`, `Rng`, and `hostile`'s `event` and
+  `id`), and `projection::journal_of`, records read into a journal in their files' order, which
+  `read_batch` settles. They take from beadroll-test-support only what holds none of core's
+  types (`events::id_at`, `values::Rng`): they build a second `beadroll_core` there.
 
 ## Edit here for X
 

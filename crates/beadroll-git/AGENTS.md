@@ -55,7 +55,8 @@ resolution shared with the store.
 - `src/error.rs`: `Error`, `IoError` (established OS diagnostics), `strerror`; `src/signal.rs`:
   signal names; `src/text.rs`: whitespace trimming and line splitting for git output.
 - `tests/git/`: URL rules, runner timeouts and local-damage classification. Unit tests compare
-  in-process answers with git itself in both object formats (`src/testing.rs`).
+  in-process answers with git itself in both object formats (`src/testing.rs`: scratch
+  repositories, `clean_env`, and `IDENTITY`, the committer a test's commit names).
 
 ## Edit here for X
 
