@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
 use beadroll_core::json::Object;
+use beadroll_test_support::events::Event;
 
 use super::*;
 use crate::{FileMode, Settings, append_events, encode_events, load_journal, write_atomic};
@@ -34,18 +35,14 @@ fn event(n: u128, parent: Option<u128>) -> Value {
     fields.insert("title".into(), Value::from(format!("value {n}")));
     let mut data = Object::new();
     data.insert("fields".into(), Value::from(fields));
-    let mut event = Object::new();
-    event.insert("v".into(), Value::from(1));
-    event.insert("id".into(), Value::from(id(n)));
-    event.insert("replica".into(), Value::from(MACHINE));
-    event.insert(
-        "deps".into(),
-        Value::Array(parent.into_iter().map(|n| Value::from(id(n))).collect()),
-    );
-    event.insert("op".into(), Value::from("set"));
-    event.insert("issue".into(), Value::from(id(1)));
-    event.insert("data".into(), Value::from(data));
-    Value::from(event)
+    let deps: Vec<String> = parent.into_iter().map(id).collect();
+    let deps: Vec<&str> = deps.iter().map(String::as_str).collect();
+    Event::new(&id(n), "set")
+        .replica(MACHINE)
+        .deps(&deps)
+        .issue(&id(1))
+        .data(Value::from(data))
+        .json()
 }
 
 fn oracle(ws: &Workspace) -> Vec<HistoryEntry> {
