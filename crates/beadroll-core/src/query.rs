@@ -18,7 +18,7 @@ pub use blockers::BlockerLists;
 pub use readiness::Readiness;
 
 /// At most this many cycles are reported.
-pub const MAX_CYCLES: usize = 200;
+pub(crate) const MAX_CYCLES: usize = 200;
 
 /// Whether this dependency type blocks its issue until the target is done.
 pub fn blocking(kind: &str) -> bool {

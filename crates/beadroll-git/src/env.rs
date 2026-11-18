@@ -45,7 +45,7 @@ pub const SYNC_REPO_CONFIG: [(&str, &str); 4] = [
 ];
 
 /// The ssh command bead sets when the caller has none: a dead remote must fail, not hang.
-pub const DEFAULT_SSH_COMMAND: &str =
+pub(crate) const DEFAULT_SSH_COMMAND: &str =
     "ssh -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2";
 
 /// Lists that an empty value clears (`credential.helper`, `http.extraHeader`, also per URL).

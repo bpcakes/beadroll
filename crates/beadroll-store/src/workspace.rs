@@ -89,7 +89,7 @@ pub enum LockState {
 }
 
 /// The coordination ref when the tracked configuration names none.
-pub const DEFAULT_REF: &str = "refs/beads/journal";
+pub(crate) const DEFAULT_REF: &str = "refs/beads/journal";
 /// Where `sync.git` keeps what it last fetched or published.
 pub const REMOTE_REF: &str = "refs/beads/remote";
 

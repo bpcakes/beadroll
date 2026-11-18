@@ -30,8 +30,8 @@ pub use classify::{
     PushOutcome, local_damage, lost_to_other_fetch, push_outcome, remote_lacks_objects,
 };
 pub use env::{
-    CountRules, DEFAULT_SSH_COMMAND, REPO_LOCATION_ENV, SYNC_REPO_CONFIG, TRANSPORT_KEYS, sync_env,
-    transport_config, transport_settings, with_settings,
+    CountRules, REPO_LOCATION_ENV, SYNC_REPO_CONFIG, TRANSPORT_KEYS, sync_env, transport_config,
+    transport_settings, with_settings,
 };
 pub use error::{Error, IoError, strerror};
 pub use format::{StoredFormat, stored_format};

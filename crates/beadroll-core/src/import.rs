@@ -20,7 +20,7 @@ use crate::work::{Work, tally};
 pub mod dry_run;
 
 /// The id a would-be create is checked under before it is minted.
-pub const PROBE_ID: &str = "00000000-0000-7000-8000-000000000000";
+pub(crate) const PROBE_ID: &str = "00000000-0000-7000-8000-000000000000";
 
 /// Why the whole import fails, reported as VALIDATION.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]

@@ -96,7 +96,7 @@ const PAUSE_LIMIT: Duration = Duration::from_secs(300);
 
 /// Which hits of a point fire.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Selector {
+pub(crate) enum Selector {
     /// The first.
     First,
     /// The `k`-th, counting from one.

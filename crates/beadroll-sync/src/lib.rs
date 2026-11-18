@@ -21,6 +21,5 @@ pub use synchronise::{
     publish_soon_at, publish_soon_to, refused, synchronise, unpublished_count,
 };
 pub use tx::{
-    Attempt, Emitter, OWNERSHIP, Spent, Tx, drop_pending, locked, writing, writing_spent,
-    writing_state,
+    Attempt, Emitter, Spent, Tx, drop_pending, locked, writing, writing_spent, writing_state,
 };

@@ -2,7 +2,7 @@
 
 /// The year 2100 in milliseconds: event envelopes reject later timestamps, and timestamp
 /// rendering clamps to this ceiling.
-pub const MAX_MILLIS: u64 = 4_102_444_800_000;
+pub(crate) const MAX_MILLIS: u64 = 4_102_444_800_000;
 
 /// Milliseconds since 1970 formatted in UTC as `2026-10-09T15:04:05.123Z`, clamped to
 /// [`MAX_MILLIS`].

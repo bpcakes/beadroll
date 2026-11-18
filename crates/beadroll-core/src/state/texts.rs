@@ -14,7 +14,7 @@ use crate::id::EventId;
 use super::claim::Ended;
 
 /// The fields an issue says at length, kept with its texts.
-pub const TEXT_FIELDS: [Field; 4] = [
+pub(crate) const TEXT_FIELDS: [Field; 4] = [
     Field::Description,
     Field::Design,
     Field::AcceptanceCriteria,

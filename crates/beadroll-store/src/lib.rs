@@ -25,14 +25,14 @@ mod settings;
 mod testing;
 mod workspace;
 
-pub use actor::{Actor, Label, Ps, detect_actor, nearest_harness};
+pub use actor::{Actor, Label, detect_actor, nearest_harness};
 pub use discover::{
     checked_config, derived_shaped, find_workspace, moved_workspaces, tracked_config_warning,
     workspaces_named,
 };
 pub use elsewhere::{Elsewhere, elsewhere};
 pub use error::{Error, git_code};
-pub use failpoint::{Action, CrashHooks, Failpoints, Fired, POINTS, Selector, kill_self};
+pub use failpoint::{Action, CrashHooks, Failpoints, Fired, POINTS, kill_self};
 pub use fs::{
     FileMode, PreparedAtomic, Unreadable, dir_entries, fsync, glob_ending, has_suffix, json_text,
     os_error_str, prepare_atomic, private_dir, private_dirs, read, read_json_text, utf8_error,
@@ -50,11 +50,8 @@ pub use memo::{FileKey, Memo, memo_path};
 pub use place::{capture_where, merged_into_default, object_format};
 pub use projection::{Sourced, extend_projection, projection, projection_sourced, read_texts};
 pub use recap::{Found, Mark, RecapCursor, Unusable, home_stores};
-pub use settings::{
-    Clock, NET_TIMEOUT, REPACK_LOOSE, REPACK_PACKS, ROTATE_BYTES, Settings, join_path,
-    normalize_path,
-};
+pub use settings::{Clock, NET_TIMEOUT, ROTATE_BYTES, Settings, join_path, normalize_path};
 pub use workspace::{
-    DEFAULT_REF, Endpoint, LockState, MetadataRead, PublicationState, REMOTE_REF, RemoteSource,
-    Workspace, WorkspaceLock, relative, relative_name, remembered,
+    Endpoint, LockState, MetadataRead, PublicationState, REMOTE_REF, RemoteSource, Workspace,
+    WorkspaceLock, relative, relative_name, remembered,
 };
