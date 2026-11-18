@@ -57,7 +57,9 @@ pub(super) fn read_in(file: &File, state: &mut State, wanted: &[(EventId, TextPl
     })
 }
 
-/// Reads selected locations into the state or prepared extension that requested them.
+/// Reads the texts at `wanted` from `file` into what requested them, the state or a prepared
+/// extension, through `load`, which answers whether the bytes were as written: `false` as soon as
+/// one is not.
 pub(super) fn read_with(
     file: &File,
     wanted: &[(EventId, TextPlace)],

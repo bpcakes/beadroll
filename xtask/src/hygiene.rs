@@ -47,7 +47,8 @@ fn rust_sources() -> Vec<(String, String)> {
     sources(&["*.rs"], "xtask/src/hygiene.rs")
 }
 
-/// `RepositoryHygiene`.
+/// No tracked file names a machine or its user: a home directory, a `.local` hostname, an ssh
+/// target.
 mod repository_hygiene {
     use std::fs::Permissions;
     use std::os::unix::fs::PermissionsExt as _;
@@ -179,7 +180,8 @@ mod repository_hygiene {
     }
 }
 
-/// `LintExemptions`.
+/// A lint is exempted for a crate or a module, never an item, but for the two CONTRIBUTING.md
+/// accepts.
 mod lint_exemptions {
     use regex_lite::Regex;
 
@@ -254,7 +256,7 @@ mod lint_exemptions {
     }
 }
 
-/// `FileLengths`.
+/// No Rust source runs past 800 lines.
 mod file_lengths {
 
     /// The most lines a Rust source may have: `CONTRIBUTING.md` asks for under 500, and a file past
@@ -301,7 +303,7 @@ mod file_lengths {
     }
 }
 
-/// `FindingNames`.
+/// No function or module is named for a finding or a cited issue.
 mod finding_names {
     use regex_lite::Regex;
 
@@ -435,7 +437,7 @@ mod finding_names {
     }
 }
 
-/// `ImportLines`.
+/// No module is imported in more than one top-level `use` line of a file.
 mod import_lines {
     use std::collections::BTreeMap;
 
@@ -494,7 +496,7 @@ mod import_lines {
     }
 }
 
-/// `PathlessErrors`.
+/// The store and sync name the path of every operating-system error.
 mod pathless_errors {
     /// The crates whose every operating-system error concerns a file they name: the store's and
     /// sync's. Only git's runner (pipes, child processes) and the CLI (standard input, the
@@ -541,7 +543,7 @@ mod pathless_errors {
     }
 }
 
-/// `CatchAlls`.
+/// No Python in `infra/` catches every exception.
 mod catch_alls {
     /// The lines of `text`, the Python file `name`, whose `except` catches every exception (`except:`,
     /// `except Exception`, `except BaseException`), as NAME:LINE.
@@ -585,7 +587,7 @@ mod catch_alls {
     }
 }
 
-/// `ModesReadAsFlags`.
+/// No doc reads a parameter of a mode's type as a flag.
 mod modes_read_as_flags {
     use regex_lite::Regex;
 

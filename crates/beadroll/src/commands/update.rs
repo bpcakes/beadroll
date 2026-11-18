@@ -16,7 +16,7 @@ use beadroll_core::text::str_of;
 use beadroll_store::Label;
 use beadroll_sync::{Emitter, Mode, NetworkMode, coordinated, publish_soon, writing_state};
 
-use super::ownership::{ClaimStep, command_signature, details, still_held};
+use super::ownership::{ClaimStep, claim_note, command_signature, details, still_held};
 use super::{
     ContentArgs, Context, Failure, Line, Outcome, Payload, Tone, arg_texts, edge_data, encodable,
     ended_by, field_args, issue_line, need_tracker, refuse_foreign_claim, remove_edge, resolve_arg,
@@ -112,7 +112,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
             },
         )?;
         if mode == Mode::Offline {
-            notes.push("claim is PROVISIONAL: not exclusive until claimed online".to_owned());
+            notes.push(format!("claim is {}", claim_note(Mode::Offline)));
         }
         // a claiming close ends the claim on purpose
         check_held = mode != Mode::Offline && status.as_deref() != Some(status::CLOSED);
@@ -312,7 +312,7 @@ fn edit(
             }
             tx.emit(OpName::Close, Some(&uid), data, None)?;
         }
-        Some("open") if DONE.contains(&issue.status()) => {
+        Some(status::OPEN) if DONE.contains(&issue.status()) => {
             tx.emit(OpName::Reopen, Some(&uid), Object::new(), None)?;
         }
         Some(status) => {

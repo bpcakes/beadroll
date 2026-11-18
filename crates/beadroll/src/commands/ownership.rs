@@ -14,8 +14,9 @@ use beadroll_core::text::{printed_text, str_of};
 use beadroll_store::{Actor, ensure_replica_id, view_outline};
 use beadroll_sync::{Mode, NetworkMode, Tx, coordinated};
 
-use super::{Context, Failure, Outcome, encodable, issue_line, need_tracker, resolve_arg, view_of};
-use crate::commands::args::Payload;
+use super::{
+    Context, Failure, Outcome, Payload, encodable, issue_line, need_tracker, resolve_arg, view_of,
+};
 
 /// The arguments the coordinated commands share.
 pub(crate) struct OwnershipArgs {
@@ -28,7 +29,7 @@ pub(crate) struct OwnershipArgs {
 }
 
 /// The note describing how a claim was made.
-fn claim_note(mode: Mode) -> &'static str {
+pub(crate) fn claim_note(mode: Mode) -> &'static str {
     match mode {
         Mode::Online => "confirmed",
         Mode::Local => "local tracker, no remote",

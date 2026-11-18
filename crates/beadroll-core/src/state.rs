@@ -445,8 +445,8 @@ pub(crate) fn actor_of(event: &Event) -> String {
     actor_label(event.actor(), event.replica())
 }
 
-/// The event's actor label. An absent actor, or one that is not an object (`false`, `""`, `{}`),
-/// names nobody: its label is `human@MACHINE`. A caller need not filter one out first.
+/// The event's actor label. An absent actor, one that is not an object (`false`, `""`), or an
+/// object that names nobody (`{}`), is labelled `human@MACHINE`. A caller need not filter one out first.
 pub fn actor_label(actor: Option<&Value>, replica: &str) -> String {
     let member = |key: &str| actor.and_then(|actor| actor.get(key));
     if let Some(name) = member("name").filter(|name| name.truthy()) {

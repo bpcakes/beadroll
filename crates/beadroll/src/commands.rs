@@ -58,8 +58,8 @@ pub(crate) enum ImportMode {
 }
 
 pub(crate) use args::{
-    ContentArgs, Payload, arg_text, arg_texts, encodable, field_args, resolve_arg, rpartition,
-    split_args,
+    ContentArgs, Payload, TextValidity, arg_text, arg_texts, encodable, field_args, resolve_arg,
+    rpartition, split_args,
 };
 pub(crate) use claims::claims;
 pub(crate) use comments::{CommentArgs, comments};
@@ -151,8 +151,10 @@ impl Outcome {
         Ok(self)
     }
 
-    /// This outcome, of a command whose own publish of what it wrote in `ws` said `warning`, if
-    /// anything: with a warning it has [`Outcome::published_itself`], said once.
+    /// This outcome, of a command whose own publish of what it wrote in `ws` failed with `warning`,
+    /// or did not fail. Only whether it failed matters here, its words being in the answer's lines
+    /// already: a failed one has [`Outcome::published_itself`], so that the command line neither
+    /// tries the remote again nor says twice that the write is not yet published.
     pub(crate) fn after_its_publish(
         self,
         ws: &Workspace,

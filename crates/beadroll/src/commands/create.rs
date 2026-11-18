@@ -3,7 +3,7 @@
 use std::ffi::OsString;
 
 use beadroll_core::code::Code;
-use beadroll_core::event::{BLOCKS, PARENT_CHILD};
+use beadroll_core::event::{BLOCKS, PARENT_CHILD, status};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
 use beadroll_core::query::blocking;
@@ -38,7 +38,7 @@ pub(crate) fn create(ctx: &Context<'_>, args: &CreateArgs) -> Result<Outcome, Fa
     };
     let mut fields = field_args(args.title.as_deref(), &args.fields)?;
     fields.set_text("title", title);
-    if fields.values.get("status") == Some(&Value::from("in_progress")) {
+    if fields.values.get("status") == Some(&Value::from(status::IN_PROGRESS)) {
         return Err(Failure::new(
             Code::Validation,
             "create the issue, then claim it: in_progress is reached only through a claim",
