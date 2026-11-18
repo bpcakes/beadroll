@@ -260,13 +260,26 @@ fn change(
                 key
             }
             (_, Some(target)) => {
-                remove_edge(
-                    &mut tx,
-                    st,
-                    issue,
-                    &Target::Id(target.uid()),
-                    kind.as_deref(),
-                )?;
+                let to = Target::Id(target.uid());
+                // what this machine has of it: a dependency removed elsewhere meanwhile is gone
+                // there too, so the removals still agree
+                let depends = (issue.deps().keys()).any(|edge| {
+                    *edge.to() == to && kind.as_deref().is_none_or(|k| k == edge.kind())
+                });
+                if !depends {
+                    let of_kind = kind
+                        .as_deref()
+                        .map_or_else(String::new, |k| format!(" ({k})"));
+                    return Err(Failure::new(
+                        Code::Validation,
+                        format!(
+                            "{} does not depend on {}{of_kind}",
+                            issue.key(),
+                            target.key()
+                        ),
+                    ));
+                }
+                remove_edge(&mut tx, st, issue, &to, kind.as_deref())?;
                 encodable(validity)?;
                 target.key().to_owned()
             }

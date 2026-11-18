@@ -6,6 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `dep remove A B` refuses with `VALIDATION` ("A does not depend on B") when A has no such
+  dependency, of any type or of the `--type` given, and writes nothing. It answered "A no
+  longer depends on B" with exit 0 and wrote an event that changed nothing.
+
 - `dep remove A B --type ""` takes back the dependency, whatever its type, as with no `--type`.
   It matched only edges of the empty type, which none has, so it said "A no longer depends on B"
   and left the edge; `dep add` already read an empty type as none given (`blocks`).
