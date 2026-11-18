@@ -40,10 +40,7 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
         match arg.to_str() {
             Some("--stress") => options.stress = true,
             Some("--real") => options.real = true,
-            _ => {
-                let shown = arg.to_string_lossy();
-                return Err(Failure::Usage(format!("unknown option {shown}")));
-            }
+            _ => return Err(Failure::unknown_option(&arg)),
         }
     }
     Ok(options)

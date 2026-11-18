@@ -17,6 +17,11 @@ impl Failure {
     pub(crate) fn io(what: &str, path: &Path, error: &std::io::Error) -> Failure {
         Failure::Failed(format!("{what} {}: {error}", path.display()))
     }
+
+    /// The usage failure of a subcommand given `arg`, an option it does not take.
+    pub(crate) fn unknown_option(arg: &std::ffi::OsStr) -> Failure {
+        Failure::Usage(format!("unknown option {}", arg.to_string_lossy()))
+    }
 }
 
 /// The repository's root: the directory above this crate.
