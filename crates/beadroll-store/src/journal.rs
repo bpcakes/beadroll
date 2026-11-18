@@ -14,16 +14,19 @@ use beadroll_core::state::{KeySpace, State};
 use beadroll_core::text::parse_integer;
 use beadroll_git::IoError;
 
-use crate::FileMode;
-use crate::error::Error;
-use crate::failpoint::{Fired, kill_self};
-use crate::fs::{
-    content_sum, dir_entries, fsync, glob_ending, has_suffix, private_dirs, read, read_keyed,
-    write_atomic,
+use crate::{
+    FileMode,
+    error::Error,
+    failpoint::{Fired, kill_self},
+    fs::{
+        content_sum, dir_entries, fsync, glob_ending, has_suffix, private_dirs, read, read_keyed,
+        write_atomic,
+    },
+    layout,
+    listing::Stamp,
+    memo::FileKey,
+    workspace::Workspace,
 };
-use crate::listing::Stamp;
-use crate::memo::FileKey;
-use crate::workspace::Workspace;
 
 /// Whether a journal read also computes file content sums.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,7 +86,7 @@ pub fn claim_keys(ws: &Workspace, files: &Arc<[PathBuf]>) -> Arc<[Option<FileKey
 /// The folder of this machine's ownership attempts the remote has not confirmed, each beside the
 /// receipt of the command that made it.
 pub fn pending_dir(ws: &Workspace) -> PathBuf {
-    ws.dir.join("pending")
+    ws.dir.join(layout::PENDING)
 }
 
 /// This machine's own ownership attempts the remote has not confirmed. Never read as events.
@@ -123,7 +126,7 @@ pub fn attempt_path(ws: &Workspace, events: &[Value]) -> PathBuf {
     };
     ws.events_dir
         .join(member("replica"))
-        .join("claims")
+        .join(layout::CLAIMS)
         .join(format!("{}.json", member("id")))
 }
 

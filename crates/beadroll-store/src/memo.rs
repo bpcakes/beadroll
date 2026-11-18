@@ -44,7 +44,7 @@ const HEADER: &[u8] = b"bead journal memo 1\n";
 
 /// Where `ws` keeps its memo: in `sync.git`, whose objects the blobs it remembers are.
 pub fn memo_path(ws: &Workspace) -> PathBuf {
-    ws.dir.join(layout::SYNC_GIT).join("journal-memo")
+    ws.dir.join(layout::SYNC_GIT).join(layout::JOURNAL_MEMO)
 }
 
 /// A file's identity on disk, as git's index compares it to tell whether a file changed: its

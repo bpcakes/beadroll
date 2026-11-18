@@ -16,7 +16,8 @@ use beadroll_core::text::printed_text;
 use beadroll_git::IoError;
 
 use crate::{
-    Error, FileMode, Settings, Unreadable, Workspace, dir_entries, private_dir, read_json_text,
+    Error, FileMode, Settings, Unreadable, Workspace, dir_entries, layout, private_dir,
+    read_json_text,
 };
 
 /// The cursor's file, in `BEAD_HOME`. Its name starts with a dot, which no workspace id can, so no
@@ -68,7 +69,7 @@ pub fn home_stores(settings: &Arc<Settings>) -> Result<Vec<Found>, Error> {
                 continue;
             }
         }
-        let events = path.join("events");
+        let events = path.join(layout::EVENTS);
         match std::fs::metadata(&events) {
             Ok(meta) if meta.is_dir() => {}
             Ok(_) => {

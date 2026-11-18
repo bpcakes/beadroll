@@ -55,6 +55,7 @@ use crate::journal::{
     ContentSums, ViewError, attempt_events, claim_files_afresh, claim_keys, folder_name,
     load_journal, load_listed, segment_files,
 };
+use crate::layout;
 use crate::listing::{Keys, Stamp};
 use crate::memo::FileKey;
 use crate::projection::texts::TextFileAccess;
@@ -92,7 +93,7 @@ const TAIL: u64 = if cfg!(test) { 4 } else { 64 };
 
 /// Where a store keeps its projection.
 pub(crate) fn projection_path(ws: &Workspace) -> PathBuf {
-    ws.dir.join("projection")
+    ws.dir.join(layout::PROJECTION)
 }
 
 /// The projection of the store's journal as it is now: the stored one, the records appended since

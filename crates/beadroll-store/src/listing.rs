@@ -8,10 +8,13 @@ use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::LockState;
-use crate::error::Error;
-use crate::fs::{dir_entries, has_suffix};
-use crate::memo::FileKey;
+use crate::{
+    LockState,
+    error::Error,
+    fs::{dir_entries, has_suffix},
+    layout,
+    memo::FileKey,
+};
 
 /// A directory's identity and entry-change times. An in-place file rewrite need not change any
 /// of these, so this key must never vouch for the files' bytes.
@@ -80,7 +83,7 @@ impl Claims {
         // Machine directories are few, and their type can change without changing events/.
         for folder in dir_entries(events)? {
             if folder.is_dir() {
-                let path = folder.join("claims");
+                let path = folder.join(layout::CLAIMS);
                 sources.push(self.directory(&path)?);
                 present.push(path);
             }

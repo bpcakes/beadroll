@@ -8,7 +8,7 @@ use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_git::{Ended, KillScope, PushOutcome, blob_tree_id, push_outcome};
 use beadroll_store::{
-    Fired, attempt_path, encode_events, hex_token, relative, repair_tail, segment_files,
+    Fired, attempt_path, encode_events, hex_token, layout, relative, repair_tail, segment_files,
 };
 
 use super::Link;
@@ -101,7 +101,7 @@ impl Link<'_> {
         let mut rows = String::new();
         for (replica, groups) in &folders {
             let mut entries = blob_entries(groups.get("").map_or(&[], Vec::as_slice));
-            if let Some(claims) = groups.get("claims") {
+            if let Some(claims) = groups.get(layout::CLAIMS) {
                 let path = format!("events/{replica}/claims");
                 let known = self
                     .known

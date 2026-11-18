@@ -152,7 +152,7 @@ impl Workspace {
             origin_push: false,
             config,
             derived: None,
-            events_dir: dir.join("events"),
+            events_dir: dir.join(layout::EVENTS),
             dir,
             settings,
             holding: Cell::new(LockState::Unlocked),

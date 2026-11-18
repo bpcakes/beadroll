@@ -14,6 +14,7 @@ use beadroll_core::id::EventId;
 use beadroll_core::state::{State, TextPlace};
 
 use crate::fs::write_cache_parts;
+use crate::layout;
 use crate::workspace::Workspace;
 
 /// How the projection text file is opened.
@@ -33,7 +34,7 @@ pub(super) const START: u64 = 32;
 
 /// Where a store keeps its projection's texts.
 pub(crate) fn texts_path(ws: &Workspace) -> PathBuf {
-    ws.dir.join("projection-texts")
+    ws.dir.join(layout::PROJECTION_TEXTS)
 }
 
 /// The text file of `generation`, open as `access` asks (to read, or to read and append): `None`

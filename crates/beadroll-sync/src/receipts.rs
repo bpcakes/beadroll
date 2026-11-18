@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::Value;
-use beadroll_store::{Actor, Workspace, json_text, read, receipt_files, remove};
+use beadroll_store::{Actor, Workspace, json_text, layout, read, receipt_files, remove};
 
 use crate::error::Error;
 
@@ -108,7 +108,7 @@ pub(crate) fn settle(
             Receipt::Settled => settled.push(path),
         }
     }
-    let claims = ws.events_dir.join(replica).join("claims");
+    let claims = ws.events_dir.join(replica).join(layout::CLAIMS);
     let settled: Vec<_> = settled
         .into_iter()
         .map(|path| {

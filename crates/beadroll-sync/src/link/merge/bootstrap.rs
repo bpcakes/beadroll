@@ -6,7 +6,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use beadroll_store::{Failpoints, PreparedAtomic, complete_prefix, prepare_atomic};
+use beadroll_store::{Failpoints, PreparedAtomic, complete_prefix, layout, prepare_atomic};
 
 use super::{Merging, attempt_shaped, newlines, segment_shaped};
 use crate::Error;
@@ -116,7 +116,7 @@ fn independent_targets(events: &Path, listing: &[(Vec<u8>, String)]) -> bool {
             && beadroll_core::text::is_lower_hex(machine.as_bytes())
             && paths.insert(path)
             && unaliased_directory(&folder)
-            && (!attempt_shaped(path) || unaliased_directory(&folder.join("claims")))
+            && (!attempt_shaped(path) || unaliased_directory(&folder.join(layout::CLAIMS)))
             && matches!(std::fs::symlink_metadata(target), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
     })
 }
