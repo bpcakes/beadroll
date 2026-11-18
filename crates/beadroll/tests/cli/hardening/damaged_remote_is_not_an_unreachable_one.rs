@@ -46,11 +46,11 @@ fn remote_ref_naming_lost_objects_is_reported_as_damage_naming_the_ref() {
             let code = error.get("code").expect("the error's code");
             let message = error.get("message").and_then(|m| m.as_str());
             let message = message.unwrap_or_else(|| panic!("no message in {}", proc.stderr));
-            assert_ne!(
+            assert_eq!(
                 code.as_str(),
-                Some("REMOTE_UNREACHABLE"),
-                "{lost}: {}: a remote that answered is reported unreachable ('nothing is \
-                 lost; retry later'): {message}",
+                Some("REMOTE_DAMAGED"),
+                "{lost}: {}: a remote that answered but lost objects is reported otherwise (as \
+                 REMOTE_UNREACHABLE: 'nothing is lost; retry later'?): {message}",
                 argv[0]
             );
             assert!(
@@ -58,6 +58,14 @@ fn remote_ref_naming_lost_objects_is_reported_as_damage_naming_the_ref() {
                 "{lost}: {} does not name the damaged ref: {message}",
                 argv[0]
             );
+            // and the repair: the ref deleted there, then a sync everywhere
+            for repair in ["git update-ref -d refs/beads/journal", "bead sync"] {
+                assert!(
+                    message.contains(repair),
+                    "{lost}: {} does not name the repair {repair:?}: {message}",
+                    argv[0]
+                );
+            }
         }
     }
 }

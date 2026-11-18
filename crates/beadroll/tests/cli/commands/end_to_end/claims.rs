@@ -72,6 +72,35 @@ fn claim_lasts_until_its_owner_releases_or_closes_it() {
     }
 }
 
+/// A takeover is online only: `--offline` is refused as `VALIDATION`, before anything is written,
+/// and the owner stays.
+#[test]
+fn a_takeover_is_refused_offline() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, _) = two_machines(&sandbox);
+    a.bead(["claim", &x]);
+    settle(&[&a, &b]);
+    let events = |machine: &Machine| machine.bead(["log", &x, "--limit", "0"]).unwrap();
+    let before = events(&b);
+    let offline = [
+        "takeover",
+        &x,
+        "--reason",
+        "owner crashed",
+        "--offline",
+        "--json",
+    ];
+    let refused = b.cmd(offline).thread("b-developer").run();
+    assert_eq!(code(&refused), "VALIDATION", "{}", refused.stderr);
+    assert!(refused.stderr.contains("online"), "{}", refused.stderr);
+    assert_eq!(events(&b), before, "a refused takeover wrote an event");
+    settle(&[&a, &b]);
+    for machine in [&a, &b] {
+        let claim = machine.show(&x)["claim"]["generation"].clone();
+        assert_eq!(claim.as_i64(), Some(1), "the owner changed");
+    }
+}
+
 /// A takeover needs a reason, and fences the previous owner: its closes, one written before the
 /// takeover and published after it, one written after, are stale everywhere, and the issues stay
 /// with the new owner, whose own close counts.

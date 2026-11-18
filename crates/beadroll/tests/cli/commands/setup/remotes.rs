@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, code, executable, git, parse_json, path_text};
+use beadroll_test_support::{Json, Machine, Sandbox, code, executable, git, parse_json, path_text};
 
 use super::{
     alias_both_ways, commit, commit_tracked_file, json, mirror, set_origin, titles, tracked_file,
@@ -51,6 +51,91 @@ fn init_tracked_given_origins_url_stores_its_name() {
     commit(&a, &["push", "-q", "origin", "HEAD:main"]);
     json(&b, &["sync"]);
     assert_eq!(titles(&b), ["after the move", "before the move"]);
+}
+
+/// A copy of the sandbox's remote at `path` with its branches only, as an import of branches and
+/// tags leaves the tracker's ref behind.
+fn branches_only(sandbox: &Sandbox, path: &Path) {
+    git(
+        ["init", "-q", "--bare", "-b", "main", path_text(path)],
+        None,
+    );
+    let origin = path_text(sandbox.origin());
+    let pushed = [
+        "--git-dir",
+        origin,
+        "push",
+        "-q",
+        path_text(path),
+        "refs/heads/*:refs/heads/*",
+    ];
+    git(pushed, None);
+}
+
+/// Whether the repository at `path` holds the tracker's ref.
+fn holds_the_tracker(path: &Path) -> bool {
+    let dir = path_text(path);
+    let shown = git(
+        ["--git-dir", dir, "for-each-ref", "refs/beads/journal"],
+        None,
+    );
+    !shown.is_empty()
+}
+
+/// A tracked file naming `origin`: the first sync after a move whose copy left the tracker's ref
+/// behind publishes the tracker at the new URL, under the same id, and another machine's next sync
+/// there adopts it.
+#[test]
+fn a_tracked_origin_publishes_the_tracker_where_a_move_left_it_behind() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(
+        &a,
+        &["init", "--tracked", "--prefix", "ex", "--remote", "origin"],
+    );
+    let id = tracked_file(&a)["workspace"].clone();
+    json(&a, &["create", "before the move"]);
+    commit_tracked_file(&a);
+    let moved = sandbox.root().join("moved.git");
+    branches_only(&sandbox, &moved);
+    assert!(
+        !holds_the_tracker(&moved),
+        "the copy took the tracker's ref"
+    );
+    set_origin(&a, &moved);
+    json(&a, &["sync"]);
+    assert!(
+        holds_the_tracker(&moved),
+        "the tracker was not published at the new URL"
+    );
+    assert_eq!(tracked_file(&a)["workspace"], id);
+    let b = Machine::new(&sandbox, "b");
+    set_origin(&b, &moved);
+    json(&b, &["sync"]);
+    assert_eq!(titles(&b), ["before the move"]);
+}
+
+/// A tracked remote stored as a URL keeps pointing at the old place; `init --tracked --remote
+/// origin` rewrites it to `origin`, keeping the id.
+#[test]
+fn init_tracked_rewrites_a_remote_stored_as_a_url_to_origin() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let other = sandbox.root().join("other.git");
+    git(
+        ["init", "-q", "--bare", "-b", "main", path_text(&other)],
+        None,
+    );
+    let url = path_text(&other);
+    json(
+        &a,
+        &["init", "--tracked", "--prefix", "ex", "--remote", url],
+    );
+    assert_eq!(tracked_file(&a)["remote"].as_str(), Some(url));
+    let id = tracked_file(&a)["workspace"].clone();
+    json(&a, &["init", "--tracked", "--remote", "origin"]);
+    assert_eq!(tracked_file(&a)["remote"].as_str(), Some("origin"));
+    assert_eq!(tracked_file(&a)["workspace"], id);
 }
 
 /// Origin is where `git push origin` goes (G22): a checkout whose origin fetches from one URL and
