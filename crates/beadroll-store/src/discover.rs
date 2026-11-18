@@ -19,12 +19,38 @@ use crate::fs::{json_text, read_json_text};
 use crate::settings::{Settings, join_path, normalize_path};
 use crate::workspace::{Workspace, configured_url, listed_url};
 
+/// The JSON type a tracked configuration key must have.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ConfigType {
+    /// A string, never empty: an empty one would silently mean "not set".
+    Text,
+    Bool,
+}
+
+impl ConfigType {
+    /// The type's name in a refusal, as Python's bead named it (`str`, `bool`).
+    fn name(self) -> &'static str {
+        match self {
+            ConfigType::Text => "str",
+            ConfigType::Bool => "bool",
+        }
+    }
+
+    /// Whether `value` has this type.
+    fn fits(self, value: &Value) -> bool {
+        matches!(
+            (self, value),
+            (ConfigType::Text, Value::Str(_)) | (ConfigType::Bool, Value::Bool(_))
+        )
+    }
+}
+
 /// The tracked configuration's keys bead reads, and the JSON type each must have.
-const CONFIG_KEYS: [(&str, &str); 4] = [
-    ("workspace", "str"),
-    ("ref", "str"),
-    ("remote", "str"),
-    ("where", "bool"),
+const CONFIG_KEYS: [(&str, ConfigType); 4] = [
+    ("workspace", ConfigType::Text),
+    ("ref", ConfigType::Text),
+    ("remote", ConfigType::Text),
+    ("where", ConfigType::Bool),
 ];
 
 /// The tracked configuration, or a `CONFIG` error naming what is wrong with it. Unknown keys are
@@ -34,18 +60,17 @@ pub fn checked_config(config: Value, path: &str) -> Result<Object, Error> {
         return Err(Error::Config(format!("{path} must hold a JSON object")));
     };
     for (key, kind) in CONFIG_KEYS {
-        let fits = matches!(
-            (config.get(key), kind),
-            (None, _) | (Some(Value::Str(_)), "str") | (Some(Value::Bool(_)), "bool")
-        );
-        if !fits {
+        let Some(value) = config.get(key) else {
+            continue;
+        };
+        if !kind.fits(value) {
             return Err(Error::Config(format!(
-                "{path}: {} must be a {kind}",
-                repr_str(key)
+                "{path}: {} must be a {}",
+                repr_str(key),
+                kind.name()
             )));
         }
-        if kind == "str" && matches!(config.get(key), Some(Value::Str(s)) if s.is_empty()) {
-            // an empty value would silently mean "not set"
+        if matches!(value, Value::Str(s) if s.is_empty()) {
             return Err(Error::Config(format!(
                 "{path}: {} must not be empty",
                 repr_str(key)
