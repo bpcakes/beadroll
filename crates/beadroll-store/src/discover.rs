@@ -389,13 +389,7 @@ pub fn find_workspace(settings: &Arc<Settings>) -> Result<Workspace, Error> {
         Some(id) => id,
         None => local_id(settings)?,
     };
-    let mut ws = Workspace::new(
-        Arc::clone(settings),
-        &id,
-        name,
-        (!origin.is_empty()).then_some(origin),
-        config,
-    )?;
+    let mut ws = Workspace::new(Arc::clone(settings), &id, name, Some(origin), config)?;
     ws.origin_push = origin_push;
     ws.derived = if overridden.is_none() && tracked_id.is_none() {
         derived

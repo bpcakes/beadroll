@@ -33,7 +33,7 @@ pub(crate) fn info(ctx: &Context<'_>) -> Result<Outcome, Failure> {
         "BEAD_WORKSPACE"
     } else if ws.config.get("workspace").is_some_and(Value::truthy) {
         "tracked .beadroll.json"
-    } else if ws.origin.as_ref().is_some_and(|o| !o.is_empty()) {
+    } else if ws.origin.is_some() {
         "origin url"
     } else {
         "local path"
