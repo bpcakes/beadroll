@@ -15,8 +15,29 @@ cargo-fuzz = true
 beadroll-core = { path = "../crates/beadroll-core" }
 libfuzzer-sys = "0.4"                       # the libFuzzer driver cargo-fuzz builds against
 
+# The main workspace's lints, which this workspace cannot inherit, but for those a fuzz target
+# breaks by design: it fails by panicking (an assertion, an unwrap) for libFuzzer to keep the
+# input, and prints what it found. xtask's ci::fuzzing keeps the two tables alike.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+unknown_lints = { level = "deny", priority = -10 }
+renamed_and_removed_lints = { level = "deny", priority = -10 }
+
 [lints.clippy]
 fn_params_excessive_bools = "deny"
+cognitive_complexity = "warn"
+mod_module_files = "warn"
+too_many_lines = "warn"
+redundant_clone = "deny"
+large_stack_arrays = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+allow_attributes_without_reason = "deny"
+undocumented_unsafe_blocks = "deny"
 
 [workspace]
 members = ["."]

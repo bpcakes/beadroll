@@ -240,3 +240,58 @@ fn every_push_checks_lints_and_denies_the_fuzz_targets() {
     let (_, fmt) = job(&every_push, "fmt");
     step_with(&fmt, &["run: rustfmt --check", "fuzz/fuzz_targets/"]);
 }
+
+/// The lints a fuzz target breaks by design, which fuzz/ leaves out of the main workspace's: it
+/// fails by panicking, for libFuzzer to keep the input, and prints what it found.
+const LEFT_OUT: [&str; 5] = [
+    "unwrap_used",
+    "expect_used",
+    "panic",
+    "print_stdout",
+    "print_stderr",
+];
+
+/// The lint lines of `manifest`'s tables whose headers `tables` name, as `group: name = level`,
+/// comments left out, in their order.
+fn lint_lines(manifest: &str, tables: [&str; 2]) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut group = None;
+    for line in manifest.lines() {
+        let line = line.split(" #").next().unwrap_or(line).trim_end();
+        if line.starts_with('[') {
+            group =
+                (tables.iter().position(|table| line == *table)).map(|at| ["rust", "clippy"][at]);
+        } else if let Some(group) = group
+            && !line.is_empty()
+            && !line.starts_with('#')
+        {
+            found.push(format!("{group}: {line}"));
+        }
+    }
+    found
+}
+
+/// fuzz/ is its own workspace and cannot inherit the main one's lints, so it keeps a copy: every
+/// one of them, at the same level, but those a fuzz target breaks by design. A lint added to the
+/// workspace and not to fuzz/ fails here, as fuzz/ took only one of them for as long as nothing
+/// compared the two.
+#[test]
+fn the_fuzz_targets_keep_the_workspaces_lints() {
+    let workspace = lint_lines(
+        &read("Cargo.toml"),
+        ["[workspace.lints.rust]", "[workspace.lints.clippy]"],
+    );
+    let kept: Vec<String> = (workspace.into_iter())
+        .filter(|line| {
+            let name = line.split_once(": ").map_or("", |(_, rest)| rest);
+            !LEFT_OUT
+                .iter()
+                .any(|out| name.split(' ').next() == Some(*out))
+        })
+        .collect();
+    let fuzz = lint_lines(&read("fuzz/Cargo.toml"), ["[lints.rust]", "[lints.clippy]"]);
+    assert_eq!(
+        fuzz, kept,
+        "fuzz/Cargo.toml's lints are not the workspace's"
+    );
+}

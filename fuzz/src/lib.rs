@@ -9,8 +9,6 @@ use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::query::{Edges, ReadyScope};
 use beadroll_core::state::State;
 
-/// Whether `a` and `b` are the same value member for member, in the same order, every float the
-/// same bits.
 /// `values`, each one compact JSON line ended by a newline: a segment, an attempt file or an export
 /// as bead writes them.
 pub fn lines<V: std::borrow::Borrow<Value>>(values: impl IntoIterator<Item = V>) -> String {
@@ -22,6 +20,8 @@ pub fn lines<V: std::borrow::Borrow<Value>>(values: impl IntoIterator<Item = V>)
     text
 }
 
+/// Whether `a` and `b` are the same value member for member, in the same order, every float the
+/// same bits.
 pub fn identical(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Float(a), Value::Float(b)) => a.to_bits() == b.to_bits(),
