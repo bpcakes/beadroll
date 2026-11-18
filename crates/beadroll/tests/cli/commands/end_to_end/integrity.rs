@@ -56,7 +56,7 @@ fn every_event_carries_machine_agent_and_thread() {
 /// A line of a segment that is not JSON is reported as one integrity problem, and the tracker
 /// reads and writes on.
 #[test]
-fn damaged_lines_and_payloads_are_reported_not_fatal() {
+fn a_damaged_line_is_reported_not_fatal() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);

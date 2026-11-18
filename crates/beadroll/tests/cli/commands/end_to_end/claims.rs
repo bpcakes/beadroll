@@ -43,7 +43,7 @@ fn online_claim_is_exclusive_across_machines() {
 /// it, a release opens the issue again and the next claim is the next generation, and a close
 /// ends it everywhere. An issue cannot be created already in progress.
 #[test]
-fn claim_lasts_until_release_close_or_takeover() {
+fn claim_lasts_until_its_owner_releases_or_closes_it() {
     let sandbox = crate::sandbox();
     let (a, b, x, _) = two_machines(&sandbox);
     let shortcut = a.run(["create", "shortcut", "--status", "in_progress", "--json"]);

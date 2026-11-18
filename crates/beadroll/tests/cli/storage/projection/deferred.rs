@@ -266,7 +266,7 @@ fn writes_while_a_read_writes_the_projection_back_are_taken_in_by_the_next_read(
 /// merge replays the journal, as roll-lqjj.8 decided. Either way bead answers as the journal
 /// replayed.
 #[test]
-fn a_merge_concurrent_only_with_writes_left_after_the_projection_extends_it() {
+fn a_merge_extends_the_projection_only_while_concurrent_with_writes_left_after_it() {
     for written_back in [false, true] {
         let sandbox = crate::sandbox();
         let mut a = crate::rust_only(&sandbox, "a");
