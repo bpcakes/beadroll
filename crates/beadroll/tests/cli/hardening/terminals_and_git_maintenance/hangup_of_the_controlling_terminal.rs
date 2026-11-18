@@ -64,7 +64,7 @@ fn hang_up(sandbox: &Sandbox, machine: &Machine, args: &[&str]) -> (Vec<u8>, Str
     use std::process::{Command, Stdio};
     use std::time::Duration;
 
-    use super::{drain, wait_for};
+    use beadroll_test_support::{drain, exited_within};
 
     let program = sandbox.root().join("hangup.exp");
     std::fs::write(&program, EXPECT).unwrap();
@@ -84,7 +84,7 @@ fn hang_up(sandbox: &Sandbox, machine: &Machine, args: &[&str]) -> (Vec<u8>, Str
         .expect("expect starts (macOS ships it as /usr/bin/expect)");
     let output = drain(child.stdout.take().expect("expect's output"));
     let errors = drain(child.stderr.take().expect("expect's errors"));
-    let Some(status) = wait_for(&mut child, Duration::from_secs(90)) else {
+    let Some(status) = exited_within(&mut child, Duration::from_secs(90)) else {
         let _ = child.kill();
         let _ = child.wait();
         panic!("bead did not end after its terminal hung up");
@@ -126,9 +126,9 @@ fn hang_up(sandbox: &Sandbox, machine: &Machine, args: &[&str]) -> (Vec<u8>, Str
         Pid, Signal, WaitOptions, getpid, kill_process, set_child_subreaper, waitpid,
     };
 
-    use beadroll_test_support::shell_quoted;
+    use beadroll_test_support::{drain, exited_within, shell_quoted};
 
-    use super::{drain, script, wait_for};
+    use super::script;
 
     set_child_subreaper(Some(getpid())).expect("the test becomes a subreaper");
     let (mut reader, mut writer) = std::io::pipe().expect("a pipe");
@@ -187,7 +187,7 @@ fn hang_up(sandbox: &Sandbox, machine: &Machine, args: &[&str]) -> (Vec<u8>, Str
     }
     // the terminal window closes
     kill_process(Pid::from_child(&child), Signal::KILL).expect("script ends");
-    let ended = wait_for(&mut child, Duration::from_secs(60));
+    let ended = exited_within(&mut child, Duration::from_secs(60));
     assert!(ended.is_some(), "script outlived SIGKILL");
     drop(input);
     let pid = std::fs::read_to_string(&pid_file).unwrap_or_else(|error| {

@@ -5,9 +5,9 @@
 
 use std::path::Path;
 use std::process::Stdio;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use beadroll_test_support::{Gate, Machine, beside};
+use beadroll_test_support::{Gate, Machine, beside, exited_within};
 
 use super::{answers, projection};
 use crate::storage::projection::ReadPath;
@@ -81,17 +81,13 @@ fn comment_within(machine: &Machine, key: &str, text: &str) -> Result<(), String
     .stderr(Stdio::piped())
     .spawn()
     .unwrap();
-    let deadline = Instant::now() + LIMIT;
-    while child.try_wait().unwrap().is_none() {
-        if Instant::now() > deadline {
-            child.kill().unwrap();
-            let stuck = child.wait_with_output().unwrap();
-            return Err(format!(
-                "still waiting after {LIMIT:?}: {}",
-                String::from_utf8_lossy(&stuck.stderr)
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(5));
+    if exited_within(&mut child, LIMIT).is_none() {
+        child.kill().unwrap();
+        let stuck = child.wait_with_output().unwrap();
+        return Err(format!(
+            "still waiting after {LIMIT:?}: {}",
+            String::from_utf8_lossy(&stuck.stderr)
+        ));
     }
     let done = child.wait_with_output().unwrap();
     match done.status.success() {

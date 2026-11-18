@@ -2,13 +2,12 @@
 //! the end, its answer (the JSON document, or the error code) taken apart.
 
 use std::fmt;
-use std::io::Read;
 use std::os::unix::process::ExitStatusExt as _;
 use std::process::{ExitStatus, Stdio};
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::{Invocation, Json, parse_json};
+use beadroll_test_support::{Invocation, Json, drain, parse_json};
 
 /// How long a run may take before it counts as hung.
 const HANG_AFTER: Duration = Duration::from_secs(180);
@@ -123,17 +122,6 @@ pub(super) fn exec(invocation: Invocation<'_>) -> Ran {
         stderr: text(err, "standard error"),
         ms,
     }
-}
-
-/// A thread that reads `pipe` to its end, and the channel it hands what it read to.
-fn drain(mut pipe: impl Read + Send + 'static) -> Receiver<Vec<u8>> {
-    let (sender, receiver) = mpsc::channel();
-    std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let _ = pipe.read_to_end(&mut bytes);
-        let _ = sender.send(bytes);
-    });
-    receiver
 }
 
 /// What `drain`'s thread read, if the pipe ended before `deadline`.

@@ -5,9 +5,11 @@
 
 use std::io::Read as _;
 use std::process::Stdio;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use beadroll_test_support::{Gate, Json, Machine, Run, beside, code, parse_json, wait_until};
+use beadroll_test_support::{
+    Gate, Json, Machine, Run, beside, code, exited_within, parse_json, wait_until,
+};
 
 use super::{create, each, events, recap};
 use crate::hardening::help_is_plain_text::run_on_terminal;
@@ -243,17 +245,8 @@ fn a_recap_waiting_on_its_reader_holds_no_other_up() {
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(60);
-    let status = loop {
-        if let Some(status) = other.try_wait().unwrap() {
-            break status;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "the other recap waited on the first's reader"
-        );
-        std::thread::sleep(Duration::from_millis(10));
-    };
+    let status = exited_within(&mut other, Duration::from_secs(60))
+        .expect("the other recap waited on the first's reader");
     assert!(status.success());
     let mut rest = Vec::new();
     output.read_to_end(&mut rest).unwrap();
