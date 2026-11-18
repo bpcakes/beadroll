@@ -37,7 +37,7 @@ pub use fs::{
     write_atomic,
 };
 pub use history::history;
-pub use identity::{IdentityMode, hex_token, machine_aliases, replica_id, uuid7};
+pub use identity::{ensure_replica_id, hex_token, machine_aliases, replica_id, uuid7};
 pub use journal::{
     ViewError, active_segment, append_events, attempt_path, claim_files, claim_keys,
     complete_prefix, encode_events, extend_segment, load_journal, load_pending, pending_dir,

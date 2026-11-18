@@ -10,7 +10,7 @@ use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_core::op::OpName;
 use beadroll_core::state::State;
 use beadroll_core::text::str_of;
-use beadroll_store::{Actor, IdentityMode, replica_id, view_outline};
+use beadroll_store::{Actor, ensure_replica_id, view_outline};
 use beadroll_sync::{Mode, NetworkMode, Tx, coordinated};
 
 use super::{Context, Failure, Outcome, arg_text, encodable, need_tracker, resolve_arg, view_of};
@@ -126,7 +126,7 @@ impl ClaimStep<'_> {
 /// A retry recognised from its receipt may refer to a claim that has since changed hands. Report
 /// that change rather than reporting a claim the actor no longer holds.
 pub(crate) fn still_held(ctx: &Context<'_>, st: &State, keys: &[OsString]) -> Result<(), Failure> {
-    let replica = replica_id(&ctx.ws.settings, IdentityMode::Create)?.unwrap_or_default();
+    let replica = ensure_replica_id(&ctx.ws.settings)?;
     let me = ctx.actor.label(&replica);
     for key in keys {
         let issue = resolve_arg(st, key)?;

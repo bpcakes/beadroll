@@ -19,7 +19,7 @@ use beadroll_core::journal::{Journal, JournalOrder, read_segment};
 use beadroll_core::json::{Format, Value, write};
 use beadroll_core::replay::replay;
 use beadroll_store::{
-    IdentityMode, Workspace, claim_files, load_journal, read_attempt, replica_id, segment_files,
+    Workspace, claim_files, ensure_replica_id, load_journal, read_attempt, segment_files,
 };
 use beadroll_test_support::{Json, Machine, Run, Sandbox, converge, json_ids};
 
@@ -192,9 +192,7 @@ fn replay_does_not_depend_on_delivery_order() {
         }
         assert_eq!(view(shuffled), expected);
     }
-    let own = replica_id(&settings, IdentityMode::Create)
-        .unwrap()
-        .unwrap();
+    let own = ensure_replica_id(&settings).unwrap();
     let mut partial = Journal::new();
     for id in &journal.settled().unwrap().order()[&own] {
         partial.add(written[id].clone(), &own, "", JournalOrder::Sequenced);

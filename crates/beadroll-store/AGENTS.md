@@ -32,7 +32,8 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 - `src/history.rs`: `history`, causal display metadata cached under `history`, with the build,
   every source file's settled identity and a content checksum checked on each hit. A miss
   loads and settles the journal. Pending attempts, current issue keys and aliases are not cached.
-- `src/identity.rs`: `replica_id`, `machine_aliases`, `uuid7`, `hex_token`.
+- `src/identity.rs`: `replica_id` (the identity if there is one), `ensure_replica_id` (minted first
+  if there is none), `machine_aliases`, `uuid7`, `hex_token`.
 - `src/recap.rs`: `home_stores`, every store under `BEAD_HOME` without a checkout (an unusable
   one with its workspace id when its name is one), and `RecapCursor`, `bead recap`'s cursor: for
   each tracker a `Mark`, the frontier of what was shown or the window it is owed, saved under a
