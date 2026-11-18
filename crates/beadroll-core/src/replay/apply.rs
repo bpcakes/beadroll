@@ -51,7 +51,9 @@ impl Names {
     }
 }
 
-/// Applies one event. `Ok(true)` when it touched an existing issue.
+/// Applies one event. `Ok(true)` when it applied to an existing issue, so that the issue's
+/// `updated_at` and `where` advance; a lost claim or a stale end is recorded on the issue but
+/// answers `false`.
 pub(super) fn apply_event(
     st: &mut State,
     k: &Knowledge,

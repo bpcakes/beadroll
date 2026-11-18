@@ -35,9 +35,9 @@ pub struct Issue {
     pub(crate) retracted: BTreeMap<(String, Option<String>), IdSet>,
     pub(crate) claim: Option<Box<Claim>>,
     pub(crate) claim_generation: Int,
-    /// The claims that ended, the claims that lost and the ends that came too late: its ownership
-    /// history, kept with its texts (roll-lqjj.40) and added to through [`Issue::ended`],
-    /// [`Issue::lost`] and [`Issue::ignored`] alone.
+    /// The claims that ended, oldest first: its ownership history with `lost_claims` (added to by
+    /// [`Issue::lost`]) and `stale` (by [`Issue::ignored`]), kept with its texts (roll-lqjj.40) and
+    /// added to through [`Issue::ended`] alone.
     pub(crate) claim_history: Vec<EndedClaim>,
     pub(crate) provisional_claims: Vec<Provisional>,
     pub(crate) lost_claims: Vec<LostClaim>,

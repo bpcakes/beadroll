@@ -11,7 +11,8 @@
 //! clocks share, which only grow; the ids it read, the batch's merged in where they sort. The rest
 //! is written: an issue changed or new, an event new, and what lies beside them. A compaction
 //! renumbers the events, so the index is written whole then, its table made anew; the state part's
-//! table is made anew once it holds more than an eighth more entries than when it last was.
+//! table is made anew once it holds more than an eighth more entries, plus `TABLE_SLACK`, than when
+//! it last was.
 
 use std::collections::HashMap;
 use std::ops::Range;
@@ -35,9 +36,10 @@ pub(crate) enum Compaction {
 }
 
 /// What a projection read back keeps of the bytes it was read from, to copy from when it is written
-/// back: its two parts, where each issue's record begins in the state part, and where its event
-/// records, chain sets, positions and ids are in its index, with how many of each, and the tables
-/// of both parts.
+/// back: its two parts, where each issue's record begins in the state part, where its keys' entries
+/// are there and how many, where its event records, chain sets, positions and ids are in its index,
+/// with how many of each, the tables of both parts, and how many entries the state table had when
+/// last made anew.
 pub(crate) struct Kept {
     state: Vec<u8>,
     index: Vec<u8>,

@@ -313,7 +313,8 @@ impl Projection {
     }
 
     /// The frontier, the ids and the journals' lengths and latest events with the new `events` and
-    /// their machines' records (`order`), once they apply. Whether more can be applied after stays
+    /// their machines' records (`order`), once they apply, and for a projection read back the ids
+    /// taken in since (`added`). Whether more can be applied after stays
     /// as it was: a batch that waits for a cause or holds a takeover is declined.
     fn advance(
         &mut self,
