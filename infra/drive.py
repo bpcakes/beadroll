@@ -66,6 +66,9 @@ REPO_LOCAL = os.environ.get("BEAD_TEST_LOCAL_REPO") or os.path.expanduser("~/bea
 STATE = "$HOME/.local/state/beads-poc-test"
 # A LAN that throttles bursts of ssh connections to github.com:22 can use GitHub's SSH-over-443 endpoint instead.
 HOST_ENV = {}  # plain github.com:22 everywhere
+# seconds a command may take, run here or over ssh against the git host: one longer is hung, and the run
+# stops on it
+TIMEOUT = 120
 
 
 # What every process this driver starts here runs in, ssh's included: the caller's environment without what
@@ -105,7 +108,7 @@ def probe(host):
     its clone's origin."""
     repo = word(REPO_LOCAL if HOSTS[host] is None else REPO_REMOTE)
     proc = ran(over(host, PROBE.format(bead=word(BEADS[host]), repo=repo)), capture_output=True, text=True,
-                          timeout=120)
+                          timeout=TIMEOUT)
     lines = proc.stdout.split("\n")
     if proc.returncode or len(lines) < 8 or lines[7] != "end":
         sys.exit(f"preflight: cannot reach {host} ({HOSTS[host] or 'here'}): {proc.stderr.strip()[-300:]}")
@@ -138,7 +141,7 @@ def preflight():
     return rows
 
 
-def run(host, *args, thread=None, agent="codex", env="", raw=False, timeout=120):
+def run(host, *args, thread=None, agent="codex", env="", raw=False, timeout=TIMEOUT):
     """Run one bead command on `host`; return parsed JSON (or an error dict with code)."""
     thread = thread or f"{host}-thread-0001"
     repo = REPO_LOCAL if HOSTS[host] is None else REPO_REMOTE
@@ -303,10 +306,10 @@ def main(argv):
     section("S11 a linked worktree on this machine sees the same tracker and stays clean")
     wt = REPO_LOCAL + "-wt"
     ran(["git", "-C", REPO_LOCAL, "worktree", "add", "-q", wt, "-b", f"feature-{TAG}"], check=True, capture_output=True,
-                   timeout=120)
+                   timeout=TIMEOUT)
     try:
         cmd = f"cd {word(wt)} && BEAD_HOME={STATE} {word(BEADS['local'])} info --json"
-        info = json.loads(ran(["bash", "-c", cmd], capture_output=True, text=True, check=True, timeout=120).stdout)
+        info = json.loads(ran(["bash", "-c", cmd], capture_output=True, text=True, check=True, timeout=TIMEOUT).stdout)
         status = ran(["git", "-C", wt, "status", "--porcelain"], capture_output=True, text=True).stdout
         print("same workspace:", info["workspace"] == run("local", "info")["ok"]["workspace"], "| worktree clean:", status == "")
         results["S11"] = info["workspace"] == run("local", "info")["ok"]["workspace"] and status == ""
@@ -315,7 +318,7 @@ def main(argv):
         issue = ready_ids("local")[5]
         cmd = (f"cd {word(wt)} && BEAD_HOME={STATE} BEAD_AGENT=codex BEAD_THREAD=local-wt-thread {word(BEADS['local'])} "
                f"update {shlex.quote(issue)} --claim --add-label from-worktree --json")
-        claimed = ran(["bash", "-c", cmd], capture_output=True, text=True, timeout=120)
+        claimed = ran(["bash", "-c", cmd], capture_output=True, text=True, timeout=TIMEOUT)
         same, _ = settle()
         views = {h: show(h, issue) for h in HOSTS}
         branches = {h: (v.get("claim") or {}).get("where", {}).get("branch") for h, v in views.items()}
