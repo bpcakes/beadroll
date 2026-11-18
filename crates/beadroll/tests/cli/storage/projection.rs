@@ -404,7 +404,10 @@ fn a_long_description_is_written_to_the_text_file_once() {
         .to_owned();
     a.bead(["list"]);
     let made = std::fs::metadata(texts(&a)).unwrap().len();
-    assert!(made < 101_000, "{made} bytes for one 100,000-byte text");
+    assert!(
+        (100_000..101_000).contains(&made),
+        "{made} bytes for one 100,000-byte text"
+    );
     let second = sandbox.root().join("second.txt");
     std::fs::write(&second, "e".repeat(100_000)).unwrap();
     a.bead([
@@ -416,7 +419,7 @@ fn a_long_description_is_written_to_the_text_file_once() {
     a.bead(["show", &key]);
     let grown = std::fs::metadata(texts(&a)).unwrap().len() - made;
     assert!(
-        grown < 101_000,
+        (100_000..101_000).contains(&grown),
         "{grown} bytes added for one 100,000-byte text"
     );
     let keys = [key];
@@ -425,5 +428,8 @@ fn a_long_description_is_written_to_the_text_file_once() {
         answers(&a, &keys, ReadPath::Replay)
     );
     let shown = a.show(&keys[0]);
-    assert_eq!(shown["description"].as_str().map(str::len), Some(100_000));
+    assert_eq!(
+        shown["description"].as_str(),
+        Some("e".repeat(100_000).as_str())
+    );
 }

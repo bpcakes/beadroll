@@ -76,6 +76,12 @@ fn create_on_a_broken_own_chain_is_a_structured_error_and_writes_nothing() {
         "an inert event was appended"
     );
     let title = a.run(["update", key, "--title", "renamed", "--json"]);
+    assert_eq!(code(&title), "JOURNAL_FORK", "{}", title.stderr);
+    assert_eq!(
+        std::fs::read_to_string(&segment).unwrap(),
+        before,
+        "the update appended an inert event"
+    );
     let shown = a.show(key);
     let shown = shown.get("title").expect("show's title");
     assert_ne!(

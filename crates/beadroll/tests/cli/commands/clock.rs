@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use beadroll_test_support::{Json, Machine, Sandbox, printed_id};
+use beadroll_test_support::{Json, Machine, Sandbox, printed_id, reported_code};
 
 use super::fixtures::set_stamps;
 
@@ -35,6 +35,7 @@ fn future_clock_create_is_a_structured_error() {
         .run();
     assert!(!created.crashed(), "{}", created.stderr);
     assert_ne!(created.returncode(), 0, "{}", created.stdout);
+    assert!(reported_code(&created).is_some(), "{}", created.stderr);
     let listed = machine.bead(["list", "--all", "--limit", "0"]);
     let listed = listed.expect("bead list prints a record");
     let issues = listed["issues"].as_array().expect("a list of issues");

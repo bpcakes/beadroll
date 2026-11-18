@@ -266,6 +266,12 @@ fn an_issue_named_again_after_an_event_that_waits_is_decided_as_it_was() {
     let deletes = a.run(["delete", &deleted, &deleted, "--offline", "--json"]);
     assert_eq!(deletes.returncode(), 0, "{}", deletes.stderr);
     let deletes = parse_json(&deletes.stdout).unwrap();
+    // one answer for each id named, or the checks below would run over none
+    assert_eq!(
+        deletes.as_array().map(|items| items.len()),
+        Some(2),
+        "{deletes:?}"
+    );
     for item in deletes.as_array().unwrap() {
         assert_eq!(item["status"].as_str(), Some("open"), "{item:?}");
         assert!(item.get("unchanged").is_none(), "{item:?}");

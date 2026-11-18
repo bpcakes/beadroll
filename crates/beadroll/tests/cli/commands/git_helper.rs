@@ -52,6 +52,8 @@ fn timeout_reaps_the_git_helper() {
         .split_whitespace()
         .map(|line| line.parse().unwrap())
         .collect();
+    // a sync that failed before git started its helper would leave none to have outlived it
+    assert!(!pids.is_empty(), "no git helper started");
     // a helper killed with its group is gone once the system has reaped it
     within(Duration::from_secs(10), || {
         !pids.iter().any(|pid| alive(*pid))

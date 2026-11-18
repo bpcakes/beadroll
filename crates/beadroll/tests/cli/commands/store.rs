@@ -200,6 +200,7 @@ fn read_only_store_write_is_a_structured_error() {
     let created = machine.run(["create", "nope", "--json"]);
     assert_ne!(created.returncode(), 0, "{}", created.stdout);
     assert!(!created.crashed(), "{}", created.stderr);
+    assert_eq!(code(&created), "IO", "{}", created.stderr);
     let shown = machine.run(["show", &key, "--json"]);
     assert_eq!(shown.returncode(), 0, "{}", shown.stderr);
     assert_eq!(
