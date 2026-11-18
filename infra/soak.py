@@ -4,9 +4,9 @@ Usage: soak.py BP REPO SECONDS SEED LOGFILE   (BEAD_HOME etc. come from the envi
 BP is the bead to run, as its caller selected it, by its absolute path: the preflight reads it from where
 this starts and the traffic runs it in REPO, so a relative path could name two beads, and it is refused
 before anything runs. Before any traffic, the log's first line records it (its path, the first line
-`--version` prints, its kind, native or script, and a digest), and with BEAD_EXPECT_VERSION set (0.2.0 at
-the cutover) a bead that reports another version or is a script stops the soak: infra/selected.py's rules,
-repeated here because this file runs on hosts that have only it."""
+`--version` prints, its kind, native, script or missing, and a digest). A missing bead stops the soak, and
+with BEAD_EXPECT_VERSION set (0.2.0 at the cutover) so does one that reports another version or is a
+script: infra/selected.py's rules, repeated here because this file runs on hosts that have only it."""
 import hashlib
 import json
 import os

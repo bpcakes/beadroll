@@ -1,5 +1,6 @@
 //! Waiting for something a test cannot be told about directly: a condition polled with a deadline,
-//! which fails the test when the deadline passes, rather than a fixed sleep that only hopes. A
+//! which fails the test when the deadline passes ([`wait_until`]) or says that it passed
+//! ([`within`], [`exited_within`]), rather than a fixed sleep that only hopes. A
 //! wait that bead itself can be held for is a failpoint's `pause-until` instead ([`crate::Gate`]).
 
 use std::process::{Child, Command, ExitStatus};

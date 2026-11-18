@@ -15,8 +15,9 @@
 //! `--renames N`, replay of N copies renamed, against the same creates renamed by nobody
 //! ([`renames`]); with `--decode N`, a projection of N events decoded, its state part alone and
 //! whole, and read back, extended by comments and encoded: after one, at the worst point between
-//! two compactions and one comment past it ([`decode`]). A timing never decides whether anything
-//! passes.
+//! two compactions and one comment past it ([`decode`]); with `--parse N`, core's JSON reader on
+//! `meta.json` of N files and on a history of N events ([`parse`](mod@parse)). A timing never decides
+//! whether anything passes.
 
 mod contend;
 mod dangling;
@@ -217,7 +218,7 @@ struct Options {
     latency: Option<usize>,
     /// Where `--sync` rotates the journals it writes.
     rotate: Option<usize>,
-    /// Which history `--replay` or `--sync` generates.
+    /// Which history a measurement that generates one generates (`--ownership`, `--churn`, `--text`).
     shape: history::Shape,
     /// Load the journal written in this directory and replay it once: the process whose peak
     /// memory `--replay` measures.
@@ -416,7 +417,6 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
     })
 }
 
-/// A count given to `option`, of `what`.
 /// `name` under the target's `timing/` directory, emptied of whatever an earlier run left there and
 /// not yet made: where a timing writes its stores and histories.
 pub(crate) fn scratch(name: &str) -> Result<std::path::PathBuf, Failure> {
@@ -451,6 +451,7 @@ pub(crate) fn fastest_of<G, T, E>(
     Ok((best, last))
 }
 
+/// A count given to `option`, of `what`.
 fn number(text: &std::ffi::OsStr, option: &str, what: &str) -> Result<usize, Failure> {
     let text = text.to_string_lossy();
     text.parse()

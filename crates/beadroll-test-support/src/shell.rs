@@ -1,5 +1,5 @@
 //! What a test writes into the shell scripts it runs or puts on `PATH`: a word quoted for `sh`,
-//! and the git a fake `git` hands on to.
+//! the git a fake `git` hands on to, and the block `ulimit -f` counts in.
 
 use std::ffi::OsStr;
 use std::os::unix::fs::PermissionsExt as _;
