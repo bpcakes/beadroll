@@ -195,7 +195,17 @@ const RULES: &[Row] = &[
          rebuild: delete it, nothing in it is the only copy of anything, and run the command \
          again), UNRESOLVED (an attempt of yours awaits the remote: run bead sync), \
          SYNC_CONFLICT, IO (the store or a file could not be read or written; nothing \
-         half-done).",
+         half-done), USAGE (the command line is wrong: see bead help COMMAND), NOT_INITIALIZED (no \
+         tracker here yet: bead sync joins a published one, bead init starts one), NO_WORKSPACE \
+         (not in a git checkout: run bead from one, or set BEAD_WORKSPACE), WORKSPACE_MISMATCH \
+         (the published tracker is another workspace's: the message names what to set), \
+         NO_REMOTE (this tracker has no remote, so it cannot sync), CONFIG (a setting or \
+         .beadroll.json is unusable: the message names it), GIT_ERROR (git failed; the message \
+         quotes it), FORMAT_UNSUPPORTED (the published tracker is newer than this bead: upgrade \
+         bead), and, for each of these, tell a human, as retrying will not help: \
+         MANIFEST_MISSING (the published tracker has no readable manifest), ATTEMPT_FORK, \
+         JOURNAL_FORK and IDENTITY (this machine's identity is in use elsewhere or damaged), \
+         KEY_SPACE (no free key is left).",
     ),
 ];
 
