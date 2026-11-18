@@ -30,6 +30,8 @@ pub(super) fn create_args(ns: &Namespace) -> commands::CreateArgs {
         labels: ns.texts("labels").to_vec(),
         deps: ns.texts("deps").to_vec(),
         silent: ns.flag("silent"),
+        network: network(ns),
+        remote: remote(ns),
     }
 }
 

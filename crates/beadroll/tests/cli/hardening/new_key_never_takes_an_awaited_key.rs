@@ -101,7 +101,8 @@ fn local_child_key_does_not_capture_an_imported_dependency() {
 }
 
 /// G15: when two machines both mint ex-p.1 and replay renames one of them, the rename skips
-/// ex-p.2, which an imported dependency (already applied in replay order) is waiting for.
+/// ex-p.2, which an imported dependency (already applied in replay order) is waiting for, and the
+/// renamed child's online create answers the key it was renamed to.
 #[test]
 fn merge_rename_does_not_capture_an_imported_dependency() {
     let sandbox = crate::sandbox();
@@ -123,9 +124,11 @@ fn merge_rename_does_not_capture_an_imported_dependency() {
         printed_id(m1.bead(["create", "machine 1 child", "--parent", "ex-p"])),
         "ex-p.1"
     );
+    // published at once, m2's child meets m1's ex-p.1 in its own publish, and answers the key it
+    // is renamed to: past ex-p.2, which ex-r waits for
     assert_eq!(
         printed_id(m2.bead(["create", "machine 2 child", "--parent", "ex-p"])),
-        "ex-p.1"
+        "ex-p.3"
     );
     for machine in [m3, m1, m2, m3, m1, m2] {
         machine.bead(["sync"]);

@@ -163,7 +163,8 @@ fn ready_blocked_and_prime_judge_every_issue_at_once_as_show_judges_each() {
         })
         .collect();
     assert_eq!(blocked(&a), wanted);
-    assert_eq!(a.show("ex-done")["blocked"].as_bool(), Some(true));
+    // done, it is held by nothing, as `bead blocked` above leaves it out
+    assert_eq!(a.show("ex-done")["blocked"].as_bool(), Some(false));
     assert_eq!(a.show("ex-y")["blocked"].as_bool(), Some(false));
     // the scope leaves out what the gate outside it holds, and lists it once the gate closes
     assert_eq!(a.bead(["ready", "ex-root"]), Some(Json::Array(Vec::new())));
@@ -202,8 +203,9 @@ fn several_issues_shown_in_full_are_judged_at_once_as_each_is_judged_alone() {
     ];
     let shown = a.bead(["show"].into_iter().chain(keys)).unwrap();
     assert_eq!(as_written(&shown), alone(&a, &keys));
-    // what is held: the chain and what hangs from it, the loop and what hangs from it, the epic
-    // with an open child, and a closed issue still waiting for its own prerequisite
+    // what is held: the chain and what hangs from it, the loop and what hangs from it, and the epic
+    // with an open child; a closed issue whose prerequisite is open is done, held by nothing, as
+    // `bead blocked` leaves it out (its dependencies still show the prerequisite open)
     let held: BTreeSet<String> = (shown.as_array().unwrap().iter())
         .filter(|detail| detail["blocked"].as_bool().unwrap())
         .map(|detail| detail["id"].as_str().unwrap().to_owned())
@@ -211,7 +213,7 @@ fn several_issues_shown_in_full_are_judged_at_once_as_each_is_judged_alone() {
     assert_eq!(
         held,
         set(&[
-            "ex-root", "ex-c1", "ex-c2", "ex-c3", "ex-s", "ex-k", "ex-m", "ex-z", "ex-e", "ex-done"
+            "ex-root", "ex-c1", "ex-c2", "ex-c3", "ex-s", "ex-k", "ex-m", "ex-z", "ex-e"
         ])
     );
     // update and claim answer the same way, and a gate closing frees what it held in every answer

@@ -180,6 +180,8 @@ fn summary(item: &Object) -> (Line, Vec<String>) {
         "acceptance_criteria",
         "notes",
         "design",
+        "external_ref",
+        "estimated_minutes",
         "close_reason",
     ] {
         if let Some(value) = item.get(name).filter(|v| v.truthy()) {

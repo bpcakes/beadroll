@@ -37,9 +37,9 @@ pub(super) fn check_claims(
     }
 }
 
-/// An independent blocker oracle over `details` (every generated issue is a task): an issue is
-/// blocked by an issue it depends on with `blocks` that is not done, and done means closed or a
-/// tombstone, with its status undisputed. Ready are the open issues that are not blocked, not
+/// An independent blocker oracle over `details` (every generated issue is a task): an issue that is
+/// not done is blocked by an issue it depends on with `blocks` that is not done, and done means
+/// closed or a tombstone, with its status undisputed. Ready are the open issues that are not blocked, not
 /// claimed and whose status is undisputed.
 pub(super) fn expected_ready(wave: usize, details: &Json) -> BTreeSet<String> {
     let issues = details.as_array().expect("bead show prints a list");
@@ -55,7 +55,8 @@ pub(super) fn expected_ready(wave: usize, details: &Json) -> BTreeSet<String> {
     let mut ready = BTreeSet::new();
     for (key, issue) in &by_id {
         let edges = issue["dependencies"].as_array().unwrap_or_default();
-        let blocked = edges.iter().any(blocks);
+        // a done issue is held by nothing, whatever it depends on, as `bead blocked` judges it
+        let blocked = !done(issue) && edges.iter().any(blocks);
         let shown = issue["blocked"].as_bool();
         let mismatch = format!("wave {wave}: {key} blocker oracle mismatch");
         assert_eq!(shown, Some(blocked), "{mismatch}");

@@ -100,7 +100,8 @@ fn frontier<'s>(st: &'s State, beneath: Option<&BTreeSet<EventId>>) -> Vec<&'s I
 
 /// Every issue's answer judged with every other and asked on its own against its blocker list, its
 /// list made with every other's against the list made alone, the `blocked` of its detail made with
-/// every other's against the list too (the rest of the detail is `dependents.rs`'s), and `ready`
+/// every other's against the list too, false for a done issue as `bead blocked` leaves it out (the
+/// rest of the detail is `dependents.rs`'s), and `ready`
 /// against the same filter over the lists; the keys of the issues held, in replay order.
 fn agree(st: &State) -> Vec<String> {
     let readiness = st.readiness();
@@ -116,9 +117,11 @@ fn agree(st: &State) -> Vec<String> {
             "{} listed with every issue",
             issue.key()
         );
+        // a done issue is shown held by nothing, as `bead blocked` leaves it out, whatever it lists
+        let shown = listed && !st.is_done(issue);
         assert_eq!(
             details.of(issue.hydrated().unwrap()).get("blocked"),
-            Some(&listed.into()),
+            Some(&shown.into()),
             "{} shown with every issue",
             issue.key()
         );

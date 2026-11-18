@@ -23,9 +23,10 @@ use self::round::{AfterError, Outcome, Rebuild, sync_round};
 mod round;
 
 /// Whether a command may reach its coordination remote.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum NetworkMode {
-    /// The remote is reached: fetched from and published to.
+    /// The remote is reached: fetched from and published to; the default, unless `--offline`.
+    #[default]
     Online,
     /// `--offline`: nothing is fetched or published, and a claim is provisional.
     Offline,

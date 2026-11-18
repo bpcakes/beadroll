@@ -326,17 +326,56 @@ fn export_without_a_tracker_changes_no_file() {
     let output = machine.checkout().join("issues.jsonl");
     std::fs::write(&output, "{\"id\":\"keep-me\"}\n").unwrap();
     let target = output.to_str().unwrap();
-    for args in [&["export"][..], &["export", "-o", target]] {
-        let run = machine.run(args.iter().copied().chain(["--json"]));
-        assert_eq!(
-            beadroll_test_support::code(&run),
-            "NOT_INITIALIZED",
-            "{args:?}: {}",
-            run.stderr
-        );
-    }
+    let run = machine.run(["export", "-o", target, "--json"]);
+    assert_eq!(
+        beadroll_test_support::code(&run),
+        "NOT_INITIALIZED",
+        "{}",
+        run.stderr
+    );
+    // to standard output, Beads JSONL, which `--json` cannot take: the human error
+    let run = machine.run(["export"]);
+    assert_eq!(run.returncode(), 1, "{}", run.stderr);
+    assert!(run.stderr.contains("no tracker"), "{}", run.stderr);
+    assert!(run.stdout.is_empty(), "{}", run.stdout);
     assert_eq!(
         std::fs::read_to_string(&output).unwrap(),
         "{\"id\":\"keep-me\"}\n"
+    );
+}
+
+/// A takeover is a claim in the journal, and `log` says which: its row reads `takeover`, and its
+/// `--json` row keeps the claim's `op` with the claim it took over beside it, as `recap` names it.
+#[test]
+fn log_says_a_claim_was_a_takeover() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let b = Machine::new(&sandbox, "b");
+    b.bead(["sync"]);
+    let key = a.bead(["create", "x"]).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    a.bead(["claim", key.as_str()]);
+    b.bead(["sync"]);
+    b.bead(["takeover", key.as_str(), "-r", "a went quiet"]);
+    let ops: Vec<String> = rows(&b, &key)
+        .iter()
+        .filter_map(|row| row.get(4).cloned())
+        .collect();
+    assert!(ops.contains(&"takeover".to_owned()), "{ops:?}");
+    assert_eq!(ops.iter().filter(|op| *op == "claim").count(), 1, "{ops:?}");
+    let logged = b.bead(["log", key.as_str()]).unwrap();
+    let claims: Vec<&Json> = (logged.as_array().unwrap().iter())
+        .filter(|row| row["op"] == json!("claim"))
+        .collect();
+    assert_eq!(claims.len(), 2, "{logged:?}");
+    assert!(claims[0].get("takeover").is_none(), "{logged:?}");
+    assert!(
+        claims[1]["takeover"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty()),
+        "{logged:?}"
     );
 }

@@ -112,7 +112,7 @@ impl State {
     }
 
     /// Full issue details as [`State::detail_with`] gives them, `blocked` being whether anything
-    /// holds the issue, as [`State::is_blocked`] answers.
+    /// holds the issue, as [`State::is_blocked`] answers, and false for a done one.
     fn detail_judged(
         &self,
         hydrated: HydratedIssue<'_>,
@@ -161,6 +161,13 @@ impl State {
             .iter()
             .map(|comment| Value::from(shown_comment(comment)));
         out.insert("comments".into(), comments.collect::<Vec<_>>().into());
+        // a done issue is held by nothing, as `bead blocked` and readiness judge it: what it depends
+        // on can no longer hold it
+        let blocked = if self.is_done(issue) {
+            Value::Bool(false)
+        } else {
+            blocked
+        };
         out.insert("blocked".into(), blocked);
         out.insert("origin".into(), Value::from(issue.origin()));
         if let Some(place) = issue.where_().filter(|place| place.truthy()) {
