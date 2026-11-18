@@ -4,9 +4,9 @@
 
 use std::collections::BTreeSet;
 
-use beadroll_test_support::{Json, Machine, json_member};
+use beadroll_test_support::{Json, Machine, failure_code, json_member};
 
-use super::{error_code, limited, with_sh};
+use super::{limited, with_sh};
 
 /// Verified (V6): EFBIG from a file-size limit is IO, and the next write and sync are clean.
 /// The review measured, under `ulimit -f 200`: create with a 300 KB --description-file IO
@@ -31,7 +31,7 @@ fn file_size_limit_is_io_and_the_next_write_and_sync_are_clean() {
     let created = limited(&a, "-f 200", &["create", "big", "--description-file", body]);
     assert!(!created.crashed(), "{}", created.stderr);
     assert_eq!(
-        error_code(&created).as_deref(),
+        failure_code(&created).as_deref(),
         Some("IO"),
         "{}",
         created.stderr
@@ -52,7 +52,7 @@ fn file_size_limit_is_io_and_the_next_write_and_sync_are_clean() {
     // Adapted on closing G58: git's output for bead now goes through a file bead reads back, so the
     // limit can hit git first (GIT_ERROR naming the SIGXFSZ that killed it) before bead's own
     // segment write (IO).
-    let code = error_code(&synced);
+    let code = failure_code(&synced);
     assert!(
         matches!(code.as_deref(), Some("IO" | "GIT_ERROR")),
         "{code:?}: {}",

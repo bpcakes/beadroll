@@ -334,13 +334,23 @@ pub fn converge(machines: &[&Machine]) {
     assert!(exports.len() <= 1, "the machines did not converge");
 }
 
-/// The structured error code reported on stderr by a failed JSON command.
+/// The structured error code reported on stderr by a failed JSON command; a standard error that
+/// holds none fails the test.
 pub fn code(run: &Run) -> String {
-    let document = crate::parse_json(&run.stderr)
-        .unwrap_or_else(|error| panic!("bead's error is not JSON ({error}): {}", run.stderr));
-    let code = document["error"]["code"].as_str();
-    code.unwrap_or_else(|| panic!("no error code in {}", run.stderr))
-        .to_owned()
+    reported_code(run).unwrap_or_else(|| panic!("bead reported no error code: {}", run.stderr))
+}
+
+/// The error code a failed `bead ... --json` reported on standard error, or `None` when that is
+/// not bead's structured error.
+pub fn reported_code(run: &Run) -> Option<String> {
+    let document = crate::parse_json(&run.stderr).ok()?;
+    document["error"]["code"].as_str().map(str::to_owned)
+}
+
+/// The error code a failed `bead ... --json` reported, `TRACEBACK` when it crashed instead
+/// ([`Run::crashed`]), as the tests have always named a crash, or `None` for neither.
+pub fn failure_code(run: &Run) -> Option<String> {
+    reported_code(run).or_else(|| run.crashed().then(|| "TRACEBACK".to_owned()))
 }
 
 #[cfg(test)]

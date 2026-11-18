@@ -1,9 +1,9 @@
 //! V6: descriptor exhaustion must return an error without losing a pending attempt. Apply limits
 //! with `/bin/sh` and `ulimit -n`; skip if the shell is unavailable.
 
-use beadroll_test_support::{Machine, printed_id};
+use beadroll_test_support::{Machine, failure_code, printed_id};
 
-use super::{error_code, limited, with_sh};
+use super::{limited, with_sh};
 
 /// Descriptor limits spanning failure before reading, failure during coordination and sufficient
 /// capacity: 8, 10, 11, 12 and 13.
@@ -77,7 +77,7 @@ fn descriptor_exhaustion_never_drops_a_pending_attempt() {
         let retry = a.run(argv.iter().chain(&["--json"]));
         assert!(
             retry.returncode() == 0
-                || (confirmed && error_code(&retry).as_deref() == Some("VALIDATION")),
+                || (confirmed && failure_code(&retry).as_deref() == Some("VALIDATION")),
             "ulimit -n {limit}: {}",
             retry.stderr
         );
