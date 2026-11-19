@@ -102,7 +102,12 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpa
     let saved = may_exhaust.then(|| (st.clone(), applying.clone()));
     let mut batch = Batch::new(st);
     // each create's own parent edge, found before any applies, so its key is settled at the create
-    let (parents, _) = own_parents((0..applying.len()).filter_map(|at| {
+    // of the events replay applies: one reported (an unsupported version, a broken chain) names
+    // no parent
+    let (parents, _) = own_parents((order.ordered.iter()).filter_map(|&at| {
+        if inert.contains_key(&at) {
+            return None;
+        }
         let (&id, trace) = knowledge.events.get_index(at)?;
         Some((id, trace, applying.get(at)?.as_deref()?))
     }));

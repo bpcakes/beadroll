@@ -2,7 +2,7 @@
 //! create's own parent edge names, at every depth and whatever else was renamed from the key its
 //! writer saw, so that an issue keyed `A.n` is always a child of `A`.
 
-use beadroll_test_support::{Json, Machine, json_id};
+use beadroll_test_support::{Json, Machine, json, json_id, json_line};
 
 use super::{settle, two_machines};
 
@@ -322,4 +322,50 @@ fn a_sync_reports_a_key_renamed_again() {
         );
     }
     assert_eq!(now["C"], format!("{}.1", now["B"]));
+}
+
+/// A sync reports a key an issue holds again, its rename gone: the import I, keyed `x.2.1`, gave
+/// way to C, which followed B into `x.2.1`, and holds `x.2.1` again once a's earlier child moves B
+/// to `x.3` and C to `x.3.1`. Reporting the renames that remained, the sync left I out.
+#[test]
+fn a_sync_reports_a_key_held_again() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, _) = two_machines(&sandbox);
+    let (c, d) = (Machine::new(&sandbox, "c"), Machine::new(&sandbox, "d"));
+    c.bead(["sync"]);
+    d.bead(["sync"]);
+    offline(&a, "A1", &x);
+    c.bead(["create", "H", "--parent", &x]);
+    let made = offline(&b, "B", &x);
+    offline(&b, "C", &made);
+    d.bead(["sync"]);
+    let imported = format!("{x}.2.1");
+    let file = sandbox.root().join("i.jsonl");
+    let id = imported.clone();
+    let record = json!({
+        "id": id, "title": "I", "status": "open", "priority": 2, "issue_type": "task",
+        "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+    });
+    std::fs::write(&file, json_line(&record)).unwrap();
+    d.bead(["import", file.to_str().unwrap(), "--offline"]);
+    b.bead(["sync"]);
+    d.bead(["sync"]);
+    assert_eq!(
+        keys(&d)["I"],
+        format!("{x}.2.2"),
+        "C did not displace the import"
+    );
+    a.bead(["sync"]);
+    let report = d.bead(["sync"]).unwrap();
+    assert_eq!(keys(&d)["I"], imported);
+    let reported: Vec<(String, String)> = (report["renamed"].as_array().unwrap().iter())
+        .map(|r| {
+            (
+                r["from"].as_str().unwrap().to_owned(),
+                r["to"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
+    let back = (format!("{x}.2.2"), imported);
+    assert!(reported.contains(&back), "{back:?} not in {reported:?}");
 }

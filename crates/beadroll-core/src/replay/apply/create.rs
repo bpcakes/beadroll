@@ -26,11 +26,16 @@ pub(super) fn create(
     let eid = event.id;
     // a child minted under its parent's key follows that parent's key now, and a key another
     // machine's create took first gives way: settled here, before anything binds to it
-    let mut key = (event.own_parent)
-        .and_then(|parent| followed(st, parent, &create.key))
-        .unwrap_or_else(|| create.key.clone());
-    if st.by_key.contains_key(&key) {
-        // Two machines minted the same key before they synced.
+    let follows = (event.own_parent).and_then(|parent| followed(st, parent, &create.key));
+    // a key the create gives may be the one an import waits for, which it then satisfies; a key it
+    // follows to is no import's, and one an import waits for is passed over as an issue's is
+    let taken = match &follows {
+        Some(key) => st.claims_key(key),
+        None => st.by_key.contains_key(&create.key),
+    };
+    let mut key = follows.unwrap_or_else(|| create.key.clone());
+    if taken {
+        // Two machines minted the same key before they synced, or an import waits for it.
         key = st.free_key(&key, eid)?;
     }
     if key != create.key {
@@ -107,8 +112,9 @@ pub(crate) fn own_parents<'a>(
         })
         .map(|(id, trace, _)| (id, trace))
         .collect();
-    let (mut parents, mut alone) = (HashMap::new(), Vec::new());
-    for (_, trace, what) in events {
+    let mut alone = Vec::new();
+    let mut parents: HashMap<EventId, (EventId, EventId)> = HashMap::new();
+    for (id, trace, what) in events {
         let Op::DepAdd { to, kind, .. } = &what.op else {
             continue;
         };
@@ -123,20 +129,37 @@ pub(crate) fn own_parents<'a>(
         };
         match created.get(&create) {
             Some(made) if made.replica() == trace.replica() && made.actor() == trace.actor() => {
-                parents.insert(create, parent);
+                // two such edges (attempt records the journal holds unsequenced) name it: the
+                // smallest id's parent, whatever order they were read in
+                let entry = parents.entry(create).or_insert((id, parent));
+                if id < entry.0 {
+                    *entry = (id, parent);
+                }
             }
             Some(_) => {}
             None => alone.push((create, parent)),
         }
     }
+    let parents = (parents.into_iter())
+        .map(|(create, (_, parent))| (create, parent))
+        .collect();
     (parents, alone)
 }
 
-/// Whether the edge naming `parent` that applies after `child`'s create would have moved the
-/// child's key, had replay seen it with the create: the child is keyed under another key than its
-/// parent's now. A projection that applied the create alone replays instead.
+/// Whether the edge naming `parent`, applying after `child`'s create in a later batch, may settle
+/// the child's key otherwise than the create did alone, had replay seen both: the key it was minted
+/// under (before a collision renamed it) is not its parent's now, or another own edge applied
+/// already, among which replay chooses by id. A projection that applied the create alone replays
+/// instead. Asked only of an edge a batch holds without its create, which is rare.
 pub(crate) fn would_follow(st: &State, child: EventId, parent: EventId) -> bool {
-    (st.issues.get(&child)).is_some_and(|child| followed(st, parent, child.key()).is_some())
+    let Some(issue) = st.issues.get(&child) else {
+        return false;
+    };
+    let minted = (st.renames.iter().rev())
+        .find(|rename| rename.uid == child)
+        .map_or(issue.key(), |rename| rename.from.as_str());
+    let has_parent = (issue.deps().iter()).any(|(edge, _)| edge.kind() == PARENT_CHILD);
+    has_parent || followed(st, parent, minted).is_some()
 }
 
 /// The issue a create makes, under `key`: a register for each field it carries, the status's
