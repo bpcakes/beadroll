@@ -21,7 +21,7 @@ use crate::order::Order;
 use crate::state::{Integrity, KeySpace, Knowledge, Place, State, actor_label, raise, reached};
 use crate::time::event_time;
 
-pub(crate) use apply::Names;
+pub(crate) use apply::{Names, own_parents, would_follow};
 
 /// Whether one event id was found with several contents.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -101,6 +101,11 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpa
     });
     let saved = may_exhaust.then(|| (st.clone(), applying.clone()));
     let mut batch = Batch::new(st);
+    // each create's own parent edge, found before any applies, so its key is settled at the create
+    let (parents, _) = own_parents((0..applying.len()).filter_map(|at| {
+        let (&id, trace) = knowledge.events.get_index(at)?;
+        Some((id, trace, applying.get(at)?.as_deref()?))
+    }));
     let mut awaiting = false;
     let takeovers = loop {
         let takeovers = settle_takeovers(&knowledge, &order.ordered, &applying, &mut inert);
@@ -113,7 +118,7 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpa
             &order.ordered,
             &mut applying,
             &inert,
-            &takeovers.superseded,
+            (&takeovers.superseded, &parents),
         )?;
         let Some((initial, events)) = &saved else {
             break takeovers;
@@ -320,7 +325,7 @@ fn apply_all(
     ordered: &[usize],
     applying: &mut [Option<Box<Rest>>],
     inert: &HashMap<usize, String>,
-    superseded: &HashSet<EventId>,
+    (superseded, parents): (&HashSet<EventId>, &HashMap<EventId, EventId>),
 ) -> Result<(), KeySpace> {
     let names = Names::default();
     for &at in ordered {
@@ -328,7 +333,7 @@ fn apply_all(
         let Some(event) = applying.get_mut(at).and_then(Option::take) else {
             continue;
         };
-        batch.apply(k, at, &event, inert.get(&at), superseded, &names)?;
+        batch.apply(k, at, &event, inert.get(&at), (superseded, &names, parents))?;
     }
     Ok(())
 }
@@ -341,8 +346,7 @@ fn apply_one(
     at: usize,
     event: &Rest,
     inert: Option<&String>,
-    superseded: &HashSet<EventId>,
-    names: &Names,
+    (superseded, names, parents): (&HashSet<EventId>, &Names, &HashMap<EventId, EventId>),
 ) -> Result<(), KeySpace> {
     let Some((&id, trace)) = k.events.get_index(at) else {
         return Ok(());
@@ -373,6 +377,7 @@ fn apply_one(
         id,
         trace,
         what: event,
+        own_parent: parents.get(&id).copied(),
     };
     let applied = apply::apply_event(st, k, &doing, names, &who, &when, superseded)?;
     let target = uid.and_then(EventId::parse);

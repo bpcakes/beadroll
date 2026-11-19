@@ -4,6 +4,8 @@
 mod claims;
 mod create;
 
+pub(crate) use create::{own_parents, would_follow};
+
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -31,6 +33,8 @@ pub(super) struct Doing<'a> {
     pub(super) id: EventId,
     pub(super) trace: &'a Event,
     pub(super) what: &'a Rest,
+    /// For a create, the parent its own parent-child edge names ([`own_parents`]).
+    pub(super) own_parent: Option<EventId>,
 }
 
 /// The names that claims, comments and edges repeat (owners, machines, agents, threads, modes,
@@ -77,9 +81,6 @@ pub(super) fn apply_event(
         }
         other => other,
     };
-    if !st.unfollowed.is_empty() {
-        create::follow_own_parent(st, event)?;
-    }
     let Some(uid) = (event.what.issue.as_deref())
         .and_then(EventId::parse)
         .filter(|uid| st.issues.contains_key(uid))

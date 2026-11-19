@@ -105,11 +105,6 @@ pub(crate) fn write_state(
         w.text(&rename.replica);
         w.id(rename.uid);
     }
-    w.count(st.unfollowed.len());
-    for (uid, minted) in &st.unfollowed {
-        w.id(*uid);
-        w.text(minted);
-    }
     w.count(st.integrity.len());
     for entry in &st.integrity {
         w.optional_text(entry.event.as_deref());
@@ -185,10 +180,6 @@ pub(crate) fn read_state(
             replica: r.text()?,
             uid: r.id()?,
         });
-    }
-    for _ in 0..r.count()? {
-        let uid = r.id()?;
-        st.unfollowed.insert(uid, r.text()?);
     }
     for _ in 0..r.count()? {
         st.integrity.push(Integrity {

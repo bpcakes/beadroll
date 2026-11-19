@@ -154,7 +154,10 @@ impl<'l, 'w> Merging<'l, 'w> {
         // the store's projection, with every whole line its segments hold
         let found = if count == SyncReport::Collect && self.link.renames_before.is_none() {
             let found = projection_sourced(self.link.ws)?;
-            self.link.renames_before = Some(found.state().renames().len());
+            let renamed = (found.state().renames().iter())
+                .map(|rename| (rename.uid, rename.to.clone()))
+                .collect();
+            self.link.renames_before = Some(renamed);
             Some(found)
         } else {
             None

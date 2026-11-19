@@ -448,7 +448,6 @@ fn same(a: &State, b: &State) -> bool {
         && a.issues.iter().eq(b.issues.iter())
         && a.by_key.iter().eq(b.by_key.iter())
         && a.renames == b.renames
-        && a.unfollowed.iter().eq(b.unfollowed.iter())
         && a.integrity == b.integrity
         && a.pending == b.pending
         && a.orphans == b.orphans

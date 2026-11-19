@@ -170,9 +170,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   replay finds the parent in the create's own parent-child edge: the event its writer wrote right
   after the create (`deps` naming the create alone, on its issue), which names the parent by id.
   The maintainer chose this on 2026-11-19 over judging, from renames and what the writer had seen,
-  which issue held the key in its view: four such rules each failed a case review found. A create
-  whose next event is not that edge (an older bead's, or one hand-written) keeps its key, and so
-  does an import; `State::unfollowed` holds each child until its next event applies.
+  which issue held the key in its view: four such rules each failed a case review found. Replay
+  finds every create's own edge before it applies any event (`own_parents`), so the child's key is
+  settled at its create, a collision with it, and nothing binds to a key it then leaves. The edge
+  must be by the create's machine and actor; a create whose next event is not that edge (an older
+  bead's, one hand-written, another writer's on its frontier) keeps its key, and so does an import.
+  A projection extended by the edge alone, after the create, replays when the edge would have
+  moved the key.
 
 - A claim makes its owner the issue's assignee; a release and a reopen (`reopen`, `update --status
   open`) give back the assignee it had before its first claim, which a takeover carries on

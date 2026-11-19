@@ -27,6 +27,7 @@ use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use std::path::PathBuf;
 
+use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_git::{
     CountRules, Env, IoError, local_damage, normalize_remote, sync_env, transport_config,
@@ -98,9 +99,10 @@ pub struct Link<'a> {
     pub hashed: Vec<String>,
     /// Unchanged claims directories named directly in publication trees, without mktree input.
     pub reused_trees: Vec<String>,
-    /// How many keys the store's state had renamed when a merge that was asked to count them
-    /// first read it ([`Link::merge_from`]).
-    pub(crate) renames_before: Option<usize>,
+    /// The key each issue the store's state had renamed was renamed to, by issue, when a merge
+    /// that was asked to count renames first read it ([`Link::merge_from`]): a sync reports each
+    /// rename its merge made or changed, wherever replay placed it.
+    pub(crate) renames_before: Option<HashMap<EventId, String>>,
     /// The public merge API cannot return its view. Retain only disposable state until the next
     /// merge or this link's destruction; internal rounds never read or reuse it.
     retained: Spent,

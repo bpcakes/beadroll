@@ -235,10 +235,11 @@ fn exchange(
         sync_repo_rebuilt: link.rebuilt.clone(),
         repacked: published.repacked,
         issues: state.issues().count(),
-        renamed: state
-            .renames()
-            .iter()
-            .skip(link.renames_before.unwrap_or_default())
+        renamed: (state.renames().iter())
+            .filter(|r| {
+                (link.renames_before.as_ref())
+                    .is_none_or(|before| before.get(&r.uid) != Some(&r.to))
+            })
             .map(|r| Value::from(r.to_value()))
             .collect(),
         forked_journals: published.merged.facts.forks,

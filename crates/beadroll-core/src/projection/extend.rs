@@ -51,7 +51,7 @@ use crate::journal::{Event, Journal, Parts, Rest};
 use crate::json::Value;
 use crate::op::Op;
 use crate::order::position;
-use crate::replay::{Batch, Contents, Names, Room, observe_one};
+use crate::replay::{Batch, Contents, Names, Room, observe_one, own_parents, would_follow};
 use crate::state::{KeySpace, Texts, is_text};
 
 /// How an operation uses issue texts.
@@ -128,6 +128,13 @@ impl Projection {
         let Some(ordered) = self.after_all(&events) else {
             return Ok(Extended::Replay);
         };
+        // a create's own parent edge settles its key at the create: one held already whose key the
+        // edge would have moved is replayed with its edge, which this batch holds alone
+        let (parents, alone) =
+            own_parents((events.iter().zip(&doing)).map(|((id, e), w)| (*id, e, &**w)));
+        if (alone.iter()).any(|(child, parent)| would_follow(&self.state, *child, *parent)) {
+            return Ok(Extended::Replay);
+        }
         let mut knowledge = std::mem::take(&mut self.state.knowledge);
         // Every new record in its place first, as replay places every record before it observes
         // any: whether one builds on its predecessor is asked of the predecessor in the journal,
@@ -163,7 +170,13 @@ impl Projection {
             {
                 return Ok(Extended::Replay);
             }
-            batch.apply(&knowledge, placed, what, None, &self.superseded, &names)?;
+            batch.apply(
+                &knowledge,
+                placed,
+                what,
+                None,
+                (&self.superseded, &names, &parents),
+            )?;
         }
         self.state = batch.finish_some(knowledge, &doing);
         self.advance(&events, &order);

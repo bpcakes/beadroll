@@ -286,3 +286,40 @@ fn a_grandchild_follows_its_own_subtree_among_renames_of_its_key() {
     assert_eq!(keys["C"], format!("{}.1", keys["H1"]));
     assert_eq!(keys["G"], format!("{}.1", keys["C"]));
 }
+
+/// A sync reports every key its merge changed, a key an earlier sync had renamed already among
+/// them: b's B and its child C, renamed to `x.2` and `x.2.1` by b's first sync, move to `x.3` and
+/// `x.3.1` once a's earlier child arrives, and b's next sync reports both. It reported the renames
+/// past the count it had before, which a rename made again does not add to.
+#[test]
+fn a_sync_reports_a_key_renamed_again() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, _) = two_machines(&sandbox);
+    let c = Machine::new(&sandbox, "c");
+    c.bead(["sync"]);
+    offline(&a, "A1", &x);
+    c.bead(["create", "H", "--parent", &x]);
+    let made = offline(&b, "B", &x);
+    offline(&b, "C", &made);
+    b.bead(["sync"]);
+    assert_eq!(keys(&b)["C"], format!("{x}.2.1"));
+    a.bead(["sync"]);
+    let report = b.bead(["sync"]).unwrap();
+    let reported: Vec<(String, String)> = (report["renamed"].as_array().unwrap().iter())
+        .map(|r| {
+            (
+                r["from"].as_str().unwrap().to_owned(),
+                r["to"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
+    let now = keys(&b);
+    for (title, minted) in [("B", format!("{x}.1")), ("C", format!("{x}.1.1"))] {
+        let renamed = (minted, now[title].clone());
+        assert!(
+            reported.contains(&renamed),
+            "{title}: {renamed:?} not in {reported:?}"
+        );
+    }
+    assert_eq!(now["C"], format!("{}.1", now["B"]));
+}

@@ -38,7 +38,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   holding `x.1` now, whose next child then skipped a number. The child follows the parent its
   create's own parent edge names by id, the edge its writer wrote right after the create, so every
   machine judges it alike whatever else was renamed from the key; an import keeps the keys it
-  gives. Projections are rebuilt once (`ENCODING` 14).
+  gives. The key is settled at the create, so an import waiting for a key binds to the issue that
+  holds it, and a sibling made meanwhile keeps its own. Projections are rebuilt once (`ENCODING`
+  15).
+- `sync` reports every rename its merge made or changed: a key an earlier sync had renamed, moved
+  again, was left out, as were renames replay placed before the ones counted.
 
 - `init --import` reads the prefix Beads keyed the records under: `.beads/config.yaml`'s
   `issue_prefix`, else the repository directory's name, before what the ids share. A lone

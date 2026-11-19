@@ -118,10 +118,6 @@ pub struct State {
     pub(crate) issues: Issues,
     pub(crate) by_key: IndexMap<String, EventId>,
     pub(crate) renames: Vec<Rename>,
-    /// Children minted under their parent's key (`P.n`) whose create's own parent edge has not been
-    /// applied yet, with the key each was minted with: that edge, the next event its writer wrote,
-    /// names the parent the key was minted from, and the child follows that parent's key now.
-    pub(crate) unfollowed: IndexMap<EventId, String>,
     pub(crate) integrity: Vec<Integrity>,
     pub(crate) pending: Vec<EventId>,
     pub(crate) orphans: u64,
@@ -153,7 +149,6 @@ impl State {
             issues: Issues::default(),
             by_key: IndexMap::new(),
             renames: Vec::new(),
-            unfollowed: IndexMap::new(),
             integrity: Vec::new(),
             pending: Vec::new(),
             orphans: 0,
