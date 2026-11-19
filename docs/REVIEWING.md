@@ -145,6 +145,13 @@ agents and tests match parts of them; `bead prime` lists the codes.
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
+- A claim makes its owner the issue's assignee; a release and a reopen (`reopen`, `update --status
+  open`) give back the assignee it had before its first claim, which a takeover carries on
+  (`Claim::assignee_before`, `projection::ENCODING` 12), and a close keeps the owner who did the
+  work. The maintainer chose this on 2026-11-19: a reopen left the former owner as assignee, so
+  `ready` and `list` showed `@owner` as if the issue were held, and a release erased a hand-set
+  assignee. An assignee set during the claim is replaced by the one from before it.
+
 - Identity is self-declared: a claim's owner is its label, `agent:thread@machine` or an `--actor`
   name, compared as text, and bead coordinates cooperating agents, never authenticates them. An
   explicit name may be shared on purpose (a new session continues its work under the same

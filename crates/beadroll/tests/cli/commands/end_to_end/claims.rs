@@ -1,7 +1,7 @@
 //! Claims: exclusive online, provisional offline, lasting until release, close or takeover, and
 //! leaving no trace when refused.
 
-use beadroll_test_support::{Json, Machine, code, pool_map};
+use beadroll_test_support::{Json, Machine, code, json, json_id, pool_map};
 
 use super::{column, length, owner, settle, sorted_codes, two_machines};
 
@@ -216,6 +216,37 @@ fn a_refused_claiming_update_says_its_edits_were_not_recorded() {
         "the refused edit is there after all: {shown:?}"
     );
     assert!(shown.get("claim").is_none(), "{shown:?}");
+}
+
+/// A claim makes its owner the assignee; every end of it but a close gives back the assignee the
+/// issue had before (a hand-set one, or none): a release, a reopen, `update --status open`, and a
+/// release after a takeover. A reopen left the old owner, so `ready` showed `@owner` as if held,
+/// and a release erased the hand-set one.
+#[test]
+fn ending_a_claim_gives_back_the_assignee_from_before_it() {
+    let sandbox = crate::sandbox();
+    let (a, b, _, _) = two_machines(&sandbox);
+    let assignee = |machine: &Machine, key: &str| machine.show(key).get("assignee").cloned();
+    for end in ["release", "reopen", "open", "takeover"] {
+        let key = json_id(&a.bead(["create", end, "--assignee", "bob"]).unwrap());
+        a.bead(["claim", &key]);
+        match end {
+            "release" => drop(a.bead(["release", &key])),
+            "reopen" => drop(a.bead(["reopen", &key])),
+            "open" => drop(a.bead(["update", &key, "--status", "open"])),
+            _ => {
+                b.bead(["sync"]);
+                b.bead(["takeover", &key, "-r", "a went quiet"]);
+                b.bead(["release", &key]);
+                a.bead(["sync"]);
+            }
+        }
+        assert_eq!(assignee(&a, &key), Some(json!("bob")), "{end}");
+    }
+    let unassigned = json_id(&a.bead(["create", "nobody's"]).unwrap());
+    a.bead(["claim", &unassigned]);
+    a.bead(["reopen", &unassigned]);
+    assert_eq!(assignee(&a, &unassigned), None);
 }
 
 /// A takeover is online only: `--offline` is refused as `VALIDATION`, before anything is written,

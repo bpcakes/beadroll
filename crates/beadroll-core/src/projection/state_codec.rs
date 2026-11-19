@@ -504,6 +504,7 @@ pub(super) fn write_claim(w: &mut Writer, claim: &Claim) {
     w.value(&Value::Int(claim.generation.clone()));
     w.name(&claim.mode);
     w.optional_shared(claim.where_.as_ref());
+    w.value(&claim.assignee_before);
 }
 
 pub(super) fn read_claim(r: &mut Reader<'_>) -> Result<Claim, Unreadable> {
@@ -516,6 +517,7 @@ pub(super) fn read_claim(r: &mut Reader<'_>) -> Result<Claim, Unreadable> {
         generation: read_int(r)?,
         mode: r.name()?,
         where_: r.optional_shared()?,
+        assignee_before: r.value()?,
     })
 }
 

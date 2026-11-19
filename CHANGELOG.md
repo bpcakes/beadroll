@@ -6,6 +6,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Ending a claim by a release or a reopen (`reopen`, `update --status open`), a takeover's too,
+  gives back the assignee the issue had before the claim. A reopen left the former owner, so `ready`
+  showed `@owner` as if the issue were held, and a release erased a hand-set assignee. A close keeps
+  the owner. Projections are rebuilt once (`ENCODING` 12).
+
 - A loop through a prerequisite a child inherits is `CYCLE`: `update --parent` to an issue that
   depends on the child, `dep add --type parent-child` likewise, and a `blocks` dependency on one's
   own descendant. They were accepted, the child waited for itself (`blocked` showed `B ⟵ B`), and

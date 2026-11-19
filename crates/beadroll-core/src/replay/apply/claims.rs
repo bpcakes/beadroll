@@ -63,6 +63,11 @@ pub(super) fn claim(
             .claim_generation
             .plus_one()
             .ok_or(CLAIM_GENERATION_EXHAUSTED)?;
+        // the assignee before any claim: a takeover's owner gives back what the first one would
+        let assignee_before = match &issue.claim {
+            Some(held) => held.assignee_before.clone(),
+            None => issue.get(Field::Assignee).cloned().unwrap_or(Value::Null),
+        };
         end_claim(c, issue, "takeover", claiming.reason.as_deref());
         // Choose the greater of the incremented and proposed generations, keeping the first on ties.
         let given = claiming
@@ -83,6 +88,7 @@ pub(super) fn claim(
             generation: issue.claim_generation.clone(),
             mode: c.name(mode),
             where_: c.place.cloned(),
+            assignee_before,
         }));
         issue.provisional_claims.retain(|p| *p.owner != *who);
         c.write_status(issue, "in_progress", None, &[]);
@@ -108,9 +114,10 @@ pub(super) fn release(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending) -> bool {
         return c.stale(issue, named);
     }
     if let Some(held) = c.claim.filter(|held| Some(held.id) == named_id) {
+        let before = assignee_before(issue);
         end_claim(c, issue, "release", ending.reason.as_deref());
         c.write_status(issue, "open", None, &[held.id]);
-        c.write(issue, Field::Assignee, Value::Null, &[held.id]);
+        c.write(issue, Field::Assignee, before, &[held.id]);
     } else if issue.provisional_claims.iter().any(|p| *p.owner == *c.who) {
         issue.provisional_claims.retain(|p| *p.owner != *c.who);
         if c.claim.is_none() && issue.provisional_claims.is_empty() {
@@ -165,10 +172,19 @@ pub(super) fn close(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending, kind: Endin
 pub(super) fn reopen(c: &Ctx<'_>, issue: &mut Issue) -> bool {
     c.write_status(issue, "open", None, &[]);
     issue.closed_on = None;
-    if c.claim.is_some_and(|held| c.k.saw_at(c.at, held.id)) {
+    if let Some(held) = c.claim.filter(|held| c.k.saw_at(c.at, held.id)) {
+        // an end of the claim as a release is: the assignee goes back to what it was before
+        let before = assignee_before(issue);
         end_claim(c, issue, "reopen", None);
+        c.write(issue, Field::Assignee, before, &[held.id]);
     }
     true
+}
+
+/// The assignee `issue` had before its current claim, which ending the claim gives back; null
+/// without a claim.
+fn assignee_before(issue: &Issue) -> Value {
+    (issue.claim.as_ref()).map_or(Value::Null, |claim| claim.assignee_before.clone())
 }
 
 /// Whether a claim takes over the current one by naming it.
