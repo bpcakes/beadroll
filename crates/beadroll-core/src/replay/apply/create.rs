@@ -89,7 +89,9 @@ fn followed(st: &State, k: &Knowledge, event: &Doing<'_>, minted: &str) -> Optio
     if (st.by_key.get(parent)).is_some_and(|holder| k.saw_at(event.at, *holder)) {
         return None;
     }
-    let renamed = (st.renames.iter().rev())
+    // the parent it meant held the key as its writer saw the tracker: of the issues it saw minted
+    // under that key, the first in replay order, which the others gave way to
+    let renamed = (st.renames.iter())
         .find(|rename| rename.from == parent && k.saw_at(event.at, rename.uid))?;
     let now = st.issues.get(&renamed.uid)?.key();
     (now != parent).then(|| format!("{now}.{number}"))

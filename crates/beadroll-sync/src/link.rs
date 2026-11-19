@@ -192,7 +192,7 @@ fn one_repository(ws: &Workspace, env: &Env, remote: &Endpoint) -> Result<(), Er
     let cwd = &ws.settings.cwd;
     // one repository whatever port each reaches it on (https on 443, ssh on 2222, as a forge serves
     // them): only a host or a path that differs is another place
-    let place = |url: &OsStr| without_port(&normalize_remote(url, cwd));
+    let place = |url: &OsStr| place(url, cwd);
     if place(&fetched) == place(&pushed) {
         return Ok(());
     }
@@ -207,6 +207,18 @@ fn one_repository(ws: &Workspace, env: &Env, remote: &Endpoint) -> Result<(), Er
         shown(&fetched),
         shown(&pushed)
     ))))
+}
+
+/// Where `url` reaches, as [`one_repository`] compares places: normalised as the URL-derived id
+/// reads a remote, without a URL's port (`ssh://host:2222/…`). Scp syntax has no port
+/// (`host:2222/r` is the path `2222/r`), so its normalised form is kept whole.
+fn place(url: &OsStr, cwd: &std::path::Path) -> Vec<u8> {
+    let normalized = normalize_remote(url, cwd);
+    if url.as_bytes().windows(3).any(|w| w == b"://") {
+        without_port(&normalized)
+    } else {
+        normalized.into_vec()
+    }
 }
 
 /// `normalized`, a remote as `normalize_remote` gives it, without a port after its host
@@ -482,12 +494,14 @@ mod tests {
     #[test]
     fn a_port_does_not_make_another_place() {
         let cwd = std::path::Path::new("/");
-        let place = |url: &str| without_port(&normalize_remote(OsStr::new(url), cwd));
+        let place = |url: &str| place(OsStr::new(url), cwd);
         let https = place("https://forge.example/o/r.git");
         assert_eq!(place("ssh://git@forge.example:2222/o/r.git"), https);
         assert_eq!(place("git@forge.example:o/r.git"), https);
         assert_ne!(place("ssh://git@other.example:2222/o/r.git"), https);
         assert_ne!(place("https://forge.example/o/other.git"), https);
         assert_eq!(place("/srv/git/r.git"), place("/srv/git/r.git/"));
+        // scp syntax has no port: `2222/o/r` is its path, another repository
+        assert_ne!(place("git@forge.example:2222/o/r.git"), https);
     }
 }

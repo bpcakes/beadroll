@@ -41,6 +41,17 @@ impl State {
         starts.into_iter().any(|start| graph.reaches(start, start))
     }
 
+    /// Whether what `parent` passes down to a child (its `blocks` targets and its own ancestors')
+    /// reaches `goal`: a new issue under both `parent` and `goal` waits for that, and `goal` waits
+    /// for the new issue, its child, so that the two parents together close a loop.
+    pub fn passes_down_to(&self, parent: EventId, goal: EventId) -> bool {
+        let graph = Planned {
+            st: self,
+            change: GraphChange::Unchanged,
+        };
+        graph.reaches(Waiting::Passed(parent), Waiting::Issue(goal))
+    }
+
     /// Whether `start` waits, directly or not, for `goal`, what its parents pass down counted
     /// ([`State::would_wait_for_itself`]): what `create` asks of a new issue's prerequisites
     /// against its parents, the only ones a new issue is reached through.

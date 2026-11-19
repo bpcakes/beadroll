@@ -384,3 +384,32 @@ fn a_loop_is_judged_on_the_graph_as_it_will_be() {
         );
     }
 }
+
+/// A new issue under two parents loops when what one passes down reaches the other: p1 waits for
+/// its child, the child inherits p2's prerequisite x, and x waits for p1. `create` refuses it as
+/// `dep add` refuses the same second parent; it made both.
+#[test]
+fn a_new_issue_under_two_parents_that_close_a_loop_is_refused() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let made = |title: &str| json_id(&a.bead(["create", title]).unwrap());
+    let (p1, p2, x) = (made("p1"), made("p2"), made("x"));
+    a.bead(["dep", "add", &p2, &x]);
+    a.bead(["dep", "add", &x, &p1]);
+    let deps = format!("parent-child:{p2}");
+    let under = a.run(["create", "n", "--parent", &p1, "--deps", &deps, "--json"]);
+    assert_eq!(code(&under), "CYCLE", "{}", under.stderr);
+    let both = format!("parent-child:{p1},parent-child:{p2}");
+    let named = a.run(["create", "n3", "--deps", &both, "--json"]);
+    assert_eq!(code(&named), "CYCLE", "{}", named.stderr);
+    let (q1, q2) = (made("q1"), made("q2"));
+    let fine = format!("parent-child:{q2}");
+    let ok = a.run(["create", "m", "--parent", &q1, "--deps", &fine, "--json"]);
+    assert_eq!(
+        ok.returncode(),
+        0,
+        "two parents with no loop: {}",
+        ok.stderr
+    );
+}

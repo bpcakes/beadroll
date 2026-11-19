@@ -517,7 +517,7 @@ it, and the file is committed again.
   record it would create whose title holds nothing and a dependency naming another record
   as its own (`VALIDATION`, nothing imported).
 - `init --import FILE` without `--prefix` starts the tracker under the prefix Beads keyed
-  the records under: the `issue_prefix` its `config.yaml` beside the file names, every record
+  the records under: the `issue_prefix` (bd's `issue-prefix`) its `config.yaml` beside the file names, every record
   keyed under it; else the name of the directory `.beads` is in, Beads' default, when the ids
   share it; else the leading `-`-separated segments every id holds before its last (`bd-1`,
   `bd-2` → `bd`; `syrup-rail-0u9`, `syrup-rail-audit-x1` → `syrup-rail`), so that what is made

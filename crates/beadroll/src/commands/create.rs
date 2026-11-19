@@ -4,6 +4,7 @@ use std::ffi::OsString;
 
 use beadroll_core::code::Code;
 use beadroll_core::event::{BLOCKS, PARENT_CHILD, status};
+use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
 use beadroll_core::query::blocking;
@@ -135,12 +136,14 @@ fn write_issue(
         // The new issue waits for what it blocks on, and each of its parents waits for it, whether
         // named by --parent or as a parent-child dependency: none of them may be reached from what
         // it waits for, or the edges would close a loop through it.
-        let parents = (parent.map(|parent| parent.uid()).into_iter()).chain(
-            (deps.iter())
-                .filter(|(_, kind, _)| kind == PARENT_CHILD)
-                .map(|(t, _, _)| *t),
-        );
-        for parent in parents {
+        let parents: Vec<EventId> = (parent.map(|parent| parent.uid()).into_iter())
+            .chain(
+                (deps.iter())
+                    .filter(|(_, kind, _)| kind == PARENT_CHILD)
+                    .map(|(t, _, _)| *t),
+            )
+            .collect();
+        for &parent in &parents {
             for (target, kind, _) in &deps {
                 // reached through its parents alone, the new issue loops when a prerequisite waits on
                 // one of them, what parents pass down counted
@@ -151,6 +154,22 @@ fn write_issue(
                             "depending on {} would make {} wait for itself",
                             st.key_of(&target.to_string()),
                             st.key_of(&parent.to_string())
+                        ),
+                    ));
+                }
+            }
+        }
+        // two parents: one waits for the new issue, which inherits what the other passes down
+        for &waiting in &parents {
+            for &passing in parents.iter().filter(|other| **other != waiting) {
+                if st.passes_down_to(passing, waiting) {
+                    return Err(Failure::new(
+                        Code::Cycle,
+                        format!(
+                            "an issue under both {} and {} would make {} wait for itself",
+                            st.key_of(&waiting.to_string()),
+                            st.key_of(&passing.to_string()),
+                            st.key_of(&waiting.to_string())
                         ),
                     ));
                 }
