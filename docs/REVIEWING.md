@@ -177,9 +177,15 @@ These were decided deliberately. Report problems *with* them, not their existenc
   key is longer than the one the child was minted under by more than 64 bytes a level of it is no
   merge's work (a rename counts a number up past others, or gives a level that is no number's, the
   root or one under a stem holding a newline, a digest's prefix) and is followed nowhere, so that
-  no record makes a key more than a bounded multiple of its own. Replay reads a `parent` that is
-  no event id as none, as it applied such a create before the member was added; a write of one is
-  refused (`write_problem`). Modelling which renames
+  no record makes a key more than a bounded multiple of its own. The bound can refuse a merge's
+  work, the known exception: a parent with a long padded key (`x.0…01`), renamed `x.1` by a
+  collision in its child's writer's view and given its own key back by a later merge, grows past
+  it, and its child keeps `x.1.1` while its parent edge names the parent; nothing tells a record
+  that names such a parent from a damaged one by their keys. Replay reads a `parent` that is no
+  event id as none, as it applied such a create before the member was added; a write of one is
+  refused (`write_problem`). The parent must be one the child's writer saw, as `bead create
+  --parent`'s always is: an older create may carry the member, naming an issue its writer never
+  saw. Modelling which renames
   merges make was tried first and wrongly refused some (a number's leading zeros, a stem with a
   newline, a key ending in a dot).
 

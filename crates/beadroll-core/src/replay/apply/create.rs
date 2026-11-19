@@ -25,8 +25,10 @@ pub(super) fn create(
     let eid = event.id;
     // a child minted under its parent's key follows that parent's key now, and a key another
     // machine's create took first gives way: settled here, before anything binds to it
+    // the parent its writer saw: an older create may carry the member, naming any issue, which a
+    // concurrent create's id sorting first could have made one when it was applied
     let follows = (create.parent)
-        .filter(|_| !create.imported)
+        .filter(|parent| !create.imported && k.saw_at(event.at, *parent))
         .and_then(|parent| followed(st, parent, &create.key));
     // a key the create gives may be the one an import waits for, which it then satisfies; a key it
     // follows to is no import's, and one an import waits for is passed over as an issue's is

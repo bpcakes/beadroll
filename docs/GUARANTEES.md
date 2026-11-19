@@ -736,7 +736,9 @@ it, and the file is committed again.
   the keys of the children made under it before the sync, which follow it
   (`x.1.1` to `x.2.1`), at every depth: the parent its create names by id,
   whatever else was renamed from that key since. A child made by a released
-  version, or imported, keeps its key. Events refer to issues by an immutable id, so nothing
+  version, or imported, keeps its key, and so does a child of a parent whose
+  key merges made far longer than the one the child was minted under (a long
+  padded number given back, `docs/REVIEWING.md` §2). Events refer to issues by an immutable id, so nothing
   is lost, but a key written into a commit message before the sync now names
   the other issue. An online
   `create` of a child publishes before it answers, so the key it prints is the

@@ -4,7 +4,21 @@
 
 use beadroll_test_support::{Json, Machine, json, json_id, json_line};
 
-use super::{settle, two_machines};
+use super::settle;
+
+/// Machine a owns an initialised tracker with issues X and Y, and machine b has synced it, both
+/// this build's: the follow and the report these tests check are this build's contract, which an
+/// older bead (`BEAD_UNDER_TEST`) does not keep, writing no parent in a create.
+fn two_machines(sandbox: &beadroll_test_support::Sandbox) -> (Machine, Machine, String, String) {
+    let a = crate::rust_only(sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let x = json_id(&a.bead(["create", "Issue X", "-d", "original"]).unwrap());
+    let y = json_id(&a.bead(["create", "Issue Y"]).unwrap());
+    a.bead(["sync"]);
+    let b = crate::rust_only(sandbox, "b");
+    b.bead(["sync"]);
+    (a, b, x, y)
+}
 
 /// The key every issue `machine` lists has, by title.
 fn keys(machine: &Machine) -> std::collections::BTreeMap<String, String> {
@@ -143,7 +157,7 @@ fn a_grandchild_follows_its_parent_that_followed() {
 fn a_child_follows_the_parent_its_writer_meant_among_renames() {
     let sandbox = crate::sandbox();
     let (a, b, x, _) = two_machines(&sandbox);
-    let c = Machine::new(&sandbox, "c");
+    let c = crate::rust_only(&sandbox, "c");
     c.bead(["sync"]);
     a.bead(["create", "on a", "--parent", &x, "--offline"]);
     b.bead(["create", "on b", "--parent", &x, "--offline"]);
@@ -183,7 +197,10 @@ fn a_child_follows_the_parent_its_writer_meant_among_renames() {
 fn a_child_does_not_follow_a_rename_its_writer_saw_made() {
     let sandbox = crate::sandbox();
     let (a, b, x, _) = two_machines(&sandbox);
-    let (c, d) = (Machine::new(&sandbox, "c"), Machine::new(&sandbox, "d"));
+    let (c, d) = (
+        crate::rust_only(&sandbox, "c"),
+        crate::rust_only(&sandbox, "d"),
+    );
     let titled = |machine: &Machine, title: &str| {
         let listed = machine.bead(["list", "--all", "--limit", "0"]).unwrap();
         (listed["issues"].as_array().unwrap().iter())
@@ -247,7 +264,7 @@ fn a_grandchild_follows_its_parent_past_a_key_its_writer_saw_held_otherwise() {
 fn a_child_follows_a_parent_renamed_twice() {
     let sandbox = crate::sandbox();
     let (a, b, x, _) = two_machines(&sandbox);
-    let c = Machine::new(&sandbox, "c");
+    let c = crate::rust_only(&sandbox, "c");
     c.bead(["sync"]);
     offline(&c, "Z", &x);
     a.bead(["create", "H", "--parent", &x]);
@@ -269,7 +286,7 @@ fn a_child_follows_a_parent_renamed_twice() {
 fn a_grandchild_follows_its_own_subtree_among_renames_of_its_key() {
     let sandbox = crate::sandbox();
     let (b, c, x, _) = two_machines(&sandbox);
-    let d = Machine::new(&sandbox, "d");
+    let d = crate::rust_only(&sandbox, "d");
     d.bead(["sync"]);
     offline(&b, "H0", &x);
     offline(&c, "H1", &x);
@@ -296,7 +313,7 @@ fn a_grandchild_follows_its_own_subtree_among_renames_of_its_key() {
 fn a_sync_reports_a_key_renamed_again() {
     let sandbox = crate::sandbox();
     let (a, b, x, _) = two_machines(&sandbox);
-    let c = Machine::new(&sandbox, "c");
+    let c = crate::rust_only(&sandbox, "c");
     c.bead(["sync"]);
     offline(&a, "A1", &x);
     c.bead(["create", "H", "--parent", &x]);
@@ -334,7 +351,10 @@ fn a_sync_reports_a_key_renamed_again() {
 fn a_sync_reports_a_key_held_again() {
     let sandbox = crate::sandbox();
     let (a, b, x, _) = two_machines(&sandbox);
-    let (c, d) = (Machine::new(&sandbox, "c"), Machine::new(&sandbox, "d"));
+    let (c, d) = (
+        crate::rust_only(&sandbox, "c"),
+        crate::rust_only(&sandbox, "d"),
+    );
     c.bead(["sync"]);
     d.bead(["sync"]);
     offline(&a, "A1", &x);

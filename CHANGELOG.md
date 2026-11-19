@@ -42,7 +42,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   The key is settled at the create, so an import waiting for a key binds to the issue that holds
   it, and a sibling made meanwhile keeps its own. Projections are rebuilt once (`ENCODING` 16).
   Upgrading: until every machine runs this bead, an older one keeps such a child's minted key
-  (*Format and upgrades* in `docs/GUARANTEES.md`).
+  (*Format and upgrades* in `docs/GUARANTEES.md`). A build of `main` made after #301 and before
+  this one followed children whose creates name no parent; once upgraded, such a child takes back
+  the key its create gave, with no rename in any sync's report: look a child's key up again
+  (`bead show`, `bead list`) before writing by a key such a build printed.
 - `sync` reports every key its merge changed: a key an earlier sync had renamed, moved again, was
   left out, as were renames replay placed before the ones counted and an issue that holds its own
   key again (an import a collision had displaced) or whose key changed with no rename at all (a

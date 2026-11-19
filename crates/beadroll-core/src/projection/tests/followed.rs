@@ -327,3 +327,32 @@ fn a_parent_given_a_digest_at_every_level_is_followed() {
     let (state, _) = every_way(&base(), &rest);
     assert_eq!(key(&state, 11), format!("{now}.1"));
 }
+
+/// A create naming a parent its writer never saw follows nowhere: an older bead's create may carry
+/// the member, and a concurrent issue named there was one already only because its id sorted
+/// first.
+#[test]
+fn a_parent_its_writer_never_saw_is_followed_nowhere() {
+    let rest = [
+        at(10, THERE, &[2], "create", 10, written("pr-q")),
+        at(20, HERE, &[2], "create", 20, under("pr-base.1", 10)),
+    ];
+    let (state, _) = every_way(&base(), &rest);
+    assert_eq!(key(&state, 20), "pr-base.1");
+}
+
+/// A parent whose key grew past the bound by merges is not followed, the documented exception:
+/// an import keyed with 150 leading zeros, renamed `pr-x.1` in its writer's view, gets its own key
+/// back once a merge removes the collision, and the child minted `pr-x.1.1` keeps that key while
+/// its parent edge names the parent (`docs/REVIEWING.md` §2).
+#[test]
+fn a_parent_regaining_a_key_past_the_bound_is_not_followed() {
+    let padded = format!("pr-x.{}1", "0".repeat(150));
+    let rest = [
+        at(10, HERE, &[2], "create", 10, written(&padded)),
+        at(11, HERE, &[10], "create", 11, under("pr-x.1.1", 10)),
+    ];
+    let (state, _) = every_way(&base(), &rest);
+    assert_eq!(key(&state, 10), padded);
+    assert_eq!(key(&state, 11), "pr-x.1.1");
+}
