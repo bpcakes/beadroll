@@ -353,6 +353,7 @@ fn execute(
             None,
         ),
     };
+    let notes = outcome.notes;
     let finished = finish(
         outcome,
         ws.as_ref().filter(|_| !free),
@@ -361,10 +362,33 @@ fn execute(
         run_lifetime,
         |warning| warn(&warning, output_mode, colors.stderr),
     )?;
-    let Some(answer) = finished else {
+    let Some(mut answer) = finished else {
         return Ok(None);
     };
+    said_after_the_answer(notes, output_mode, colors, &mut answer);
     Ok(rendered(answer, output_mode, colors)?.map(Printed::from))
+}
+
+/// Writes to standard error what `answer` says after its first line, when its outcome's `notes`
+/// say that line alone is the answer (`create --silent`) and a human reads it; `--json` is one
+/// document either way.
+fn said_after_the_answer(
+    notes: commands::Notes,
+    output: OutputMode,
+    colors: Colors,
+    answer: &mut Answer,
+) {
+    if notes == commands::Notes::OnStderr
+        && output == OutputMode::Human
+        && let Some(lines) = &mut answer.1
+        && lines.len() > 1
+    {
+        let said = lines.split_off(1);
+        let _ = output::emit(
+            Some(&paint::render_all(&said, colors.stderr)),
+            output::Stream::Stderr,
+        );
+    }
 }
 
 /// A command's answer: the result `--json` prints and the lines a human reads.
@@ -405,6 +429,8 @@ fn finish(
         settled,
         held,
         count_warning,
+        // read by the command line before it calls this, to place the lines this returns
+        notes: _,
     } = outcome;
     let ws = ws.filter(|_| !settled);
     // where what the command wrote goes, chosen before what it held is let go of: a write with no

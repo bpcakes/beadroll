@@ -335,3 +335,21 @@ fn show_text_gives_the_external_ref_and_the_estimate() {
         shown.stdout
     );
 }
+
+/// `create --silent` prints the new id alone on standard output, offline too: that it is not yet
+/// published goes to standard error, so that `ID=$(bead create … --silent --offline)` is the id.
+#[test]
+fn create_silent_prints_the_id_alone_offline_too() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    machine.bead(["init", "--prefix", "ex"]);
+    let made = machine.run(["create", "x", "--silent", "--offline"]);
+    assert_eq!(made.returncode(), 0, "{}", made.stderr);
+    assert_eq!(made.stdout.lines().count(), 1, "{:?}", made.stdout);
+    assert!(made.stdout.trim().starts_with("ex-"), "{:?}", made.stdout);
+    assert!(
+        made.stderr.contains("not yet published"),
+        "{:?}",
+        made.stderr
+    );
+}

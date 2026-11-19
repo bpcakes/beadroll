@@ -69,6 +69,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
     // in_progress is reached only through a claim
     let wants_claim = args.claim || status.as_deref() == Some(status::IN_PROGRESS);
     let status = status.filter(|named| named != status::IN_PROGRESS);
+    refuse_undoing_itself(args, status.as_deref())?;
     let kind = if fields.values.is_empty()
         && status.is_none()
         && !wants_claim
@@ -152,6 +153,27 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
     let result = Value::from(result);
     let outcome = Outcome::new(result, lines).answered_from(st);
     outcome.after_its_publish(ctx.ws, warning.as_deref())
+}
+
+/// Refuses, before anything is written, an update that would undo part of itself: `--claim` (or
+/// `--status in_progress`) with `status` open, whose reopen ends the claim it takes (written whole
+/// and answered `NOT_OWNER`, each retry would write it again), and `--set-labels`, which replaces
+/// the labels whole, beside `--add-label` or `--remove-label`.
+fn refuse_undoing_itself(args: &UpdateArgs, status: Option<&str>) -> Result<(), Failure> {
+    // `in_progress` is taken out of `status`: open comes with `--claim` alone
+    if args.claim && status == Some(status::OPEN) {
+        return Err(Failure::new(
+            Code::Validation,
+            "--claim with --status open would end the claim it takes: claim the issue, or reopen it",
+        ));
+    }
+    if args.set_labels.is_some() && !(args.add_label.is_empty() && args.remove_label.is_empty()) {
+        return Err(Failure::new(
+            Code::Usage,
+            "--set-labels replaces the labels: give it alone, or --add-label and --remove-label",
+        ));
+    }
+    Ok(())
 }
 
 /// The answer's lines, `Updated` (or `Unchanged` when nothing was asked) for each issue, then
@@ -268,7 +290,7 @@ fn check(st: &State, issue: &Issue, change: &Change<'_>) -> Result<(), Failure> 
         ..
     } = *change;
     if let Some(parent) = new_parent
-        && (parent == issue.uid() || st.reaches(issue.uid(), parent))
+        && st.parent_would_loop(issue.uid(), parent)
     {
         return Err(Failure::new(
             Code::Cycle,

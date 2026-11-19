@@ -6,6 +6,16 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A loop through a prerequisite a child inherits is `CYCLE`: `update --parent` to an issue that
+  depends on the child, `dep add --type parent-child` likewise, and a `blocks` dependency on one's
+  own descendant. They were accepted, the child waited for itself (`blocked` showed `B ⟵ B`), and
+  `dep cycles` reported nothing.
+- `update --claim --status open` is `VALIDATION` before anything is written: the reopen would end
+  the claim it takes. It wrote both, answered `NOT_OWNER`, and wrote them again on each retry.
+- `update --set-labels` beside `--add-label` or `--remove-label` is `USAGE`: the set overwrote them.
+- `create --silent` prints the id alone on standard output, `--offline` too; that it is not yet
+  published goes to standard error.
+
 - A clone made from `file:///…/origin.git` derives the id of the path's clones: the URL's path is
   resolved as the path is. Through a symbolic link (`/tmp`, `/var` on macOS) it derived another id
   and said `NOT_INITIALIZED` until a sync adopted the tracker.

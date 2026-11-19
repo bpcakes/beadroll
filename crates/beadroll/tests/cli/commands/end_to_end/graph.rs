@@ -233,3 +233,48 @@ fn blocked_lists_an_issue_whose_ending_is_disputed() {
         assert_eq!(listed, [x.as_str()], "{shown:?} {blocked:?}");
     }
 }
+
+/// A child inherits its ancestors' prerequisites, so a loop through them makes an issue wait for
+/// itself though `dep cycles` finds no cycle: `update --parent`, `dep add --type parent-child` and a
+/// `blocks` dependency on a descendant are refused as `CYCLE`, as `create` refused the same loop.
+/// Parenting that closes no loop still goes through.
+#[test]
+fn a_loop_through_an_inherited_prerequisite_is_refused() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let made = |title: &str| json_id(&a.bead(["create", title]).unwrap());
+    let (x, y) = (made("x"), made("y"));
+    a.bead(["dep", "add", &x, &y]);
+    let refused = [
+        a.run(["update", &y, "--parent", &x, "--json"]),
+        a.run(["dep", "add", &y, &x, "--type", "parent-child", "--json"]),
+    ];
+    for run in &refused {
+        assert_eq!(code(run), "CYCLE", "{}", run.stderr);
+    }
+    let parent = made("parent");
+    let child = json_id(&a.bead(["create", "child", "--parent", &parent]).unwrap());
+    let grandchild = json_id(
+        &a.bead(["create", "grandchild", "--parent", &child])
+            .unwrap(),
+    );
+    for target in [&child, &grandchild] {
+        let run = a.run(["dep", "add", &parent, target, "--json"]);
+        assert_eq!(code(&run), "CYCLE", "{target}: {}", run.stderr);
+    }
+    let other = made("other");
+    let moved = a.run(["update", &other, "--parent", &parent, "--json"]);
+    assert_eq!(moved.returncode(), 0, "{}", moved.stderr);
+    let blocked = a.bead(["blocked"]).unwrap();
+    for row in blocked.as_array().unwrap() {
+        let id = json_id(row);
+        assert!(
+            !row["blocked_by"]
+                .as_array()
+                .unwrap()
+                .contains(&Json::from(id.as_str())),
+            "{id} waits for itself"
+        );
+    }
+}
