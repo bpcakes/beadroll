@@ -6,6 +6,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Two deletes with different reasons are one tombstone again: comparing a done status by its reason,
+  meant for closes, disputed the deletion and held what depends on it up.
+- A remote fetched over https and pushed over ssh on another port (`ssh://git@host:2222/…`) is one
+  repository, not `CONFIG`: the check for a split remote compares places without their ports.
+- An identity with an explicit name is judged by the name alone, the whole label: an agent holding
+  `:` beside `--actor` is no longer refused.
+
 - `init --import` of a file whose name is not UTF-8 names it in a message about one of its records,
   as `import` does; it began `:1:`.
 

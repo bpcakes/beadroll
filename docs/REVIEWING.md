@@ -168,7 +168,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   as the maintainer chose on 2026-11-18, is an identity that holds nothing (an agent, thread or
   name of spaces alone, an empty `--actor`) and one whose parts would print another's label by
   accident: an agent holding `:` or `@`, a thread holding `@`, a name ending in `@` and eight
-  lowercase hex digits (a machine id). `alice@example.com` is a name. `machines --name` takes only
+  lowercase hex digits (a machine id). `alice@example.com` is a name. A name is the whole label,
+  so the agent and thread beside one are not judged. `machines --name` takes only
   a machine the journal has seen, by its id or a prefix of one alone, or an id named on this
   machine already, whose name it changes or takes back.
 
@@ -178,7 +179,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   until a close made after seeing both settles it, so what depends on it is not ready and its claim
   is held up meanwhile. The maintainer chose this on 2026-11-18 over keeping the larger event's
   reason silently, which `show` and `export` did while `recap` kept the other. Each alternative of
-  the conflict carries its `close_reason`; closes with the same reason agree.
+  the conflict carries its `close_reason`; closes with the same reason agree. Two deletes with
+  different reasons are one tombstone, each reason kept in `delete_reason`: the decision is of
+  closes alone.
 
 - A missing `add` is an error when a `comments` or `dep` read has extra positional
   arguments or writing options (AS18, roll-23jk.7). The maintainer approved this

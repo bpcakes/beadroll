@@ -111,6 +111,11 @@ impl Actor {
     pub fn problem(&self) -> Option<String> {
         let given = self.given.as_ref()?;
         let blank = |value: &OsStr| strip(&value.to_string_lossy()).is_empty();
+        // a name is the whole label: the agent and thread beside it print nothing that could
+        // collide, and are read as given
+        if let Some(name) = given.name.as_ref().filter(|name| !name.is_empty()) {
+            return Self::name_problem(name);
+        }
         if blank(&given.agent) {
             return Some("BEAD_AGENT holds only spaces: name the agent, or unset it".to_owned());
         }
@@ -138,18 +143,21 @@ impl Actor {
                 ));
             }
         }
-        let name = given.name.as_ref()?;
-        if blank(name) {
+        None
+    }
+
+    /// Why `name`, an explicit name that is the whole label, cannot be used, when it cannot.
+    fn name_problem(name: &OsStr) -> Option<String> {
+        if strip(&name.to_string_lossy()).is_empty() {
             return Some("--actor or BEAD_ACTOR holds only spaces: give a name".to_owned());
         }
-        if ends_in_a_machine(name.as_bytes()) {
-            return Some(format!(
+        ends_in_a_machine(name.as_bytes()).then(|| {
+            format!(
                 "the name {} ends in '@' and a machine id, as another thread's label does: \
                  name the actor otherwise",
                 repr_str(&name.to_string_lossy())
-            ));
-        }
-        None
+            )
+        })
     }
 }
 

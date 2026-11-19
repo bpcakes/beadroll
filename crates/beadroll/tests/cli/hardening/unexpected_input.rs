@@ -349,6 +349,13 @@ fn identities_that_hold_nothing_or_print_another_label_are_refused() {
         .env("BEAD_ACTOR", "alice@example.com");
     let fine = fine.run();
     assert_eq!(fine.returncode(), 0, "{}", fine.stderr);
+    // a name is the whole label: an agent holding ':' beside it prints nothing that collides
+    let named = machine
+        .cmd(["ready", "--json"])
+        .agent("a:b")
+        .env("BEAD_ACTOR", "alice")
+        .run();
+    assert_eq!(named.returncode(), 0, "{}", named.stderr);
     let help = machine.cmd(["help"]).agent("a:b").run();
     assert_eq!(
         help.returncode(),
