@@ -486,3 +486,25 @@ fn init_succeeds_when_tmpdir_does_not_exist() {
         .run();
     assert_eq!(init.returncode(), 0, "{}", init.stderr);
 }
+
+/// `init --import` of a file whose name is not UTF-8 names it in a message about one of its
+/// records, as `import` does: the prefix it reads them for read them under no name at all, so that
+/// the message began `:1:`. Only where the file system takes such a name (Linux; macOS refuses it).
+#[test]
+fn init_import_names_a_file_whose_name_is_not_utf8() {
+    let sandbox = crate::sandbox();
+    let m = Machine::new(&sandbox, "odd-init");
+    let odd = sandbox.root().join(OsStr::from_bytes(b"odd\xff.jsonl"));
+    if std::fs::write(&odd, "{\"title\": \"no id\"}\n").is_err() {
+        return;
+    }
+    let run = m
+        .cmd([OsStr::new("init"), OsStr::new("--import"), odd.as_os_str()])
+        .run();
+    assert_eq!(run.returncode(), 1, "{}", run.stderr);
+    assert!(
+        run.stderr.contains("jsonl:1:"),
+        "the file is not named: {}",
+        run.stderr
+    );
+}
