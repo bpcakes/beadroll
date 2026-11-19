@@ -6,6 +6,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A coordination remote that git would fetch from one repository and push to another (a
+  `url.<base>.pushInsteadOf` rule, with no push URL of its own) is `CONFIG` at once, naming both and
+  how to make them one. Every sync ended `SYNC_CONFLICT` after 17 s of rounds, which retrying never
+  fixed; V9's read-only mirror setup is refused too.
+
 - Ending a claim by a release or a reopen (`reopen`, `update --status open`), a takeover's too,
   gives back the assignee the issue had before the claim. A reopen left the former owner, so `ready`
   showed `@owner` as if the issue were held, and a release erased a hand-set assignee. A close keeps

@@ -176,9 +176,10 @@ fn the_remote_defined_for_a_push_inherits_no_urls() {
     assert_eq!(refs(&other), "", "the push went to an inherited URL too");
 }
 
-/// Origin by default, with no push URL of its own and a `pushInsteadOf` rule for its URL: bead
-/// publishes where `git push origin` goes, the rule applied, even though another remote has that
-/// URL as its own push URL, which only a push to that remote leaves as it is.
+/// Origin by default, with no push URL of its own and `insteadOf` and `pushInsteadOf` rules for
+/// its URL naming one repository: bead publishes where `git push origin` goes, the rule applied,
+/// even though another remote has that URL as its own push URL, which only a push to that remote
+/// leaves as it is. (Rules that fetch from one repository and push to another are `CONFIG`.)
 #[test]
 fn origin_is_pushed_to_as_git_pushes_to_it_whatever_other_remotes_say() {
     let sandbox = crate::sandbox();
@@ -187,6 +188,8 @@ fn origin_is_pushed_to_as_git_pushes_to_it_whatever_other_remotes_say() {
     let origin = path_text(sandbox.origin());
     let rewrite = format!("url.{}.pushInsteadOf", path_text(&pushed));
     commit(&a, &["config", &rewrite, origin]);
+    let fetched = format!("url.{}.insteadOf", path_text(&pushed));
+    commit(&a, &["config", &fetched, origin]);
     let other = sandbox.bare("other.git");
     commit(&a, &["remote", "add", "other", path_text(&other)]);
     commit(&a, &["remote", "set-url", "--push", "other", origin]);
@@ -494,4 +497,22 @@ fn init_tracked_stores_a_rewritten_path_as_it_reads_back() {
         "",
         "nothing reached where the rule sends the path"
     );
+}
+
+/// An alias that `insteadOf` sends to one repository and `pushInsteadOf` to another fetches and
+/// pushes apart: bead reads back what it publishes, so it is `CONFIG` at once, naming both and how
+/// to make them one, where every sync ended `SYNC_CONFLICT` after its rounds.
+#[test]
+fn rules_that_fetch_and_push_at_two_repositories_are_refused() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let pushed = sandbox.bare("pushed.git");
+    commit(&a, &["remote", "set-url", "origin", "alias:proj"]);
+    let fetch_rule = format!("url.{}.insteadOf", path_text(sandbox.origin()));
+    commit(&a, &["config", &fetch_rule, "alias:proj"]);
+    let push_rule = format!("url.{}.pushInsteadOf", path_text(&pushed));
+    commit(&a, &["config", &push_rule, "alias:proj"]);
+    let synced = a.run(["sync", "--json"]);
+    assert_eq!(code(&synced), "CONFIG", "{}", synced.stderr);
+    assert!(synced.stderr.contains("pushurl"), "{}", synced.stderr);
 }
