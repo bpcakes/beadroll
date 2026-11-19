@@ -5,7 +5,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::{Machine, executable, git, parse_json, shell_quoted};
+use beadroll_test_support::{Machine, code, executable, git, parse_json, shell_quoted};
 
 use super::{Env, git_env, has_ref, scratch_git_config, sh};
 
@@ -109,10 +109,11 @@ fn git_ssh_command_in_the_environment_is_honoured() {
     assert!(has_ref(sandbox.origin(), "refs/beads/journal"));
 }
 
-/// Verified (V9): bead's sync honours a global url.<primary>.pushInsteadOf: origin is a read-only
-/// mirror whose pre-receive refuses, and the global config rewrites pushes to it towards the
-/// primary. The review measured bead sync rc 0 in 0.4 s; the journal lands on the primary, not the
-/// mirror.
+/// V9: a global url.<primary>.pushInsteadOf that sends pushes to origin, a read-only mirror whose
+/// pre-receive refuses, towards the primary splits fetch from push: bead reads back what it
+/// publishes, and the mirror holds it only once it catches up, so that every later sync ended
+/// `SYNC_CONFLICT` after its rounds. The maintainer's decision (2026-11-19): `CONFIG` at once,
+/// naming both places, nothing pushed to either.
 #[test]
 fn global_push_instead_of_is_honoured() {
     let sandbox = crate::sandbox();
@@ -143,9 +144,10 @@ fn global_push_instead_of_is_honoured() {
     let started = Instant::now();
     let sync = a.run(["sync", "--json"]);
     let elapsed = started.elapsed();
-    assert_eq!(sync.returncode(), 0, "{}", sync.stderr);
-    assert!(elapsed < Duration::from_secs(30), "{elapsed:?}");
-    assert!(has_ref(sandbox.origin(), "refs/beads/journal"));
+    assert_eq!(code(&sync), "CONFIG", "{}", sync.stderr);
+    assert!(sync.stderr.contains("pushInsteadOf"), "{}", sync.stderr);
+    assert!(elapsed < Duration::from_secs(5), "{elapsed:?}");
+    assert!(!has_ref(sandbox.origin(), "refs/beads/journal"));
     assert!(!has_ref(&ro, "refs/beads/journal"));
 }
 

@@ -24,12 +24,13 @@ pub use publish::PublishMode;
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
+use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use std::path::PathBuf;
 
 use beadroll_core::json::{Object, Value};
 use beadroll_git::{
-    CountRules, Env, IoError, local_damage, sync_env, transport_config, transport_settings,
-    with_settings,
+    CountRules, Env, IoError, local_damage, normalize_remote, sync_env, transport_config,
+    transport_settings, with_settings,
 };
 use beadroll_store::{
     Endpoint, Memo, Workspace, claim_files, dir_entries, has_suffix, hex_token, layout,
@@ -149,14 +150,80 @@ pub(crate) fn defining_remote(env: &Env, name: &str, url: &OsStr, own_push_url: 
     with_settings(env, &settings)
 }
 
+/// `Ok` unless git would fetch `remote` from one repository and push it to another: a
+/// `url.<base>.pushInsteadOf` rule that rewrites its URL for a push alone, when the remote has no
+/// push URL of its own. bead reads back what it publishes, so that each fetch would miss what the
+/// push wrote, and every sync would end `SYNC_CONFLICT` after its rounds; this is `CONFIG`, at
+/// once. The rules are the checkout's, which every link carries in `env`, applied as git applies
+/// them ([`rewrite`]), for this check alone: bead hands git the URL as written.
+fn one_repository(ws: &Workspace, env: &Env, remote: &Endpoint) -> Result<(), Error> {
+    if remote.own_push_url {
+        return Ok(());
+    }
+    let vars = env.vars();
+    let mut fetch_rules = Vec::new();
+    let mut push_rules = Vec::new();
+    for (key, rule) in vars {
+        let Some(at) = key
+            .to_str()
+            .and_then(|key| key.strip_prefix("GIT_CONFIG_KEY_"))
+        else {
+            continue;
+        };
+        let Some(prefix) = vars.get(OsStr::new(&format!("GIT_CONFIG_VALUE_{at}"))) else {
+            continue;
+        };
+        let rule = rule.as_bytes();
+        let Some(rest) = rule.strip_prefix(b"url.") else {
+            continue;
+        };
+        if let Some(base) = rest.strip_suffix(b".pushinsteadof") {
+            push_rules.push((base, prefix.as_bytes()));
+        } else if let Some(base) = rest.strip_suffix(b".insteadof") {
+            fetch_rules.push((base, prefix.as_bytes()));
+        }
+    }
+    let url = remote.url.as_bytes();
+    let Some(pushed) = rewrite(&push_rules, url) else {
+        return Ok(());
+    };
+    let fetched = rewrite(&fetch_rules, url).unwrap_or_else(|| url.to_vec());
+    let (fetched, pushed) = (OsString::from_vec(fetched), OsString::from_vec(pushed));
+    let cwd = &ws.settings.cwd;
+    if normalize_remote(&fetched, cwd) == normalize_remote(&pushed, cwd) {
+        return Ok(());
+    }
+    let shown = |url: &OsStr| url.to_string_lossy().into_owned();
+    let named = remote
+        .name
+        .as_deref()
+        .map_or_else(|| shown(&remote.url), shown);
+    Err(Error::Store(beadroll_store::Error::Config(format!(
+        "{named} fetches from {} and pushes to {} (a url.*.pushInsteadOf rule): bead reads back \
+         what it publishes, so it needs one repository: set remote.{named}.pushurl, or drop the rule",
+        shown(&fetched),
+        shown(&pushed)
+    ))))
+}
+
+/// `url` rewritten by the one of `rules` (`(base, prefix)`, as `url.<base>.insteadOf = prefix`)
+/// whose prefix is the longest that begins it, as git chooses; `None` when none does.
+fn rewrite(rules: &[(&[u8], &[u8])], url: &[u8]) -> Option<Vec<u8>> {
+    let (base, prefix) = (rules.iter())
+        .filter(|(_, prefix)| !prefix.is_empty() && url.starts_with(prefix))
+        .max_by_key(|(_, prefix)| prefix.len())?;
+    Some([base, &url[prefix.len()..]].concat())
+}
+
 impl<'a> Link<'a> {
     /// Builds a link to the remote after checking its ref, using checkout transport settings
-    /// queried afresh at link creation.
+    /// queried afresh at link creation, and that git fetches and pushes it at one repository.
     pub fn new(ws: &'a Workspace, remote: &Endpoint) -> Result<Link<'a>, Error> {
         let ref_name = ws.ref_name()?;
         private_dir(&ws.dir)?;
         let git_dir = ws.dir.join(layout::SYNC_GIT);
         let env = link_env(ws)?;
+        one_repository(ws, &env, remote)?;
         Ok(Link {
             ws,
             url: remote.url.clone(),

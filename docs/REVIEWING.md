@@ -145,6 +145,15 @@ agents and tests match parts of them; `bead prime` lists the codes.
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
+- A coordination remote that git fetches from one repository and pushes to another, through a
+  `url.<base>.pushInsteadOf` rule when it has no push URL of its own (its own `pushurl` is used
+  for both), is `CONFIG` when the link is made (`link::one_repository`), naming both places. bead
+  reads back what it publishes, so each fetch missed what the push wrote and every sync ended
+  `SYNC_CONFLICT` after its rounds. The maintainer chose this on 2026-11-19, read-only mirrors
+  included, over V9's setup (a read-only mirror fetched, the primary pushed), which worked only
+  while the mirror kept up: too much complexity for little benefit. The rules are applied as git
+  applies them (the longest prefix; a push's own rule first) for this check alone.
+
 - A claim makes its owner the issue's assignee; a release and a reopen (`reopen`, `update --status
   open`) give back the assignee it had before its first claim, which a takeover carries on
   (`Claim::assignee_before`, `projection::ENCODING` 12), and a close keeps the owner who did the

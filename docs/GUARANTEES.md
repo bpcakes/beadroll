@@ -424,7 +424,10 @@ changed) and optionally a different coordination remote. Origin's own URL is sto
 origin when it moves; a remote given by name, here or in `--remote` and
 `$BEAD_REMOTE`, means the URL it is configured with for `git push` (its first
 push URL, else its first URL, `insteadOf` left to git), as origin itself does,
-and a store remembers it by that name, looked up again by every command.
+and a store remembers it by that name, looked up again by every command. A
+remote that git would fetch from one repository and push to another (a
+`pushInsteadOf` rule, with no push URL of its own) is `CONFIG`: bead reads back
+what it publishes.
 Commit the file on the default branch at once: a checkout whose tree predates
 it reads the committed copy (`HEAD`, then `origin/HEAD`), but a file that is
 not committed, or not on the default branch, reaches no other checkout, and
