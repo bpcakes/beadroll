@@ -80,32 +80,55 @@ pub(crate) fn records_prefix(path: &OsStr) -> Result<Option<String>, Failure> {
 }
 
 /// The prefix every one of `records` is keyed under, as [`records_prefix`] reads it: what a dry
-/// run asks of records it could read, whose other problems it lists itself.
+/// run asks of records it could read, whose other problems it lists itself. Beads keys an issue
+/// `<prefix>-<hash>`, and some `<prefix>-<slug>-<hash>` (`syrup-rail-0u9` beside
+/// `syrup-rail-simplification-audit-x1`), so the prefix is the leading `-`-separated segments every
+/// id shares before its last one, never each id's text before its last `-`. Records that share
+/// none (`ap-1` and `zz-1`) are `VALIDATION`, asking for `--prefix`.
 pub(crate) fn shared_prefix(records: &[Value]) -> Result<Option<String>, Failure> {
-    let mut prefixes: Vec<&str> = (records.iter())
+    let stems: Vec<&str> = (records.iter())
         .filter_map(|record| record.get("id").and_then(Value::as_str))
-        .filter_map(|id| id.rsplit_once('-').map(|(prefix, _)| prefix))
+        .filter_map(|id| id.rsplit_once('-').map(|(stem, _)| stem))
         .collect();
-    // `-1` is keyed under no prefix: an empty one would be the tracker's, its keys `-xyz`
-    if prefixes.contains(&"") {
+    let Some((first, rest)) = stems.split_first() else {
+        return Ok(None);
+    };
+    let mut shared: Vec<&str> = first.split('-').collect();
+    for stem in rest {
+        let common = (shared.iter().zip(stem.split('-')))
+            .take_while(|(a, b)| **a == *b)
+            .count();
+        shared.truncate(common);
+    }
+    let prefix = shared.join("-");
+    // `-1` is keyed under no prefix, nor are records that share none: an empty one would be the
+    // tracker's, its keys `-xyz`
+    if prefix.is_empty() {
+        let mut named: Vec<&str> = stems
+            .iter()
+            .map(|stem| stem.split('-').next().unwrap_or(""))
+            .collect();
+        named.sort_unstable();
+        named.dedup();
+        let named: Vec<String> = named
+            .iter()
+            .map(|n| {
+                if n.is_empty() {
+                    "''".to_owned()
+                } else {
+                    (*n).to_owned()
+                }
+            })
+            .collect();
         return Err(Failure::new(
             Code::Validation,
-            "a record to import is keyed under no prefix (its id begins with '-'): give --prefix",
+            format!(
+                "the records to import share no prefix (they begin {}): give --prefix",
+                named.join(", ")
+            ),
         ));
     }
-    prefixes.sort_unstable();
-    prefixes.dedup();
-    match prefixes.as_slice() {
-        [] => Ok(None),
-        [prefix] => Ok(Some((*prefix).to_owned())),
-        several => Err(Failure::new(
-            Code::Validation,
-            format!(
-                "the records to import are keyed under several prefixes ({}): give --prefix",
-                several.join(", ")
-            ),
-        )),
-    }
+    Ok(Some(prefix))
 }
 
 pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<Imported, Failure> {

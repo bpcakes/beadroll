@@ -513,8 +513,9 @@ it, and the file is committed again.
   record it would create whose title holds nothing and a dependency naming another record
   as its own (`VALIDATION`, nothing imported).
 - `init --import FILE` without `--prefix` starts the tracker under the prefix the records
-  share (`bd-1`, `bd-2` → `bd`), so that what is made after joins them; records under
-  several prefixes are `VALIDATION` asking for `--prefix`.
+  share: the leading `-`-separated segments every id holds before its last (`bd-1`, `bd-2` →
+  `bd`; `syrup-rail-0u9`, `syrup-rail-audit-x1` → `syrup-rail`), so that what is made after
+  joins them; records that share none are `VALIDATION` asking for `--prefix`.
 - What each event had seen is kept as one clock per event over chains: every
   machine's journal is a chain, and the claims, releases and takeovers of
   attempt files join chains of their own, about one for each machine that

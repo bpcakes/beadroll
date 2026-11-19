@@ -522,8 +522,8 @@ fn import_refuses_a_blank_title_and_a_dependency_of_another_record() {
 }
 
 /// `init --import` without `--prefix` starts the tracker under the prefix its records share, so
-/// that what is made after joins them; records under several prefixes are `VALIDATION` asking for
-/// `--prefix`, and `--prefix` given wins.
+/// that what is made after joins them, slug-keyed ids among them as real exports hold them;
+/// records that share none are `VALIDATION` asking for `--prefix`, and `--prefix` given wins.
 #[test]
 fn init_import_takes_the_prefix_its_records_share() {
     // each its own sandbox: a second `init` beside a published tracker joins it, prefix and all
@@ -557,6 +557,38 @@ fn init_import_takes_the_prefix_its_records_share() {
     let (_kept, c, run) = start("c", &shared, &["--prefix", "own"]);
     assert_eq!(run.returncode(), 0, "{}", run.stderr);
     assert_eq!(c.bead(["info"]).unwrap()["prefix"], json!("own"));
+    // ids as real Beads exports hold them: `<prefix>-<hash>`, and `<prefix>-<slug>-<hash>` beside
+    // them, the prefix itself holding a `-` or not; the prefix is what every id shares
+    let shapes = [
+        (
+            "d",
+            [
+                "syrup-rail-0u9",
+                "syrup-rail-simplification-audit-x1",
+                "syrup-rail-0ym",
+            ],
+            "syrup-rail",
+        ),
+        (
+            "e",
+            [
+                "br-account-research-fap",
+                "br-account-research-fap.1",
+                "br-onboarding-style-q2",
+            ],
+            "br",
+        ),
+    ];
+    for (name, ids, prefix) in shapes {
+        let records: Vec<Json> = ids.iter().map(|id| record(id, id, json!({}))).collect();
+        let (_kept, machine, run) = start(name, &records, &[]);
+        assert_eq!(run.returncode(), 0, "{name}: {}", run.stderr);
+        assert_eq!(
+            machine.bead(["info"]).unwrap()["prefix"],
+            json!(prefix),
+            "{name}"
+        );
+    }
 }
 
 /// What the import refuses whatever shape its records take: a Beads memory (`_type: memory`), with
