@@ -6,6 +6,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `init --import -` imports what standard input holds: the prefix's read took every byte, and the
+  import found none and answered `imported: 0`, its dry run likewise. Both read the export once.
+  Nothing beside standard input is read for its prefix (a `config.yaml` where the command runs is no
+  Beads configuration of it).
+
 - A child made under a parent that a merge renames follows it: `x.1.1`, made under its machine's
   own `x.1`, which became `x.2`, is `x.2.1`, and sync reports the rename. It kept `x.1.1`, which read
   as a child of the other machine's `x.1`, whose next child then skipped a number.

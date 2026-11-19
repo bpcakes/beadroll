@@ -36,7 +36,9 @@ pub(crate) fn import(
     if mode == ImportMode::DryRun {
         let state = read_only(ctx.ws)?;
         need_tracker(&state)?;
-        return Ok(answer_dry_run(ctx.ws, &state, path, Vec::new(), None)?.answered_from(state));
+        let content = read_utf8(path, path)?;
+        let answer = answer_dry_run(ctx.ws, &state, (path, &content), Vec::new(), None)?;
+        return Ok(answer.answered_from(state));
     }
     let (imported, spent) = writing_spent(ctx.ws, ctx.actor, |tx| {
         need_tracker(tx.state()?)?;
@@ -71,12 +73,6 @@ pub(crate) fn imported_line(result: &mut Object, imported: &Imported) -> String 
 
 /// Emits the events that import the export at `path` (`-`: standard input) into `tx`; how many
 /// records were new.
-/// The prefix a tracker `init --import` starts from the export at `path` takes without `--prefix`
-/// ([`tracker_prefix`]).
-pub(crate) fn records_prefix(path: &OsStr, cwd: &Path) -> Result<Option<String>, Failure> {
-    tracker_prefix(path, &export_records(&read_utf8(path, path)?, path)?, cwd)
-}
-
 /// The prefix a tracker started from `records`, the export at `path`, takes without `--prefix`, as
 /// Beads keyed them: the `issue_prefix` its `config.yaml` beside the export names, every record
 /// keyed under it; else the name of the directory the `.beads` directory is in, Beads' default,
@@ -89,8 +85,9 @@ pub(crate) fn tracker_prefix(
     records: &[Value],
     cwd: &Path,
 ) -> Result<Option<String>, Failure> {
+    // standard input has no directory beside it: nothing is read there
     let file = cwd.join(path);
-    let beads = file.parent();
+    let beads = file.parent().filter(|_| path != "-");
     if let Some(configured) = beads.map(configured_prefix).transpose()?.flatten() {
         let keyed = |record: &Value| {
             let id = record.get("id").and_then(Value::as_str).unwrap_or_default();
@@ -216,6 +213,13 @@ pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<Imported, 
     // each form of the export let go of once the next is made: the text once read, the records
     // once planned (roll-lqjj.9)
     drop(content);
+    import_read(tx, records)
+}
+
+/// Emits the events that import `records`, an export already read, into `tx`: what `init`, which
+/// reads the export once for its prefix and its import alike (standard input can be read only
+/// once), and `import_records` both do.
+pub(crate) fn import_read(tx: &mut Tx<'_>, records: Vec<Value>) -> Result<Imported, Failure> {
     let plan = plan_import(tx.state()?, &records)?;
     drop(records);
     let mut created: Vec<String> = Vec::new();
@@ -269,11 +273,10 @@ pub(crate) fn read_only(ws: &Workspace) -> Result<State, Failure> {
 pub(crate) fn answer_dry_run(
     ws: &Workspace,
     state: &State,
-    path: &OsStr,
+    (path, content): (&OsStr, &str),
     notes: Vec<String>,
     refused_first: Option<String>,
 ) -> Result<Outcome, Failure> {
-    let content = read_utf8(path, path)?;
     // the file as given begins every message about its records, `?` for each byte not UTF-8
     let shown = printed_text(path.as_bytes());
     let mut result = Object::new();
@@ -281,7 +284,7 @@ pub(crate) fn answer_dry_run(
     result.insert("file".into(), Value::from(shown.as_str()));
     let mut lines = vec![Line::from("Dry run: nothing imported, no remote asked.")];
     // the import's own steps decide whether it goes through
-    let planned = read_records(&content, &shown)
+    let planned = read_records(content, &shown)
         .and_then(|records| Ok((preview(state, &records), plan_import(state, &records)?)));
     match (planned, refused_first) {
         (Ok((would, plan)), None) => {
@@ -292,7 +295,7 @@ pub(crate) fn answer_dry_run(
             importable(&mut result, &mut lines, &would, retracted, &shown);
         }
         (planned, first) => {
-            let mut found: Vec<String> = (problems(state, &content, &shown).iter())
+            let mut found: Vec<String> = (problems(state, content, &shown).iter())
                 .map(ToString::to_string)
                 .collect();
             if let (true, Err(refused)) = (found.is_empty(), &planned) {

@@ -480,6 +480,40 @@ fn importing_legacy_comment_does_not_renumber_existing_local_comment() {
     );
 }
 
+/// `init --import -` reads the export from standard input once, for its prefix and its import alike:
+/// the prefix's read took every byte, and the import found nothing and answered `imported: 0`. Its
+/// dry run counts what it would import, and nothing beside standard input is read: a
+/// `config.yaml` directory where the command runs is no Beads configuration of it.
+#[test]
+fn init_imports_standard_input_once_for_its_prefix_and_its_records() {
+    let sandbox = crate::sandbox();
+    let records = json_lines(&[
+        record("bd-1", "one", json!({})),
+        record("bd-2", "two", json!({})),
+    ]);
+    let machine = beadroll_test_support::Machine::new(&sandbox, "a");
+    std::fs::create_dir(machine.checkout().join("config.yaml")).unwrap();
+    let planned = machine
+        .cmd(["init", "--import", "-", "--dry-run", "--json"])
+        .stdin(records.clone())
+        .run();
+    assert_eq!(planned.returncode(), 0, "{}", planned.stderr);
+    let planned = parse_json(&planned.stdout).unwrap();
+    assert_eq!(planned["importable"], json!(true), "{planned:?}");
+    let started = machine
+        .cmd(["init", "--import", "-", "--json"])
+        .stdin(records)
+        .run();
+    assert_eq!(started.returncode(), 0, "{}", started.stderr);
+    let started = parse_json(&started.stdout).unwrap();
+    assert_eq!(
+        (started["prefix"].clone(), started["imported"].clone()),
+        (json!("bd"), json!(2))
+    );
+    let listed = machine.bead(["list", "--all", "--limit", "0"]).unwrap();
+    assert_eq!(listed["total"], json!(2), "{listed:?}");
+}
+
 /// One case of an export kept where Beads keeps it: the directory `.beads` is in, the records' ids,
 /// what `config.yaml` holds, and the prefix the tracker starts under, or the code it is refused with.
 type Keyed = (
