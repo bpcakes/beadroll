@@ -121,12 +121,14 @@ pub(crate) fn dep(
     };
     let issue = resolve_arg(&st, key)?;
     if action == Action::Tree {
-        let lines = tree(&st, issue);
+        let (lines, nodes) = tree(&st, issue);
         let mut result = Object::new();
         result.insert(
             "tree".into(),
             Value::Array(lines.iter().map(|l| Value::from(l.text())).collect()),
         );
+        // the same rows as data: the issue's brief, its depth, and whether it was met before
+        result.insert("nodes".into(), Value::Array(nodes));
         return Ok(Outcome::new(result, lines).answered_from(st));
     }
     let result = st.dependency_summary(issue);
@@ -164,14 +166,24 @@ pub(crate) fn dep(
 }
 
 /// The tree beneath `issue`: each issue it depends on, indented under it, depth first in the
-/// order of its edges; an issue met again is listed but not opened again.
-fn tree(st: &State, issue: &Issue) -> Vec<Line> {
+/// order of its edges; an issue met again is listed but not opened again. Its lines, and the same
+/// rows as data (`--json`'s `nodes`): each issue's brief with its `depth`, and `again` for one
+/// met before.
+fn tree(st: &State, issue: &Issue) -> (Vec<Line>, Vec<Value>) {
     let mut lines = Vec::new();
+    let mut nodes = Vec::new();
     let mut seen: BTreeSet<EventId> = BTreeSet::new();
     let mut work: Vec<(&Issue, usize)> = vec![(issue, 0)];
     while let Some((node, depth)) = work.pop() {
         lines.push(Line::toned(Tone::Plain, "  ".repeat(depth)).then(row(st, node)));
-        if !seen.insert(node.uid()) {
+        let mut data = st.brief(node);
+        data.insert("depth".into(), Value::from(depth as i64));
+        let again = !seen.insert(node.uid());
+        if again {
+            data.insert("again".into(), Value::Bool(true));
+        }
+        nodes.push(Value::from(data));
+        if again {
             continue;
         }
         let mut edges: Vec<&Edge> = node.deps().keys().collect();
@@ -182,7 +194,7 @@ fn tree(st: &State, issue: &Issue) -> Vec<Line> {
             .collect();
         work.extend(children.into_iter().rev().map(|child| (child, depth + 1)));
     }
-    lines
+    (lines, nodes)
 }
 
 /// `dep add|remove|rm ISSUE DEPENDS_ON`: one edge added, or the edges to it taken back; a

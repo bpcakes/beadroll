@@ -6,6 +6,19 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `init --import --dry-run` reads the prefix as `init --import` does: records under several
+  prefixes are a problem it lists, where it said the import would go through; it takes `--prefix`,
+  which settles that, and says which prefix the tracker would start under.
+- An import that takes back a dependency, its record imported again without it, says so
+  (`Imported 0 issues, took back 1 dependency`, `taken_back` in `--json`); it answered `Imported 0
+  issues` while it wrote a `dep_remove`.
+- A Beads memory record (`_type: memory`) is refused, naming it, with an `id` and a title too; it
+  was imported as a task and exported back with its `_type`.
+- A record keyed under no prefix (`-1`) is `VALIDATION` asking for `--prefix`; `init --import`
+  started a tracker whose prefix was empty.
+- `dep tree --json` gives each row as data too, `nodes` (the issue's brief, `depth`, and `again`
+  for one met before), beside `tree`'s rendered lines.
+
 - A claim (or release, takeover) the remote accepted whose recording here fails says it stands
   and to run `bead sync`, which records it; a bare `IO`, which leaves nothing half-done, told its
   agent nothing was held while the remote held the claim.

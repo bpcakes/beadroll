@@ -18,8 +18,10 @@ use beadroll_sync::{
     Error as SyncError, Link, NetworkMode, publish_soon, publish_soon_to, synchronise, writing,
 };
 
-use super::import::{answer_dry_run, import_records, read_only, records_prefix};
-use super::{Context, Failure, ImportMode, Outcome, text};
+use super::import::{
+    Imported, answer_dry_run, import_records, read_only, records_prefix, shared_prefix,
+};
+use super::{Context, Failure, ImportMode, Outcome, counted, text};
 
 /// Which workspace id a tracked file records.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -400,7 +402,10 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
         let prefix = tx.state()?.prefix().cloned().unwrap_or(Value::Null);
         let imported = match args.import_path.as_ref().filter(|p| !p.is_empty()) {
             Some(path) => import_records(tx, path)?,
-            None => 0,
+            None => Imported {
+                issues: 0,
+                taken_back: 0,
+            },
         };
         Ok((prefix, imported))
     })?;
@@ -423,7 +428,16 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
     result.insert("workspace".into(), Value::from(ws.id.as_str()));
     result.insert("prefix".into(), prefix.clone());
     result.insert("path".into(), Value::from(ws.dir.display().to_string()));
-    result.insert("imported".into(), Value::from(imported as i64));
+    result.insert("imported".into(), Value::from(imported.issues as i64));
+    // what a joining init's import took back is said too, as `import` says it
+    let mut said = Vec::new();
+    if imported.issues > 0 {
+        said.push(format!("{} issues imported", imported.issues));
+    }
+    if imported.taken_back > 0 {
+        result.insert("taken_back".into(), Value::from(imported.taken_back as i64));
+        said.push(counted(imported.taken_back, "dependency", "dependencies") + " taken back");
+    }
     result.insert("tracked_config".into(), Value::Bool(!ws.config.is_empty()));
     result.insert("joined".into(), Value::Bool(joined.is_some()));
     let mut lines = Vec::new();
@@ -437,10 +451,10 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
         "Tracker {} at {}{}",
         repr(&prefix),
         ws.dir.display(),
-        if imported > 0 {
-            format!(" ({imported} issues imported)")
-        } else {
+        if said.is_empty() {
             String::new()
+        } else {
+            format!(" ({})", said.join(", "))
         }
     ));
     if args.tracked {
@@ -464,10 +478,11 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
 /// `init --import FILE --dry-run`: what the import would do, planned against the tracker this
 /// checkout has here, if any; the remote is not asked, and nothing is written.
 fn dry_run(ctx: &Context<'_>, args: &InitArgs) -> Result<Outcome, Failure> {
-    // it plans the import alone: what would start or choose a tracker is refused, not ignored
-    if args.tracked || args.remote.is_some() || args.prefix.is_some() {
+    // it plans the import, and the prefix a tracker it starts takes: what would choose a
+    // tracker or a remote is refused, not ignored
+    if args.tracked || args.remote.is_some() {
         return Err(Failure::usage(
-            "--dry-run plans only what --import would do: drop --tracked, --remote and --prefix",
+            "--dry-run plans only what --import would do: drop --tracked and --remote",
             "",
         ));
     }
@@ -483,10 +498,29 @@ fn dry_run(ctx: &Context<'_>, args: &InitArgs) -> Result<Outcome, Failure> {
          only the records it lacks."
             .to_owned(),
     ];
+    let mut refused_first = None;
     if state.prefix().is_some() {
         notes.push(
             "This checkout has a tracker here already: the import would add to it.".to_owned(),
         );
+    } else if let Some(prefix) = args.prefix.as_ref().filter(|p| !p.is_empty()) {
+        notes.push(format!(
+            "The tracker would start under the prefix {}.",
+            text(prefix)?
+        ));
+    } else {
+        // what `init --import` reads the prefix from, as it would: a mix is refused there too; a
+        // file it cannot read records from is the dry run's own problem to list, once
+        let content = super::read_utf8(path, path)?;
+        let records =
+            beadroll_core::import::read_records(&content, path.to_str().unwrap_or_default());
+        match records.map_or(Ok(None), |records| shared_prefix(&records)) {
+            Ok(Some(prefix)) => notes.push(format!(
+                "The tracker would start under the prefix the records share, {prefix}."
+            )),
+            Ok(None) => {}
+            Err(failure) => refused_first = Some(failure.message),
+        }
     }
-    Ok(answer_dry_run(ctx.ws, &state, path, notes)?.answered_from(state))
+    Ok(answer_dry_run(ctx.ws, &state, path, notes, refused_first)?.answered_from(state))
 }

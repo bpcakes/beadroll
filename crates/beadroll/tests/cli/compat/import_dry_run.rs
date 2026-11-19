@@ -88,7 +88,7 @@ fn init_says_what_it_would_import_and_writes_nothing() {
 fn every_problem_is_listed_and_the_dry_run_still_answers() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
-    // two Beads memory records, which have no id, and a repeated id
+    // two Beads memory records, refused as memories, and a repeated id
     let text = format!(
         "{EXPORT}{{\"_type\":\"memory\",\"key\":\"a\",\"value\":\"x\"}}\n\
          {{\"_type\":\"memory\",\"key\":\"b\",\"value\":\"y\"}}\n{{\"id\":\"ex-1\",\"title\":\"again\"}}\n"
@@ -102,8 +102,10 @@ fn every_problem_is_listed_and_the_dry_run_still_answers() {
     assert_eq!(
         problems,
         [
-            ".beads/issues.jsonl:4: record has no string 'id'",
-            ".beads/issues.jsonl:5: record has no string 'id'",
+            ".beads/issues.jsonl:4: a Beads memory record (\"_type\": \"memory\"): an export \
+             holding memories is refused whole; export the issues alone",
+            ".beads/issues.jsonl:5: a Beads memory record (\"_type\": \"memory\"): an export \
+             holding memories is refused whole; export the issues alone",
             ".beads/issues.jsonl:6: record id 'ex-1' repeats record 1",
         ]
     );
@@ -343,8 +345,8 @@ fn init_dry_run_needs_an_import() {
     assert!(!sandbox.root().join("home-a").exists());
 }
 
-/// `--dry-run` plans only the import: `--tracked`, `--remote` or `--prefix` beside it is `USAGE`,
-/// rather than accepted and not applied.
+/// `--dry-run` plans only the import: `--tracked` or `--remote` beside it is `USAGE`, rather than
+/// accepted and not applied; `--prefix`, which decides what the import would start, it takes.
 #[test]
 fn a_dry_run_refuses_what_it_would_not_apply() {
     let sandbox = crate::sandbox();
@@ -352,11 +354,7 @@ fn a_dry_run_refuses_what_it_would_not_apply() {
     let export = sandbox.root().join("export.jsonl");
     std::fs::write(&export, EXPORT).unwrap();
     let export = export.to_str().unwrap();
-    for extra in [
-        &["--tracked"][..],
-        &["--remote", "origin"],
-        &["--prefix", "ex"],
-    ] {
+    for extra in [&["--tracked"][..], &["--remote", "origin"]] {
         let args = ["init", "--dry-run", "--import", export]
             .into_iter()
             .chain(extra.iter().copied());
@@ -367,4 +365,16 @@ fn a_dry_run_refuses_what_it_would_not_apply() {
         !machine.checkout().join(".beadroll.json").exists(),
         "a tracked file was written"
     );
+    let prefixed = [
+        "init",
+        "--dry-run",
+        "--import",
+        export,
+        "--prefix",
+        "ex",
+        "--json",
+    ];
+    let planned = machine.run(prefixed);
+    assert_eq!(planned.returncode(), 0, "{}", planned.stderr);
+    assert!(!machine.home().exists(), "a dry run started a tracker");
 }

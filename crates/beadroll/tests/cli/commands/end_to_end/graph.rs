@@ -278,3 +278,49 @@ fn a_loop_through_an_inherited_prerequisite_is_refused() {
         );
     }
 }
+
+/// `dep tree --json` gives each row as data too, `nodes`: the issue's brief, its depth, and
+/// `again` for an issue met before, where `tree` holds only the rendered lines.
+#[test]
+fn dep_tree_json_gives_each_row_as_data() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let made = |title: &str| json_id(&a.bead(["create", title]).unwrap());
+    let (top, left, right, shared) = (made("top"), made("left"), made("right"), made("shared"));
+    for (from, to) in [
+        (&top, &left),
+        (&top, &right),
+        (&left, &shared),
+        (&right, &shared),
+    ] {
+        a.bead(["dep", "add", from, to]);
+    }
+    let tree = a.bead(["dep", "tree", &top]).unwrap();
+    let nodes = tree["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), tree["tree"].as_array().unwrap().len());
+    let rows: Vec<(String, i64, bool)> = (nodes.iter())
+        .map(|node| {
+            (
+                json_id(node),
+                node["depth"].as_i64().unwrap(),
+                node.get("again").is_some(),
+            )
+        })
+        .collect();
+    assert_eq!(rows[0], (top, 0, false));
+    assert_eq!(
+        rows.iter().filter(|(id, _, _)| *id == shared).count(),
+        2,
+        "{rows:?}"
+    );
+    assert!(
+        rows.iter()
+            .any(|(id, depth, again)| *id == shared && *depth == 2 && *again),
+        "{rows:?}"
+    );
+    assert!(
+        nodes.iter().all(|node| node["status"].as_str().is_some()),
+        "{nodes:?}"
+    );
+}

@@ -35,15 +35,37 @@ pub(crate) fn import(
     if mode == ImportMode::DryRun {
         let state = read_only(ctx.ws)?;
         need_tracker(&state)?;
-        return Ok(answer_dry_run(ctx.ws, &state, path, Vec::new())?.answered_from(state));
+        return Ok(answer_dry_run(ctx.ws, &state, path, Vec::new(), None)?.answered_from(state));
     }
-    let (count, spent) = writing_spent(ctx.ws, ctx.actor, |tx| {
+    let (imported, spent) = writing_spent(ctx.ws, ctx.actor, |tx| {
         need_tracker(tx.state()?)?;
         import_records(tx, path)
     })?;
     let mut result = Object::new();
-    result.insert("imported".into(), Value::from(count as i64));
-    Ok(Outcome::new(result, vec![format!("Imported {count} issues")]).wrote_in(spent))
+    result.insert("imported".into(), Value::from(imported.issues as i64));
+    let line = imported_line(&mut result, &imported);
+    Ok(Outcome::new(result, vec![line]).wrote_in(spent))
+}
+
+/// What an import did: the issues it made, and the dependencies it took back, which a record
+/// imported again without them retracts.
+pub(crate) struct Imported {
+    pub(crate) issues: usize,
+    pub(crate) taken_back: usize,
+}
+
+/// The line that says what `imported` did, `taken_back` in `result` too when it took any back:
+/// a re-import that only retracts writes, and says so, never `Imported 0 issues` alone.
+pub(crate) fn imported_line(result: &mut Object, imported: &Imported) -> String {
+    let mut line = format!("Imported {} issues", imported.issues);
+    if imported.taken_back > 0 {
+        result.insert("taken_back".into(), Value::from(imported.taken_back as i64));
+        line.push_str(&format!(
+            ", took back {}",
+            counted(imported.taken_back, "dependency", "dependencies")
+        ));
+    }
+    line
 }
 
 /// Emits the events that import the export at `path` (`-`: standard input) into `tx`; how many
@@ -54,10 +76,23 @@ pub(crate) fn import(
 pub(crate) fn records_prefix(path: &OsStr) -> Result<Option<String>, Failure> {
     let content = read_utf8(path, path)?;
     let records = read_records(&content, path.to_str().unwrap_or_default())?;
+    shared_prefix(&records)
+}
+
+/// The prefix every one of `records` is keyed under, as [`records_prefix`] reads it: what a dry
+/// run asks of records it could read, whose other problems it lists itself.
+pub(crate) fn shared_prefix(records: &[Value]) -> Result<Option<String>, Failure> {
     let mut prefixes: Vec<&str> = (records.iter())
         .filter_map(|record| record.get("id").and_then(Value::as_str))
         .filter_map(|id| id.rsplit_once('-').map(|(prefix, _)| prefix))
         .collect();
+    // `-1` is keyed under no prefix: an empty one would be the tracker's, its keys `-xyz`
+    if prefixes.contains(&"") {
+        return Err(Failure::new(
+            Code::Validation,
+            "a record to import is keyed under no prefix (its id begins with '-'): give --prefix",
+        ));
+    }
     prefixes.sort_unstable();
     prefixes.dedup();
     match prefixes.as_slice() {
@@ -73,7 +108,7 @@ pub(crate) fn records_prefix(path: &OsStr) -> Result<Option<String>, Failure> {
     }
 }
 
-pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<usize, Failure> {
+pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<Imported, Failure> {
     let content = read_utf8(path, path)?;
     // the file's name begins every message about its records, as it was given
     let records = match path.to_str() {
@@ -89,10 +124,12 @@ pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<usize, Fai
     let plan = plan_import(tx.state()?, &records)?;
     drop(records);
     let mut created: Vec<String> = Vec::new();
+    let mut taken_back = 0;
     for step in plan.steps {
         match step {
             Step::DepRemove { issue, data } => {
                 tx.emit(OpName::DepRemove, Some(&issue.to_string()), data, None)?;
+                taken_back += 1;
             }
             Step::Create(data) => {
                 created.push(tx.emit(OpName::Create, None, data, None)?.to_string());
@@ -120,7 +157,10 @@ pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<usize, Fai
             }
         }
     }
-    Ok(plan.imported)
+    Ok(Imported {
+        issues: plan.imported,
+        taken_back,
+    })
 }
 
 /// The tracker `ws` keeps here, as its journal replays: read, and nothing written, where a view
@@ -136,6 +176,7 @@ pub(crate) fn answer_dry_run(
     state: &State,
     path: &OsStr,
     notes: Vec<String>,
+    refused_first: Option<String>,
 ) -> Result<Outcome, Failure> {
     let content = read_utf8(path, path)?;
     // the file as given begins every message about its records, `?` for each byte not UTF-8
@@ -147,18 +188,24 @@ pub(crate) fn answer_dry_run(
     // the import's own steps decide whether it goes through
     let planned = read_records(&content, &shown)
         .and_then(|records| Ok((preview(state, &records), plan_import(state, &records)?)));
-    match planned {
-        Ok((would, plan)) => {
+    match (planned, refused_first) {
+        (Ok((would, plan)), None) => {
             let retracted = (plan.steps.iter())
                 .filter(|step| matches!(step, Step::DepRemove { .. }))
                 .count();
             result.insert("importable".into(), Value::Bool(true));
             importable(&mut result, &mut lines, &would, retracted, &shown);
         }
-        Err(refused) => {
-            let mut found = problems(state, &content, &shown);
-            if found.is_empty() {
-                found.push(refused);
+        (planned, first) => {
+            let mut found: Vec<String> = (problems(state, &content, &shown).iter())
+                .map(ToString::to_string)
+                .collect();
+            if let (true, Err(refused)) = (found.is_empty(), &planned) {
+                found.push(refused.to_string());
+            }
+            // what refuses the import before its records are read (`init`'s prefix) comes first
+            if let Some(first) = first {
+                found.insert(0, first);
             }
             result.insert("importable".into(), Value::Bool(false));
             let messages: Vec<Value> = found.iter().map(|p| Value::from(p.to_string())).collect();
