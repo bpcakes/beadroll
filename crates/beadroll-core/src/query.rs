@@ -3,6 +3,7 @@
 //! issue at once in [`readiness`]) and waits-for cycles.
 
 mod blockers;
+mod loops;
 mod readiness;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -15,6 +16,7 @@ use crate::state::{Edge, HydratedIssue, IdMap, Issue, State, Texts};
 use crate::time::event_time;
 
 pub use blockers::BlockerLists;
+pub use loops::{GraphChange, OtherParents};
 pub use readiness::Readiness;
 
 /// At most this many cycles are reported.
@@ -132,50 +134,6 @@ impl State {
                 continue;
             }
             stack.extend(self.waits_for(uid));
-        }
-        false
-    }
-
-    /// Whether making `parent` a parent of `child` would have `child` wait for itself: `child`
-    /// waits already for `parent` (whose children it waits for), or a prerequisite `child` would
-    /// inherit, a `blocks` target of `parent` or of an ancestor of it, is `child` or waits for it.
-    /// A child inherits its ancestors' prerequisites, which no edge of [`State::waits_for`] holds,
-    /// so that such a loop is no cycle `dep cycles` finds.
-    pub fn parent_would_loop(&self, child: EventId, parent: EventId) -> bool {
-        if child == parent || self.reaches(child, parent) {
-            return true;
-        }
-        let (mut stack, mut seen) = (vec![parent], HashSet::new());
-        while let Some(uid) = stack.pop() {
-            let Some(issue) = self.issues.get(&uid).filter(|_| seen.insert(uid)) else {
-                continue;
-            };
-            for edge in issue.deps().keys() {
-                let Some(to) = edge.to().id() else { continue };
-                if blocking(edge.kind()) && (to == child || self.reaches(to, child)) {
-                    return true;
-                }
-                if edge.kind() == PARENT_CHILD {
-                    stack.push(to);
-                }
-            }
-        }
-        false
-    }
-
-    /// Whether `issue` depending on `target` with a `blocks` dependency would have an issue wait
-    /// for itself: `target` is `issue` or one of its descendants, which inherit the prerequisite,
-    /// or waits for one of them.
-    pub fn prerequisite_would_loop(&self, issue: EventId, target: EventId) -> bool {
-        let (mut stack, mut seen) = (vec![issue], HashSet::new());
-        while let Some(uid) = stack.pop() {
-            if !seen.insert(uid) {
-                continue;
-            }
-            if target == uid || self.reaches(target, uid) {
-                return true;
-            }
-            stack.extend(self.children(uid).iter().copied());
         }
         false
     }

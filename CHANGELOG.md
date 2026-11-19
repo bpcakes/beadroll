@@ -6,6 +6,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- The loop check judges the graph as it will be after the change: a child moved under an issue that
+  waits on one of the child's own descendants, and a prerequisite waiting on what its issue passes
+  down to a child, are `CYCLE`, where both were accepted; a child moved to a parent that waits on its
+  old one is not, where it was refused.
+
 - Two deletes with different reasons are one tombstone again: comparing a done status by its reason,
   meant for closes, disputed the deletion and held what depends on it up.
 - A remote fetched over https and pushed over ssh on another port (`ssh://git@host:2222/…`) is one

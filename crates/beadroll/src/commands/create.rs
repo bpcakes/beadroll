@@ -142,7 +142,9 @@ fn write_issue(
         );
         for parent in parents {
             for (target, kind, _) in &deps {
-                if blocking(kind) && (*target == parent || st.reaches(*target, parent)) {
+                // reached through its parents alone, the new issue loops when a prerequisite waits on
+                // one of them, what parents pass down counted
+                if blocking(kind) && st.waits_on(*target, parent) {
                     return Err(Failure::new(
                         Code::Cycle,
                         format!(
