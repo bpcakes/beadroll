@@ -6,6 +6,15 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A child whose writer saw two renames of its parent's key follows the parent it meant, the first
+  of them in replay order; it followed the last, a sibling.
+- `create` under two parents refuses a loop through what one passes down to the other, as `dep add`
+  refuses the same second parent; it made the issue.
+- `init --import` reads bd's spelling of the prefix key, `issue-prefix`, and ends a value at a `#`
+  after any whitespace (a tab too).
+- A push URL in scp syntax whose path begins with digits (`git@host:2222/r`) is not read as a port:
+  the split-remote check took it for the same repository as `ssh://git@host/r`.
+
 - `init --import -` imports what standard input holds: the prefix's read took every byte, and the
   import found none and answered `imported: 0`, its dry run likewise. Both read the export once.
   Nothing beside standard input is read for its prefix (a `config.yaml` where the command runs is no

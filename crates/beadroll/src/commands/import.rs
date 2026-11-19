@@ -129,18 +129,21 @@ fn configured_prefix(beads: &Path) -> Result<Option<String>, Failure> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(beadroll_git::IoError::at(&error, &file).into()),
     };
+    // `issue_prefix`, or bd's `issue-prefix`; a comment begins at a `#` after whitespace
+    let without_comment = |value: &str| {
+        let at = (value.char_indices().skip(1))
+            .find(|(at, c)| *c == '#' && value[..*at].ends_with(char::is_whitespace))
+            .map_or(value.len(), |(at, _)| at);
+        value[..at].to_owned()
+    };
     let value = (text.lines())
-        .filter_map(|line| line.strip_prefix("issue_prefix:"))
-        .map(|value| {
-            value
-                .split(" #")
-                .next()
-                .unwrap_or(value)
-                .trim()
-                .trim_matches(['"', '\''])
+        .filter_map(|line| {
+            (line.strip_prefix("issue_prefix:")).or_else(|| line.strip_prefix("issue-prefix:"))
         })
+        .map(without_comment)
+        .map(|value| value.trim().trim_matches(['"', '\'']).to_owned())
         .find(|value| !value.is_empty());
-    Ok(value.map(str::to_owned))
+    Ok(value)
 }
 
 /// The records of `content`, the export read from `path`: what every message about one of them

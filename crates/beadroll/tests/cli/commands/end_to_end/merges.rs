@@ -327,6 +327,44 @@ fn a_child_follows_its_parents_rename() {
     assert_eq!(next, format!("{first}.1"), "a's child skipped a number");
 }
 
+/// A child follows the parent its writer meant when that writer saw two renames of one key: c saw
+/// b's child as `x.1` and its own as `x.2`, made a child of `x.1`, and a's `x.1` then came first,
+/// so b's became `x.2` and c's `x.3`. The child follows b's, its parent, to `x.2.1`, never c's.
+#[test]
+fn a_child_follows_the_parent_its_writer_meant_among_renames() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, _) = two_machines(&sandbox);
+    let c = Machine::new(&sandbox, "c");
+    c.bead(["sync"]);
+    a.bead(["create", "on a", "--parent", &x, "--offline"]);
+    b.bead(["create", "on b", "--parent", &x, "--offline"]);
+    b.bead(["sync"]);
+    c.bead(["create", "on c", "--parent", &x, "--offline"]);
+    c.bead(["sync"]);
+    assert_eq!(c.show(&format!("{x}.1"))["title"].as_str(), Some("on b"));
+    let under = ["create", "under b's", "--parent", &format!("{x}.1")];
+    assert_eq!(json_id(&c.bead(under).unwrap()), format!("{x}.1.1"));
+    settle(&[&a, &b, &c]);
+    // b's child, by its title: its key is the one the merge gave it
+    let listed = a.bead(["list", "--all", "--limit", "0"]).unwrap();
+    let key_of = |title: &str| {
+        (listed["issues"].as_array().unwrap().iter())
+            .find(|issue| issue["title"] == Json::from(title))
+            .map(json_id)
+            .unwrap_or_else(|| panic!("no {title} in {listed:?}"))
+    };
+    let (parent, child) = (key_of("on b"), key_of("under b's"));
+    assert_eq!(
+        child,
+        format!("{parent}.1"),
+        "the child follows another sibling"
+    );
+    for machine in [&a, &b, &c] {
+        let shown = machine.show(&child);
+        assert_eq!(shown["parent"].as_str(), Some(parent.as_str()), "{shown:?}");
+    }
+}
+
 /// Three machines syncing at the same moment all succeed, and converge on everything they made.
 #[test]
 fn concurrent_sync_from_three_machines_all_succeed() {

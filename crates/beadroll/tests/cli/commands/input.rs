@@ -529,7 +529,7 @@ type Keyed = (
 /// may follow (`proj-fix-login-x1`). Records outside the configured prefix are `VALIDATION`.
 #[test]
 fn init_import_takes_the_prefix_beads_keyed_the_records_under() {
-    let cases: [Keyed; 3] = [
+    let cases: [Keyed; 5] = [
         (
             "onesales",
             &["br-onboarding-style-q2"],
@@ -547,6 +547,19 @@ fn init_import_takes_the_prefix_beads_keyed_the_records_under() {
             &["zz-1", "br-2"],
             Some("issue_prefix: \"br\"\n"),
             Err("VALIDATION"),
+        ),
+        // bd's spelling, and a comment after a tab
+        (
+            "bd",
+            &["br-onboarding-style-q2"],
+            Some("issue-prefix: \"br\"\n"),
+            Ok("br"),
+        ),
+        (
+            "tabbed",
+            &["br-x-q2"],
+            Some("issue_prefix: br\t# the prefix\n"),
+            Ok("br"),
         ),
     ];
     for (dir, ids, config, expected) in cases {
