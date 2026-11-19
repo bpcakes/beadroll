@@ -112,11 +112,15 @@ fn add(
     if strip(&text).is_empty() {
         return Err(Failure::new(Code::Validation, "comment text is required"));
     }
-    let author = args
+    // an empty author is none: refused, never the actor instead
+    if args
         .author
         .as_deref()
-        .filter(|a| !a.is_empty())
-        .map(arg_text);
+        .is_some_and(|a| strip(&a.to_string_lossy()).is_empty())
+    {
+        return Err(Failure::new(Code::Validation, "--author needs a name"));
+    }
+    let author = args.author.as_deref().map(arg_text);
     let ((id, issue_key), spent) = writing_spent(ctx.ws, ctx.actor, |tx| {
         let (uid, issue_key) = {
             let st = tx.state()?;

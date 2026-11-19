@@ -21,9 +21,16 @@ pub(crate) fn export(ctx: &Context<'_>, output: Option<&OsStr>) -> Result<Outcom
         text.push_str(&line);
         text.push('\n');
     }
-    let Some(output) = output.filter(|o| !o.is_empty()) else {
+    let Some(output) = output else {
         return Ok(Outcome::raw(text).answered_from(st));
     };
+    // `-o ""` names no file: refused, never standard output instead
+    if output.is_empty() {
+        return Err(Failure::usage(
+            "-o needs a file: leave it out to write to standard output",
+            "",
+        ));
+    }
     // Normalise the output path before writing: `dump.jsonl/` names `dump.jsonl`.
     write_atomic(
         &normalize_path(output),

@@ -70,8 +70,10 @@ arguments. Comment options `-m`/`--message`, `-f`/`--file` and `--author` requir
 `dep remove A B` of a dependency A does not have, of any type or of the `--type`
 named, is `VALIDATION` too, judged on what this machine has; an empty `--type`
 is none given. A comment's text given more than one way (words, `-m`, `-f`),
-`init --dry-run` beside `--tracked`, `--remote` or `--prefix`, and `machines
---name` without `ID=` are `USAGE`, never one kept and the rest dropped; `log`
+`init --dry-run` beside `--tracked` or `--remote`, and `machines --name` without
+`ID=` are `USAGE`, never one kept and the rest dropped. Any other option given
+as nothing (`--status ""`, `--assignee ""`, `--author ""`, `--prefix ""`,
+`--remote ""`, `export -o ""`, `log ""`) is refused, never read as not given; `log`
 before any tracker is `NOT_INITIALIZED`, as the other reads are. These errors
 write no events.
 

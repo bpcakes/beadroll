@@ -38,7 +38,14 @@ pub(crate) fn log(
     let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
     let aliases = machine_aliases(&ctx.ws.settings);
-    let wanted = match key.filter(|k| !k.is_empty()) {
+    // an empty key names no issue: refused, never every event instead
+    let wanted = match key {
+        Some(key) if key.is_empty() => {
+            return Err(Failure::new(
+                Code::Validation,
+                "log takes an issue's key, or none for every event",
+            ));
+        }
         Some(key) => Some(resolve_arg(&st, key)?.uid().to_string()),
         None => None,
     };
@@ -162,7 +169,13 @@ fn logged_summary(
 pub(crate) fn machines(ctx: &Context<'_>, name: Option<&OsStr>) -> Result<Outcome, Failure> {
     let projection = projection(ctx.ws)?;
     let seen = machines_seen(ctx.ws, &projection)?;
-    if let Some(name) = name.filter(|n| !n.is_empty()) {
+    if let Some(name) = name {
+        if name.is_empty() {
+            return Err(Failure::usage(
+                "--name takes ID=NAME (ID= takes the name back), not nothing",
+                "",
+            ));
+        }
         record_alias(ctx, name, &seen)?;
     }
     let aliases = machine_aliases(&ctx.ws.settings);

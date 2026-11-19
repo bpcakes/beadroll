@@ -386,3 +386,43 @@ fn update_refuses_what_it_would_undo_itself() {
     assert_eq!(code(&removed), "USAGE", "{}", removed.stderr);
     assert_eq!(events(), before, "a refused update wrote");
 }
+
+/// An option given as nothing is refused, never read as not given: `--status ""` left the status,
+/// `log ""` listed every event, `--assignee ""` every issue, `--author ""` wrote the actor,
+/// `export -o ""` wrote to standard output, `machines --name ""` only listed, and `init --prefix
+/// ""` or `--remote ""` took the repository's name or origin. None of them writes anything.
+#[test]
+fn an_option_given_as_nothing_is_refused() {
+    let sandbox = crate::sandbox();
+    let fresh = Machine::new(&sandbox, "fresh");
+    for args in [&["init", "--prefix", ""][..], &["init", "--remote", ""]] {
+        let run = fresh.run(args.iter().copied().chain(["--json"]));
+        assert_eq!(code(&run), "VALIDATION", "{args:?}: {}", run.stderr);
+    }
+    let machine = Machine::new(&sandbox, "a");
+    machine.bead(["init", "--prefix", "ex"]);
+    let key = machine.bead(["create", "x"]).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let events = || machine.bead(["info"]).unwrap()["events"].clone();
+    let before = events();
+    let refused: [(&[&str], &str); 8] = [
+        (&["update", key.as_str(), "--status", ""], "VALIDATION"),
+        (&["create", "y", "--status", " "], "VALIDATION"),
+        (&["log", ""], "VALIDATION"),
+        (&["list", "--assignee", ""], "VALIDATION"),
+        (&["ready", "--assignee", ""], "VALIDATION"),
+        (
+            &["comments", "add", key.as_str(), "hi", "--author", ""],
+            "VALIDATION",
+        ),
+        (&["machines", "--name", ""], "USAGE"),
+        (&["export", "-o", ""], "USAGE"),
+    ];
+    for (args, expected) in refused {
+        let run = machine.run(args.iter().copied().chain(["--json"]));
+        assert_eq!(code(&run), expected, "{args:?}: {}", run.stderr);
+    }
+    assert_eq!(events(), before, "a refused option wrote");
+}

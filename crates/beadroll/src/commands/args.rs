@@ -242,7 +242,18 @@ pub(crate) fn field_args(title: Option<&OsStr>, flags: &ContentArgs) -> Result<P
             .values
             .insert("estimated_minutes".into(), Value::Int(estimate.clone()));
     }
-    if let Some(status) = flags.status.as_deref().filter(|s| !s.is_empty()) {
+    // an empty status is none: refused, as an empty type is, never read as not given
+    if flags
+        .status
+        .as_deref()
+        .is_some_and(|s| strip(&s.to_string_lossy()).is_empty())
+    {
+        return Err(Failure::new(
+            Code::Validation,
+            "--status needs a status, such as open or closed",
+        ));
+    }
+    if let Some(status) = flags.status.as_deref() {
         let Some(status) = status.to_str().filter(|s| STATUSES.contains(s)) else {
             return Err(Failure::new(
                 Code::Validation,
