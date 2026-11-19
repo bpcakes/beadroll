@@ -390,15 +390,6 @@ fn create_problem(data: Option<&Object>, strings: &dyn Fn(&str) -> bool) -> Opti
     {
         return Some(problem);
     }
-    // added to format 1 (#307): the parent a child was made under, by its id
-    let parent_valid = match get("parent") {
-        None => true,
-        Some(Value::Str(parent)) => crate::id::EventId::parse(parent).is_some(),
-        Some(_) => false,
-    };
-    if !parent_valid {
-        return Some("create event has a malformed 'parent'".into());
-    }
     let extra_valid = matches!(get("extra"), None | Some(Value::Object(_)));
     let comments_valid = matches!(get("comments"), None | Some(Value::Array(_)));
     if !strings("labels") || !extra_valid || !comments_valid {
@@ -453,6 +444,16 @@ pub fn write_problem(event: &Value) -> Option<String> {
         .and_then(OpName::from_name);
     if !matches!(op, Some(OpName::Create | OpName::Set)) {
         return None;
+    }
+    // added to format 1 (#307): the parent a child was made under, by its id. Replay reads a value
+    // that is no id as no parent, as a create an older bead wrote with any member there was applied
+    if op == Some(OpName::Create)
+        && let Some(parent) = data_of(event).and_then(|d| d.get("parent"))
+        && !parent
+            .as_str()
+            .is_some_and(|id| crate::id::EventId::parse(id).is_some())
+    {
+        return Some("create event has a malformed 'parent'".into());
     }
     let fields = data_of(event)
         .and_then(|d| d.get("fields"))

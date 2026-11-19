@@ -166,29 +166,17 @@ impl<'l, 'w> Merging<'l, 'w> {
             .into_iter()
             .map(|path| (stem(&path), path))
             .collect();
-        if let Some(tip) = tip {
-            let local = self.link.local_blobs(BlobUse::Comparison)?;
-            let listing = self.link.listing(tip)?;
-            if local.is_empty() && pending.is_empty() && self.can_bootstrap(&listing) {
-                pulled += self.bootstrap(tip, &listing)?;
-            } else {
-                for (path, sha) in listing {
-                    let Ok(path) = String::from_utf8(path) else {
-                        continue; // a name no bead writes
-                    };
-                    self.link.known.listed_blob(path.clone(), sha.clone());
-                    if attempt_shaped(&path) {
-                        if self.merge_attempt(tip, &path, &sha, &local, &pending)? {
-                            pulled += 1;
-                        }
-                        continue;
-                    }
-                    if segment_shaped(&path) {
-                        pulled += self.merge_segment(tip, &path, &sha, &local, own.as_deref())?;
-                    }
+        // a merge that fails before it writes, `sync.git` damaged, is retried after a rebuild,
+        // which another process may sync the store before: the keys it began with are kept
+        pulled += match self.merge_listing(tip, &pending, own.as_deref()) {
+            Ok(merged) => merged,
+            Err(error) => {
+                if matches!(error, Error::SyncRepoDamaged(_)) {
+                    self.before_writing();
                 }
+                return Err(error);
             }
-        }
+        };
         self.link.save_memo();
         // the store's projection, the records merged applied to it, or the journal replayed
         let merged = match self.found.take() {
@@ -201,6 +189,41 @@ impl<'l, 'w> Merging<'l, 'w> {
             return Err(Error::JournalFork(OWN_CHAIN.to_owned()));
         }
         Ok((merged, pulled))
+    }
+
+    /// Brings in the journals at `tip`: each published file merged into the store's copy, or every
+    /// one downloaded into a store that has none. How many events came in.
+    fn merge_listing(
+        &mut self,
+        tip: Option<&str>,
+        pending: &HashMap<String, PathBuf>,
+        own: Option<&str>,
+    ) -> Result<i64, Error> {
+        let mut pulled = 0;
+        if let Some(tip) = tip {
+            let local = self.link.local_blobs(BlobUse::Comparison)?;
+            let listing = self.link.listing(tip)?;
+            if local.is_empty() && pending.is_empty() && self.can_bootstrap(&listing) {
+                pulled += self.bootstrap(tip, &listing)?;
+            } else {
+                for (path, sha) in listing {
+                    let Ok(path) = String::from_utf8(path) else {
+                        continue; // a name no bead writes
+                    };
+                    self.link.known.listed_blob(path.clone(), sha.clone());
+                    if attempt_shaped(&path) {
+                        if self.merge_attempt(tip, &path, &sha, &local, pending)? {
+                            pulled += 1;
+                        }
+                        continue;
+                    }
+                    if segment_shaped(&path) {
+                        pulled += self.merge_segment(tip, &path, &sha, &local, own)?;
+                    }
+                }
+            }
+        }
+        Ok(pulled)
     }
 
     /// Writes `data` to the journal file at `target` (`path` under the store) as published: the

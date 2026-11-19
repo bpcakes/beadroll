@@ -126,21 +126,34 @@ fn an_edge_after_a_create_moves_no_key() {
     assert!(state.renames().is_empty(), "{:?}", state.renames());
 }
 
-/// A create whose `parent` is not an event id is reported, as every malformed member is, and makes
-/// no issue.
+/// A create whose `parent` is no event id is read as naming no parent, as replay applied such a
+/// create before the member was added (`parent: null`, a key): its issue is made, under its key. A
+/// write of one is refused (`event::write_problem`).
 #[test]
-fn a_malformed_parent_is_reported() {
-    let mut data = written("pr-base.1");
-    data.insert("parent".into(), Value::from(5));
-    let (state, _) = every_way(&base(), &[at(10, HERE, &[2], "create", 10, data)]);
-    assert!(state.issue(EventId::parse(&id(10)).unwrap()).is_none());
-    let problems: Vec<&str> = (state.integrity().iter())
-        .map(|entry| entry.problem.as_str())
-        .collect();
-    assert!(
-        problems.iter().any(|p| p.contains("'parent'")),
-        "{problems:?}"
+fn a_parent_that_is_no_id_names_no_parent() {
+    let mut rest = two_firsts(2);
+    for (n, parent) in [
+        (22, Value::Null),
+        (23, Value::from("pr-base.2")),
+        (24, Value::from(5)),
+    ] {
+        let mut data = written("pr-base.1.1");
+        data.insert("parent".into(), parent);
+        rest.push(at(n, HERE, &[n - 1], "create", n, data));
+    }
+    let (state, _) = every_way(&base(), &rest);
+    assert!(state.integrity().is_empty(), "{:?}", state.integrity());
+    assert_eq!(
+        key(&state, 22),
+        "pr-base.1.1",
+        "it followed a parent it does not name"
     );
+    let event = super::hostile::event(25, HERE, &[24], "create", 25, under("pr-base.1.1", 20));
+    assert_eq!(crate::event::write_problem(&event), None);
+    let mut data = written("pr-base.1.1");
+    data.insert("parent".into(), Value::Null);
+    let event = super::hostile::event(25, HERE, &[24], "create", 25, data);
+    assert!(crate::event::write_problem(&event).is_some_and(|p| p.contains("'parent'")));
 }
 
 /// A key a child follows to is passed over when an import waits for it, as an issue's would be:
@@ -199,7 +212,7 @@ fn a_chain_of_records_stops_growing_the_keys_it_makes() {
     let (state, _) = every_way(&base(), &rest);
     let longest = (11..111u128).map(|n| key(&state, n).len()).max().unwrap();
     assert!(
-        longest <= "pr-b".len() + 20 + 64 + ".1".len(),
+        longest <= "pr-b".len() + 64 + ".1".len(),
         "a key of {longest} bytes"
     );
     assert_eq!(
@@ -295,6 +308,21 @@ fn a_parent_renumbered_at_every_level_is_followed() {
             11,
             under(&format!("{minted}.1"), 10),
         ),
+    ];
+    let (state, _) = every_way(&base(), &rest);
+    assert_eq!(key(&state, 11), format!("{now}.1"));
+}
+
+/// Under a stem holding a newline every level is no number's, and a copy there takes a digest's
+/// prefix as the root's does: a parent whose key took 45 bytes at each of three such levels is
+/// followed. Allowed 20 bytes a level and 64 for the root, it was refused.
+#[test]
+fn a_parent_given_a_digest_at_every_level_is_followed() {
+    let digest = "q".repeat(45);
+    let now = format!("pr-a\nb{digest}.1{digest}.1{digest}");
+    let rest = [
+        at(10, HERE, &[2], "create", 10, written(&now)),
+        at(11, HERE, &[10], "create", 11, under("pr-a\nb.1.1.1", 10)),
     ];
     let (state, _) = every_way(&base(), &rest);
     assert_eq!(key(&state, 11), format!("{now}.1"));

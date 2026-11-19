@@ -111,8 +111,10 @@ pub(super) fn sync_round(ws: &Workspace, link: &mut Link<'_>, report: SyncReport
                 other => {
                     // a round that wrote nothing keeps the keys it began with before another
                     // round, which another process may run a merge before, as the sync reports
-                    // against the keys of its start
-                    if report == SyncReport::Collect && link.keys_before.is_none() {
+                    // against the keys of its start: a rejected push or a damaged `sync.git`,
+                    // which a rebuild retries; an error that ends the sync keeps none
+                    let again = matches!(other, Ok(None) | Err(Error::SyncRepoDamaged(_)));
+                    if again && report == SyncReport::Collect && link.keys_before.is_none() {
                         ws.settings.failpoints.hit("sync.keys-before");
                         link.keys_before = Some(KeysBefore::of(merged.state.state()));
                     }

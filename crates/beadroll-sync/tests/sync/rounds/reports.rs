@@ -212,3 +212,94 @@ fn a_retried_round_reports_against_the_keys_the_sync_began_with() {
     let from = |r: &Value| r.get("from").and_then(Value::as_str) == Some("ex-a");
     assert!(synced.renamed.iter().any(from), "{:?}", synced.renamed);
 }
+
+/// A merge that fails before it writes (`sync.git` damaged at the first blob it reads) keeps the
+/// keys the sync began with for the round the rebuild retries: another process's sync before that
+/// round renames m2's copy, the retry then writes nothing, and the report says the copy moved.
+/// Kept only by a write or by a contended round, the keys were none, and the report empty.
+#[test]
+fn a_merge_that_fails_before_writing_keeps_the_keys_the_sync_began_with() {
+    let sandbox = sandbox();
+    let (m1, m2, m3) = (
+        Machine::new(&sandbox, "m1"),
+        Machine::new(&sandbox, "m2"),
+        Machine::new(&sandbox, "m3"),
+    );
+    m1.bead(["init", "--prefix", "ex"]);
+    m2.bead(["sync"]);
+    m3.bead(["sync"]);
+    let record = json!({
+        "id": "ex-a", "title": "A", "status": "open", "priority": 2, "issue_type": "task",
+        "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+    });
+    let path = sandbox.root().join("ext.jsonl");
+    std::fs::write(&path, json_line(&record) + "\n").unwrap();
+    let path = path.to_str().expect("a UTF-8 path");
+    // m3's copy is made first and published; m2's gives way once both are merged
+    m3.bead(["import", path]);
+    m2.bead(["import", path, "--offline"]);
+    let origin = sandbox.origin().to_str().unwrap();
+    let tip = git(
+        ["--git-dir", origin, "rev-parse", "refs/beads/journal"],
+        None,
+    );
+    let listed = git(
+        [
+            "--git-dir",
+            origin,
+            "ls-tree",
+            "-r",
+            "--name-only",
+            tip.trim(),
+        ],
+        None,
+    );
+    let ours = |path: &&str| path.ends_with(".jsonl") && !path.contains("/claims/");
+    let segments: Vec<&str> = listed.lines().filter(ours).collect();
+    let ws = workspace(&m2, sandbox.origin(), &[]);
+    let sync_git = ws.dir.join("sync.git");
+    git(
+        [
+            "--git-dir",
+            sync_git.to_str().unwrap(),
+            "fetch",
+            "-q",
+            origin,
+            "+refs/beads/journal:refs/beads/held",
+        ],
+        None,
+    );
+    // the blob of the segment m2 has not merged, m3's import, damaged before the merge reads it
+    let m3_segment = (segments.iter())
+        .find(|path| !ws.dir.join(path).exists())
+        .expect("a segment m2 lacks");
+    let blob = git(
+        [
+            "--git-dir",
+            origin,
+            "rev-parse",
+            &format!("{}:{m3_segment}", tip.trim()),
+        ],
+        None,
+    );
+    damage_tip(&sync_git, blob.trim());
+    let retry = Gate::new(&sandbox, "retry");
+    let faults = format!(
+        "fetch.fetched@nth(2)={};backoff@always=skip",
+        retry.action()
+    );
+    let ws = workspace(&m2, sandbox.origin(), &[("BEAD_FAILPOINTS", &faults)]);
+    let (result, met) = alongside(
+        || synchronise(&ws, &Endpoint::at(sandbox.origin())),
+        // between the rebuild and the retry's merge, another process syncs the store
+        |done| retry.meet(done, || m2.bead(["sync"])),
+    );
+    assert!(met.is_some(), "the rebuilt round fetched");
+    let synced = result.expect("the rebuilt round succeeds");
+    assert!(
+        synced.sync_repo_rebuilt.is_some(),
+        "the first merge found sync.git damaged"
+    );
+    let from = |r: &Value| r.get("from").and_then(Value::as_str) == Some("ex-a");
+    assert!(synced.renamed.iter().any(from), "{:?}", synced.renamed);
+}

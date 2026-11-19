@@ -174,10 +174,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   and an upgraded one, and a write made by a key learned on the other goes to the issue it names
   there. GUARANTEES' *Format and upgrades* names this exception; gating the member on every
   reader's support (*writers lag readers*, announced in the manifest) is not built. A parent whose
-  key is longer than the one the child was minted under by more than 20 bytes a level of it and
-  64 for its root is no merge's work (a rename counts a number up past others at each level and
-  gives the root a digest's prefix) and is followed nowhere, so that no record makes a key more
-  than a bounded multiple of its own. Modelling which renames
+  key is longer than the one the child was minted under by more than 64 bytes a level of it is no
+  merge's work (a rename counts a number up past others, or gives a level that is no number's, the
+  root or one under a stem holding a newline, a digest's prefix) and is followed nowhere, so that
+  no record makes a key more than a bounded multiple of its own. Replay reads a `parent` that is
+  no event id as none, as it applied such a create before the member was added; a write of one is
+  refused (`write_problem`). Modelling which renames
   merges make was tried first and wrongly refused some (a number's leading zeros, a stem with a
   newline, a key ending in a dot).
 

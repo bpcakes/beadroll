@@ -87,12 +87,11 @@ fn child_number(minted: &str) -> Option<(&str, &str)> {
     (numbered && !parent.is_empty()).then_some((parent, number))
 }
 
-/// How many digits longer merges may make a number at each level of a key: a copy counts up past
-/// the numbers other issues hold, as many digits as a tracker's count of issues has, at most.
-const LEVEL_GROWTH: usize = 20;
-
-/// How much longer merges may make a key's root: a digest's prefix, shorter than a whole digest.
-const ROOT_GROWTH: usize = 64;
+/// How much longer merges may make each level of a key: a copy counts a number up past those other
+/// issues hold (as many digits as a tracker's count of issues has), or, at a level that is no
+/// number's (the root, or under a stem holding a newline), takes a prefix of its digest, shorter
+/// than a whole digest's 50 digits.
+const LEVEL_GROWTH: usize = 64;
 
 /// The key a child minted as `minted` under `parent`'s key, as its writer saw the tracker, has
 /// now: `parent`'s key with its own number (`t-x.15.1` under a parent now `t-x.16` is `t-x.16.1`),
@@ -102,11 +101,11 @@ fn followed(st: &State, parent: EventId, minted: &str) -> Option<String> {
     let (under, number) = child_number(minted)?;
     let now = st.issues.get(&parent)?.key();
     // merges make a key a little longer at each of its levels at most (a number counted up past
-    // others) and at its root (a digest's prefix): a parent whose key is longer than that is no
-    // merge's work, and is followed nowhere, so that no record makes a key more than a bounded
-    // multiple of its own (a chain of them would grow every key it makes)
+    // others, or a digest's prefix where the level is no number's): a parent whose key is longer
+    // than that is no merge's work, and is followed nowhere, so that no record makes a key more
+    // than a bounded multiple of its own (a chain of them would grow every key it makes)
     let levels = under.bytes().filter(|b| *b == b'.').count() + 1;
-    let bounded = now.len() <= under.len() + levels * LEVEL_GROWTH + ROOT_GROWTH;
+    let bounded = now.len() <= under.len() + levels * LEVEL_GROWTH;
     (now != under && bounded).then(|| format!("{now}.{number}"))
 }
 

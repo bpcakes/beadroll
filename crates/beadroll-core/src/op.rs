@@ -104,7 +104,8 @@ pub struct Create {
     pub imported: bool,
     /// The parent `bead create --parent` made it under, by id: the issue whose key its own was
     /// minted under, as its writer saw the tracker, which it follows when a merge renames that
-    /// issue. Absent from what released versions wrote, and from an import's.
+    /// issue. Absent from what released versions wrote, and from an import's; a value that is no
+    /// event id is read as absent, as replay applied such a create before the member was added.
     pub parent: Option<EventId>,
 }
 
