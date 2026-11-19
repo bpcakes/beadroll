@@ -171,8 +171,9 @@ impl<'l, 'w> Merging<'l, 'w> {
         pulled += match self.merge_listing(tip, &pending, own.as_deref()) {
             Ok(merged) => merged,
             Err(error) => {
+                // the round takes its keys once unlocked, if a rebuild retries it
                 if matches!(error, Error::SyncRepoDamaged(_)) {
-                    self.before_writing();
+                    self.link.unwritten = self.found.take();
                 }
                 return Err(error);
             }

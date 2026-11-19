@@ -114,17 +114,6 @@ pub(super) fn sync_round(
                     merged: Box::new(merged),
                 })),
                 other => {
-                    // a round that wrote nothing keeps the keys it began with before another
-                    // round, which another process may run a merge before, as the sync reports
-                    // against the keys of its start: a rejected push or a damaged `sync.git`,
-                    // which a rebuild retries; an error that ends the sync keeps none
-                    let rebuilds = matches!(rebuild, Rebuild::Available);
-                    let damaged = matches!(other, Err(Error::SyncRepoDamaged(_)));
-                    let again = matches!(other, Ok(None)) || (damaged && rebuilds);
-                    if again && report == SyncReport::Collect && link.keys_before.is_none() {
-                        ws.settings.failpoints.hit("sync.keys-before");
-                        link.keys_before = Some(KeysBefore::of(merged.state.state()));
-                    }
                     // A failed or contended round also frees its view after unlocking.
                     discarded = Some(merged);
                     other.map(|_| Outcome::Contended)
@@ -132,5 +121,23 @@ pub(super) fn sync_round(
             }
         })
     })();
+    // a round that wrote nothing keeps the keys it began with before another round, which another
+    // process may run a merge before, as the sync reports against the keys of its start: a
+    // rejected push, or a damaged `sync.git` a rebuild retries. Taken once the store is let go of,
+    // from the state the round began with; an error that ends the sync keeps none
+    let began = (discarded.map(|merged| merged.state)).or_else(|| link.unwritten.take());
+    let again = match &outcome {
+        Ok(Outcome::Contended) => true,
+        Err(Error::SyncRepoDamaged(_)) => matches!(rebuild, Rebuild::Available),
+        _ => false,
+    };
+    if let Some(began) = began
+        && again
+        && report == SyncReport::Collect
+        && link.keys_before.is_none()
+    {
+        ws.settings.failpoints.hit("sync.keys-before");
+        link.keys_before = Some(KeysBefore::taken(began.into_projection().into_state()));
+    }
     Round { pulled, outcome }
 }

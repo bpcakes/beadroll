@@ -17,15 +17,6 @@ pub(crate) struct KeysBefore {
 }
 
 impl KeysBefore {
-    /// The keys `state` holds, copied.
-    pub(crate) fn of(state: &State) -> KeysBefore {
-        KeysBefore {
-            keys: (state.keys().iter())
-                .map(|(key, uid)| (*uid, key.clone()))
-                .collect(),
-        }
-    }
-
     /// The keys `state` holds, moved out of it: a merge about to write, which goes on with the
     /// state it writes, has no more use for the one it began with.
     pub(crate) fn taken(state: State) -> KeysBefore {
@@ -46,13 +37,12 @@ pub(super) fn renamed_by_merge(state: &State, before: Option<&KeysBefore>) -> Ve
     let Some(before) = before else {
         return Vec::new();
     };
-    let renames: HashMap<EventId, &Rename> = (state.renames().iter())
-        .map(|rename| (rename.uid, rename))
-        .collect();
+    // the renames are in replay order, at most one an issue, as the issues are: walked alongside
+    let mut renames = state.renames().iter().peekable();
     let mut changed = Vec::new();
     for issue in state.issues() {
         let (uid, now) = (issue.uid(), issue.key());
-        let renamed = renames.get(&uid);
+        let renamed = renames.next_if(|rename| rename.uid == uid);
         let rename = match before.keys.get(&uid) {
             Some(had) if had == now => continue,
             Some(had) => Rename {
