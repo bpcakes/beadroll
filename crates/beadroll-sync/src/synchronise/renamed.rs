@@ -7,38 +7,34 @@ use beadroll_core::id::EventId;
 use beadroll_core::json::Value;
 use beadroll_core::state::{Rename, State};
 
-/// What a reporting sync's first merge read of the store's state before merging: every issue's key,
-/// and the machine of each rename it held, by issue. A merge may change a key with no rename
-/// before or after it (a foreign journal replaced by the published one, an import holding its own
-/// key again), so every key is kept, not only the renamed ones.
+/// Every issue's key in the store's state as a reporting sync's first merge to write read it, before
+/// it wrote. A merge may change a key with no rename before or after it (a foreign journal replaced
+/// by the published one, an import holding its own key again), so every key is kept, not only the
+/// renamed ones; a sync whose merges wrote nothing keeps none.
 #[derive(Debug, Default)]
 pub(crate) struct KeysBefore {
     keys: HashMap<EventId, String>,
-    renamed_by: HashMap<EventId, String>,
 }
 
 impl KeysBefore {
-    /// The keys `state` holds, and the machines of its renames.
+    /// The keys `state` holds.
     pub(crate) fn of(state: &State) -> KeysBefore {
         KeysBefore {
             keys: (state.keys().iter())
                 .map(|(key, uid)| (*uid, key.clone()))
                 .collect(),
-            renamed_by: (state.renames().iter())
-                .map(|rename| (rename.uid, rename.replica.clone()))
-                .collect(),
         }
     }
 }
 
-/// Every key the merge changed, as renames, in replay order: each issue held `before` whose key is
-/// another now, from the key it had to the one it has, and each issue new to this sync that took
-/// another key than its create gave, from that one. Every rename when `before` was not read.
+/// Every key the sync's merges changed, as renames, in replay order: each issue held `before` whose
+/// key is another now, from the key it had to the one it has, its machine the create's that made it
+/// now; and each issue new to this sync that took another key than its create gave, from that one.
+/// None when no merge wrote (`before` was not kept): the state is the store's own, its keys as they
+/// were.
 pub(super) fn renamed_by_merge(state: &State, before: Option<&KeysBefore>) -> Vec<Value> {
     let Some(before) = before else {
-        return (state.renames().iter())
-            .map(|r| Value::from(r.to_value()))
-            .collect();
+        return Vec::new();
     };
     let renames: HashMap<EventId, &Rename> = (state.renames().iter())
         .map(|rename| (rename.uid, rename))
@@ -52,10 +48,7 @@ pub(super) fn renamed_by_merge(state: &State, before: Option<&KeysBefore>) -> Ve
             Some(had) => Rename {
                 from: had.clone(),
                 to: now.to_owned(),
-                replica: (renamed.map(|r| r.replica.as_str()))
-                    .or_else(|| before.renamed_by.get(&uid).map(String::as_str))
-                    .unwrap_or_else(|| issue.origin_machine())
-                    .to_owned(),
+                replica: issue.origin_machine().to_owned(),
                 uid,
             },
             None => match renamed {

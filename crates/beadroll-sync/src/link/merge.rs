@@ -153,9 +153,7 @@ impl<'l, 'w> Merging<'l, 'w> {
         }
         // the store's projection, with every whole line its segments hold
         let found = if count == SyncReport::Collect && self.link.keys_before.is_none() {
-            let found = projection_sourced(self.link.ws)?;
-            self.link.keys_before = Some(KeysBefore::of(found.state()));
-            Some(found)
+            Some(projection_sourced(self.link.ws)?)
         } else {
             None
         };
@@ -191,7 +189,15 @@ impl<'l, 'w> Merging<'l, 'w> {
         // the store's projection, the records merged applied to it, or the journal replayed
         let merged = match found {
             Some(found) if !self.wrote => found,
-            _ => projection_sourced(self.link.ws)?,
+            found => {
+                // the keys before this merge wrote, which a sync reports what changed against; a
+                // merge that wrote nothing changed no key, and keeps none
+                if let Some(found) = found {
+                    self.link.ws.settings.failpoints.hit("sync.keys-before");
+                    self.link.keys_before = Some(KeysBefore::of(found.state()));
+                }
+                projection_sourced(self.link.ws)?
+            }
         };
         if let Some(own) = &own
             && merged.state().chain_breaks().contains_key(own)

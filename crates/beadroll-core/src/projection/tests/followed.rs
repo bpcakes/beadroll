@@ -186,3 +186,17 @@ fn a_child_of_a_parent_with_a_newline_settles_every_way() {
     let (state, _) = every_way(&base(), &rest);
     assert_eq!(key(&state, 21), format!("{}.1", key(&state, 20)));
 }
+
+/// A create naming a parent at another depth than the key it was minted under (`pr-z.1` under a
+/// parent keyed `pr-x.1`) holds no merge's rename, and keeps its key: a chain of such records made
+/// each key longer than the last.
+#[test]
+fn a_parent_named_at_another_depth_is_followed_nowhere() {
+    let rest = [
+        at(10, HERE, &[2], "create", 10, written("pr-x.1")),
+        at(11, HERE, &[10], "create", 11, under("pr-z.1", 10)),
+        at(12, HERE, &[11], "create", 12, under("pr-w.1", 11)),
+    ];
+    let (state, _) = every_way(&base(), &rest);
+    assert_eq!([11, 12].map(|n| key(&state, n)), ["pr-z.1", "pr-w.1"]);
+}

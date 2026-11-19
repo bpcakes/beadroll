@@ -94,7 +94,11 @@ fn child_number(minted: &str) -> Option<(&str, &str)> {
 fn followed(st: &State, parent: EventId, minted: &str) -> Option<String> {
     let (under, number) = child_number(minted)?;
     let now = st.issues.get(&parent)?.key();
-    (now != under).then(|| format!("{now}.{number}"))
+    // a merge renames a key in its last part and keeps its depth: a parent named at another depth
+    // than the key was minted under is a record that does not hold together, followed nowhere, so
+    // that a chain of them cannot grow every key it makes
+    let depth = |key: &str| key.bytes().filter(|b| *b == b'.').count();
+    (now != under && depth(now) == depth(under)).then(|| format!("{now}.{number}"))
 }
 
 /// The issue a create makes, under `key`: a register for each field it carries, the status's

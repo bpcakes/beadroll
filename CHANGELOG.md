@@ -41,11 +41,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   the key; a create without it, as every released version wrote, and an import keep their keys.
   The key is settled at the create, so an import waiting for a key binds to the issue that holds
   it, and a sibling made meanwhile keeps its own. Projections are rebuilt once (`ENCODING` 16).
+  Upgrading: until every machine runs this bead, an older one keeps such a child's minted key
+  (*Format and upgrades* in `docs/GUARANTEES.md`).
 - `sync` reports every key its merge changed: a key an earlier sync had renamed, moved again, was
   left out, as were renames replay placed before the ones counted and an issue that holds its own
   key again (an import a collision had displaced) or whose key changed with no rename at all (a
   foreign journal put back as published). Each is reported from the key the issue had before the
-  sync, in replay order.
+  sync, in replay order; a sync whose merge writes nothing keeps no keys to compare.
 
 - `init --import` reads the prefix Beads keyed the records under: `.beads/config.yaml`'s
   `issue_prefix`, else the repository directory's name, before what the ids share. A lone

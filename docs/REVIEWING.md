@@ -170,7 +170,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   of which followed) keeps its key, and so does an import; an edge never moves a key. A key a
   child follows to passes over one an import waits for, where a key a create gives may be the one
   it waits for. An older bead reads the member and ignores it, so its machine follows nothing
-  until it upgrades, as with any change to replay.
+  until it upgrades: in a mixed fleet the key of such a child differs between an older machine
+  and an upgraded one, and a write made by a key learned on the other goes to the issue it names
+  there. GUARANTEES' *Format and upgrades* names this exception; gating the member on every
+  reader's support (*writers lag readers*, announced in the manifest) is not built. A parent named
+  at another depth than the key was minted under holds no merge's rename (a merge renames a key in
+  its last part) and is followed nowhere, so that no chain of records grows its keys.
 
 - A claim makes its owner the issue's assignee; a release and a reopen (`reopen`, `update --status
   open`) give back the assignee it had before its first claim, which a takeover carries on
