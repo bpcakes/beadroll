@@ -75,7 +75,8 @@ pub enum Extended {
 impl Projection {
     /// Applies `records`, read from the journal's files after the records this projection was made
     /// from, as replay would apply them after every event of that journal; or declines
-    /// ([`Extended::Replay`]). Fails only as replay does, when a renamed copy finds no free key.
+    /// ([`Extended::Replay`]), also where a renamed copy finds no free key: replay judges every event
+    /// of the batch first, and reports it.
     pub(crate) fn extend(mut self, records: Vec<Record>) -> Result<Extended, KeySpace> {
         if records.is_empty() {
             return Ok(Extended::Applied(Box::new(self)));
@@ -170,13 +171,20 @@ impl Projection {
             {
                 return Ok(Extended::Replay);
             }
-            batch.apply(
-                &knowledge,
-                placed,
-                what,
-                None,
-                (&self.superseded, &names, &parents),
-            )?;
+            // placed before every event of the batch is judged, so a key space it exhausts is
+            // replay's to report, which may judge the edge that led there void
+            if batch
+                .apply(
+                    &knowledge,
+                    placed,
+                    what,
+                    None,
+                    (&self.superseded, &names, &parents),
+                )
+                .is_err()
+            {
+                return Ok(Extended::Replay);
+            }
         }
         self.state = batch.finish_some(knowledge, &doing);
         self.advance(&events, &order);

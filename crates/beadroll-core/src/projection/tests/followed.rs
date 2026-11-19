@@ -11,7 +11,7 @@ use crate::json::{Object, Value};
 use crate::replay::replay;
 use crate::state::State;
 
-use super::super::Record;
+use super::super::{Extended, Record, project};
 
 /// A create `bead create` wrote under `key`: not an import's.
 fn written(key: &str) -> Object {
@@ -191,31 +191,45 @@ fn an_edge_replay_reports_names_no_parent() {
 }
 
 /// Two edges that each could be a create's own, attempt records the journal holds unsequenced,
-/// settle its key alike in either order they are read in: the smaller id's parent's.
+/// settle its key alike in either order they are read in: the smaller id's parent's, B's, so C is
+/// `pr-base.2.1`, whether replayed or taken by a projection in one batch, which reads the edges in
+/// the order the batch holds them.
 #[test]
 fn competing_own_edges_settle_alike_in_either_order() {
     let mut rest = two_firsts(2);
     rest.push(at(22, HERE, &[21], "create", 22, written("pr-base.1.1")));
     let attempt = |n: u128, parent: u128| {
-        record(
-            event(n, HERE, &[22], "dep_add", 22, parent_of(parent)),
-            HERE,
-            JournalOrder::Attempt,
-        )
+        let edge = event(n, HERE, &[22], "dep_add", 22, parent_of(parent));
+        record(edge, HERE, JournalOrder::Attempt)
     };
-    let keys: Vec<String> = [
+    for edges in [
         [attempt(24, 20), attempt(25, 10)],
         [attempt(25, 10), attempt(24, 20)],
-    ]
-    .into_iter()
-    .map(|edges| {
+    ] {
         let mut all = base();
         all.extend(rest.iter().cloned());
-        all.extend(edges);
-        key(&replay(journal(&all)).unwrap(), 22)
-    })
-    .collect();
-    assert_eq!(keys[0], keys[1]);
+        all.extend(edges.iter().cloned());
+        assert_eq!(key(&replay(journal(&all)).unwrap(), 22), "pr-base.2.1");
+        let mut batch = rest.clone();
+        batch.extend(edges);
+        let Extended::Applied(extended) = project(journal(&base())).unwrap().extend(batch).unwrap()
+        else {
+            panic!("a projection takes the batch");
+        };
+        assert_eq!(key(extended.state(), 22), "pr-base.2.1");
+    }
+}
+
+/// A key with no parent part before its number (`.1`, which no issue's key could have been minted
+/// under) keeps its spelling, whatever edge follows its create; it took its parent's key.
+#[test]
+fn a_key_with_no_parent_part_keeps_its_spelling() {
+    let rest = [
+        at(10, HERE, &[2], "create", 10, written(".1")),
+        at(11, HERE, &[10], "dep_add", 10, parent_of(2)),
+    ];
+    let (state, _) = every_way(&base(), &rest);
+    assert_eq!(key(&state, 10), ".1");
 }
 
 /// A child a collision renamed before its own edge applied settles as replay settles it, made every

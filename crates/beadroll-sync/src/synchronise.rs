@@ -1,11 +1,10 @@
 //! Journal exchange, published-tracker adoption, immediate publication and unpublished counts.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use beadroll_core::id::EventId;
 use beadroll_core::json::{self, Format, Int, Object, Value};
 use beadroll_core::metadata::Counts;
 use beadroll_core::text::shell_quote;
@@ -19,8 +18,10 @@ use crate::error::Error;
 use crate::link::Link;
 use crate::tx::locked;
 
+use self::renamed::renamed_by_merge;
 use self::round::{AfterError, Outcome, Rebuild, sync_round};
 
+mod renamed;
 mod round;
 
 /// Whether a command may reach its coordination remote.
@@ -242,45 +243,6 @@ fn exchange(
         waiting_events: state.pending().len(),
         integrity: state.integrity().len(),
     }))
-}
-
-/// Every key the merge changed, as renames: each rename whose key is new or other than `before`
-/// held (the key each renamed issue had when the merge read the store), and each issue renamed in
-/// `before` that holds its own key again, from the key it had to the one it has. Every rename
-/// when `before` was not read.
-fn renamed_by_merge(
-    state: &beadroll_core::state::State,
-    before: Option<&HashMap<EventId, String>>,
-) -> Vec<Value> {
-    let renamed: Vec<Value> = (state.renames().iter())
-        .filter(|r| before.is_none_or(|before| before.get(&r.uid) != Some(&r.to)))
-        .map(|r| Value::from(r.to_value()))
-        .collect();
-    let Some(before) = before else {
-        return renamed;
-    };
-    let still: HashSet<EventId> = state.renames().iter().map(|r| r.uid).collect();
-    let mut back: Vec<(EventId, Value)> = (before.iter())
-        .filter(|(uid, _)| !still.contains(uid))
-        .filter_map(|(uid, had)| {
-            let issue = state.issue(*uid)?;
-            (issue.key() != had).then(|| {
-                let mut row = Object::new();
-                row.insert("from".into(), Value::from(had.as_str()));
-                row.insert("to".into(), Value::from(issue.key()));
-                let machine = issue.origin().get("machine").cloned();
-                row.insert("replica".into(), machine.unwrap_or(Value::Null));
-                row.insert("uid".into(), Value::from(uid.to_string()));
-                (*uid, Value::from(row))
-            })
-        })
-        .collect();
-    // in the order the issues were created, as replay lists renames
-    back.sort_by_key(|(uid, _)| *uid);
-    renamed
-        .into_iter()
-        .chain(back.into_iter().map(|(_, row)| row))
-        .collect()
 }
 
 /// `NOT_INITIALIZED` when neither this store nor `remote` has a tracker: `bead init` starts one, and

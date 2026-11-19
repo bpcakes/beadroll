@@ -43,7 +43,8 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   15).
 - `sync` reports every key its merge changed: a key an earlier sync had renamed, moved again, was
   left out, as were renames replay placed before the ones counted and an issue that holds its own
-  key again (an import a collision had displaced).
+  key again (an import a collision had displaced). Each is reported from the key the issue had
+  before the sync, in replay order.
 
 - `init --import` reads the prefix Beads keyed the records under: `.beads/config.yaml`'s
   `issue_prefix`, else the repository directory's name, before what the ids share. A lone

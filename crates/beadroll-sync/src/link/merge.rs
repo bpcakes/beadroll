@@ -155,7 +155,7 @@ impl<'l, 'w> Merging<'l, 'w> {
         let found = if count == SyncReport::Collect && self.link.renames_before.is_none() {
             let found = projection_sourced(self.link.ws)?;
             let renamed = (found.state().renames().iter())
-                .map(|rename| (rename.uid, rename.to.clone()))
+                .map(|rename| (rename.uid, rename.clone()))
                 .collect();
             self.link.renames_before = Some(renamed);
             Some(found)

@@ -78,10 +78,12 @@ pub(super) fn create(
 }
 
 /// `minted`'s parent part and number (`t-x.15` and `1` of `t-x.15.1`), when its last part is a
-/// number: the key of a child minted under its parent's.
+/// number after a parent part: the key of a child minted under its parent's. `.1` is none, as no
+/// issue has the empty key.
 fn child_number(minted: &str) -> Option<(&str, &str)> {
     let (parent, number) = minted.rsplit_once('.')?;
-    (!number.is_empty() && number.bytes().all(|b| b.is_ascii_digit())).then_some((parent, number))
+    let numbered = !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit());
+    (numbered && !parent.is_empty()).then_some((parent, number))
 }
 
 /// The key a child minted as `minted` under `parent`'s key, as its writer saw the tracker, has
