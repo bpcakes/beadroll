@@ -46,7 +46,8 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   this one followed children whose creates name no parent; once upgraded, such a child takes back
   the key its create gave, and an issue that held that key since (an import, another child) gives
   way to the next free one, with no rename in any sync's report. A key such a build printed may
-  name another issue now: look it up again (`bead show`, by its title) before writing by it.
+  name another issue now: find the issue by its title (`bead search --all "TITLE"`) and check it
+  with `bead show NEW_KEY` before writing by a key.
 - `sync` reports every key its merge changed: a key an earlier sync had renamed, moved again, was
   left out, as were renames replay placed before the ones counted and an issue that holds its own
   key again (an import a collision had displaced) or whose key changed with no rename at all (a

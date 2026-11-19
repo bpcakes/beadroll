@@ -145,7 +145,7 @@ fn a_second_damaged_round_stops_without_another_rebuild() {
     let fetched = Gate::new(&sandbox, "fetched");
     let publishing = Gate::new(&sandbox, "publishing");
     let faults = format!(
-        "fetch.fetched={};publish.before={};backoff@always=skip",
+        "fetch.fetched={};publish.before={};backoff@always=skip;sync.keys-before@nth(1000000)=sleep(0)",
         fetched.action(),
         publishing.action()
     );
@@ -167,6 +167,8 @@ fn a_second_damaged_round_stops_without_another_rebuild() {
         matches!(result, Err(Error::SyncRepoDamaged(_))),
         "{result:?}"
     );
+    // no round follows the second damage, so no keys were kept for one to report against
+    assert_eq!(ws.settings.failpoints.hits("sync.keys-before"), 0);
     let copies = std::fs::read_dir(&ws.dir)
         .unwrap()
         .filter(|entry| {

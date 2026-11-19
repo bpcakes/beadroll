@@ -229,6 +229,12 @@ impl State {
         issues
     }
 
+    /// Every key and the issue that has it, taken out of the state, which is dropped: a caller that
+    /// needs the keys alone keeps them without copying one.
+    pub fn into_keys(self) -> IndexMap<String, EventId> {
+        self.by_key
+    }
+
     /// Every key and the issue that has it, in the order they were taken.
     pub fn keys(&self) -> &IndexMap<String, EventId> {
         &self.by_key

@@ -17,11 +17,21 @@ pub(crate) struct KeysBefore {
 }
 
 impl KeysBefore {
-    /// The keys `state` holds.
+    /// The keys `state` holds, copied.
     pub(crate) fn of(state: &State) -> KeysBefore {
         KeysBefore {
             keys: (state.keys().iter())
                 .map(|(key, uid)| (*uid, key.clone()))
+                .collect(),
+        }
+    }
+
+    /// The keys `state` holds, moved out of it: a merge about to write, which goes on with the
+    /// state it writes, has no more use for the one it began with.
+    pub(crate) fn taken(state: State) -> KeysBefore {
+        KeysBefore {
+            keys: (state.into_keys().into_iter())
+                .map(|(key, uid)| (uid, key))
                 .collect(),
         }
     }

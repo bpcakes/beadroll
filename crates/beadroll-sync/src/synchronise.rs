@@ -200,7 +200,7 @@ fn exchange(
                 conflict_detail(&link)
             )));
         };
-        let round = sync_round(ws, &mut link, sync_report);
+        let round = sync_round(ws, &mut link, sync_report, &rebuild);
         pulled += round.pulled;
         match round.outcome {
             Ok(Outcome::Published(published)) => break (attempt, published),

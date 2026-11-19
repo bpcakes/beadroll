@@ -58,7 +58,12 @@ impl Rebuild {
 /// Fetch before locking, and fetch again under the lock when pending attempts need the current
 /// head. All merge, fence, retirement, maintenance and publication counting stays under that
 /// same lock.
-pub(super) fn sync_round(ws: &Workspace, link: &mut Link<'_>, report: SyncReport) -> Round {
+pub(super) fn sync_round(
+    ws: &Workspace,
+    link: &mut Link<'_>,
+    report: SyncReport,
+    rebuild: &Rebuild,
+) -> Round {
     let mut pulled = 0;
     let mut discarded = None;
     let outcome = (|| {
@@ -113,7 +118,9 @@ pub(super) fn sync_round(ws: &Workspace, link: &mut Link<'_>, report: SyncReport
                     // round, which another process may run a merge before, as the sync reports
                     // against the keys of its start: a rejected push or a damaged `sync.git`,
                     // which a rebuild retries; an error that ends the sync keeps none
-                    let again = matches!(other, Ok(None) | Err(Error::SyncRepoDamaged(_)));
+                    let rebuilds = matches!(rebuild, Rebuild::Available);
+                    let damaged = matches!(other, Err(Error::SyncRepoDamaged(_)));
+                    let again = matches!(other, Ok(None)) || (damaged && rebuilds);
                     if again && report == SyncReport::Collect && link.keys_before.is_none() {
                         ws.settings.failpoints.hit("sync.keys-before");
                         link.keys_before = Some(KeysBefore::of(merged.state.state()));

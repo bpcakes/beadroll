@@ -254,9 +254,12 @@ impl<'l, 'w> Merging<'l, 'w> {
         if self.wrote || self.link.keys_before.is_some() {
             return;
         }
-        if let Some(found) = &self.found {
+        // moved out of the projection the merge began with, which it does not go on with once it
+        // writes (nor once it fails)
+        if let Some(found) = self.found.take() {
             self.link.ws.settings.failpoints.hit("sync.keys-before");
-            self.link.keys_before = Some(KeysBefore::of(found.state()));
+            let state = found.into_projection().into_state();
+            self.link.keys_before = Some(KeysBefore::taken(state));
         }
     }
 
