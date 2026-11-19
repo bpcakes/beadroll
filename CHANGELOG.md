@@ -6,6 +6,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `init --import` without `--prefix` reads the prefix real Beads exports hold: what every id shares
+  before its last segment, slug-keyed ids among them (`syrup-rail-simplification-audit-x1` beside
+  `syrup-rail-0u9`). It took each id's text before its last `-`, so every real export tried was
+  refused as keyed under several prefixes. `infra/compat_real.py` runs the migration step as the
+  README gives it, without `--prefix`, and gives br the prefix bead chose.
+
 - `init --import --dry-run` reads the prefix as `init --import` does: records under several
   prefixes are a problem it lists, where it said the import would go through; it takes `--prefix`,
   which settles that, and says which prefix the tracker would start under.

@@ -32,13 +32,14 @@ summary=[]
 for src in sorted(P(args.documents).glob('*/.beads/issues.jsonl')):
  name=src.parent.parent.name;case=root/name;case.mkdir(exist_ok=True)
  records=[json.loads(l) for l in src.read_text().splitlines() if l.strip()]
- prefix=records[0]['id'].split('-')[0] if records else 'ex'
  r=run(['git','init','-q',str(case)],root);assert r.returncode==0,r.stderr
  extra={'BEAD_WORKSPACE':'compat-'+name}
- r=run([bead,'init','--prefix',prefix,'--import',str(src),'--json'],case,extra)
+ # README's migration step as written: bead takes the prefix the records share, and br is given it
+ r=run([bead,'init','--import',str(src),'--json'],case,extra)
  row={'name':name,'records':len(records),'bp_import_rc':r.returncode}
  if r.returncode:row['bp_error']=r.stderr
  else:
+  prefix=json.loads(r.stdout)['prefix']
   output=run([bead,'export'],case,extra);exported=[json.loads(l) for l in output.stdout.splitlines() if l.strip()]
   row['roundtrip_equal']=canon(records)==canon(exported)
   if not row['roundtrip_equal']:
