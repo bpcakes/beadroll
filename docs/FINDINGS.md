@@ -25,11 +25,12 @@ Reviewers: propose new rows in your report using the next free id for your revie
 ## Weeding audit (2026-11-17, ids AT)
 
 Not reported by a review: an audit for workarounds and copied patterns that the next change would
-copy as the established way (PRs #143 to #295), each candidate checked against the code. Most of
+copy as the established way (PRs #143 to #299), each candidate checked against the code. Most of
 its slices changed no behaviour; these rows are the bugs it found on the way, each fixed with a
 test that fails without the fix. From AT13 on, many were found by fresh reviews run within the
 audit and by runs of the built bead in scratch repositories, the seven real Beads exports on the
-maintainer's machine among them (AT77); none of those runs left a report under `reviews/`.
+maintainer's machine among them (AT77), and AT78 to AT84 by a review of the audit's own changes;
+none of those runs left a report under `reviews/`.
 
 | Id | Severity | Finding | Status | Resolution | Tests |
 |---|---|---|---|---|---|
@@ -110,6 +111,13 @@ maintainer's machine among them (AT77); none of those runs left a report under `
 | AT75 | Low | A Beads memory record (`_type: memory`) with an id and a title was imported as a task and exported back with its `_type`, and a record keyed `-1` started a tracker with an empty prefix, its keys `-xyz` | fixed | A memory is refused, named as one, and a record keyed under no prefix makes `init --import` ask for `--prefix` (#288) | `beadroll`: `commands::input::memories_and_records_without_a_prefix_are_refused` |
 | AT76 | Low | `dep tree --json` held only the rendered lines, nothing an agent could read the tree from | fixed | It gives `nodes` beside them: each row's issue as `brief` gives it, its `depth`, and `again` for one met before (#288) | `beadroll`: `commands::end_to_end::graph::dep_tree_json_gives_each_row_as_data` |
 | AT77 | Medium | `init --import` without `--prefix` (AT38) took each id's text before its last `-` as its prefix, so real Beads exports keyed `<prefix>-<slug>-<hash>` beside `<prefix>-<hash>` were all refused as "keyed under several prefixes" | fixed | The prefix is the leading `-`-separated segments every id shares before its last one; `infra/compat_real.py` runs the migration step without `--prefix`, as the README gives it (#289) | `beadroll`: `commands::input::init_import_takes_the_prefix_its_records_share` |
+| AT78 | Medium | Two machines deleting one issue unseen with different reasons disputed its status (AT55 compared a done status by its reason, a delete's among them), so what depended on the deleted issue stayed blocked | fixed | Only a close's reason is compared; a delete keeps its own in `delete_reason`, and two deletes are one tombstone (#297) | `beadroll`: `commands::end_to_end::merges::deletes_with_different_reasons_are_one_tombstone` |
+| AT79 | Medium | A remote fetched over https and pushed over ssh on another port (`url."ssh://git@host:2222/".pushInsteadOf https://host/`) was `CONFIG` (AT70): the places were compared with their ports | fixed | The split-remote check compares places without their ports: only another host or path is another repository (#297) | `beadroll-sync`: `link::tests::a_port_does_not_make_another_place` |
+| AT80 | Low | An agent holding `:` was refused (AT58) even beside `--actor`, whose name is the whole label and collides with no one's | fixed | An identity with a name is judged by the name alone (#297) | `beadroll`: `hardening::unexpected_input::identities_that_hold_nothing_or_print_another_label_are_refused` |
+| AT81 | Medium | AT64's checks still accepted a child moved under an issue that waits on one of the child's own descendants, and a prerequisite waiting on what its issue passes down to a child: each left an issue waiting for itself, and `dep cycles` reported nothing | fixed | `State::would_wait_for_itself` judges a change on the graph as it will be, what each parent passes down a node of its own, for `dep add`, `update --parent` and `create` (#298) | `beadroll`: `commands::end_to_end::graph::a_loop_is_judged_on_the_graph_as_it_will_be` |
+| AT82 | Low | Moving a child with `update --parent` to a parent that waits on its old one was refused as `CYCLE`, judged on the graph with the old parent still in it, though `--parent` takes its place | fixed | The change is judged with the old parents gone (#298) | `beadroll`: `commands::end_to_end::graph::a_loop_is_judged_on_the_graph_as_it_will_be` |
+| AT83 | Low | One record keyed `br-onboarding-style-q2` started a tracker under `br-onboarding-style` (AT77's rule): a lone slug-keyed id cannot show where its prefix ends | fixed | `init --import` takes the `issue_prefix` Beads' `config.yaml` beside the file names, else the repository directory's name when the ids share it, before what the ids share; records outside a configured prefix are `VALIDATION` (#299) | `beadroll`: `commands::input::init_import_takes_the_prefix_beads_keyed_the_records_under` |
+| AT84 | Low | Upgrading gave a `file://` clone reached through a symbolic link or a `..` path, and a checkout whose local origin path did not exist (AT46, AT63), another workspace id, which CHANGELOG did not say: each read `NOT_INITIALIZED` until a sync | by design | The id is the one the path's own clones derive; CHANGELOG says what an upgrade does to such a clone and that its first sync adopts the tracker under the old id (#299) | none: an upgrade note |
 
 ## Published-count race (roll-byaq, 2026-11-12)
 
