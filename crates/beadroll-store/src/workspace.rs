@@ -14,12 +14,14 @@ use crate::layout;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::metadata::Metadata;
 use beadroll_core::text::repr_str;
+use beadroll_git::normalize_remote;
 
+use crate::discover::anchored;
 use crate::error::Error;
 use crate::fs::{Unreadable, read_json_keyed, write_atomic_keyed};
 use crate::listing::Claims;
 use crate::memo::FileKey;
-use crate::settings::{Clock, Settings};
+use crate::settings::{Clock, Settings, normalize_path};
 
 pub use lock::WorkspaceLock;
 pub use remote::{Endpoint, RemoteSource};
@@ -319,12 +321,12 @@ impl Workspace {
 
     /// Bookkeeping once the remote has accepted. It never turns a command that took effect into a
     /// failure: a full volume or a damaged `meta.json` only leaves `last_sync` behind. Published
-    /// counts are saved with `published_to`, the URL they were published to, as git was handed it:
+    /// counts are saved with `published_to`, the place they were published to ([`published_to`]):
     /// counts of one remote say nothing of another the store is switched to.
     pub fn note_sync(&self, remote: &Endpoint, values: &[(&str, Value)]) {
         let mut all: Vec<(&str, Value)> = values.to_vec();
         if values.iter().any(|(key, _)| *key == "published") {
-            all.push(("published_to", published_to(remote)));
+            all.push(("published_to", published_to(self, remote)));
         }
         all.push(("remote", remembered(remote)));
         all.push(("last_sync", Value::from(stamp(&self.settings.clock))));
@@ -367,10 +369,15 @@ pub fn remembered(remote: &Endpoint) -> Value {
     Value::from(remote.chosen().to_string_lossy().into_owned())
 }
 
-/// What `meta.json`'s `published_to` records of `remote`: its URL as bead hands it to git, which
-/// the same remote chosen again reads back as.
-pub fn published_to(remote: &Endpoint) -> Value {
-    Value::from(remote.url.to_string_lossy().into_owned())
+/// What `meta.json`'s `published_to` records of `remote`, the place one store's clones and worktrees
+/// all name alike however their URLs are spelled: its URL as the workspace id reads origin's, a
+/// relative path from the top of the checkout, normalised (`origin.git` and `origin.git/`, an ssh
+/// and an https spelling of one repository, are one place), so that a clone's publish is never
+/// another clone's unpublished work.
+pub fn published_to(ws: &Workspace, remote: &Endpoint) -> Value {
+    let top = (ws.settings.toplevel().ok().flatten()).map(|top| normalize_path(top.as_os_str()));
+    let place = normalize_remote(&anchored(&remote.url, top.as_deref()), &ws.settings.cwd);
+    Value::from(place.to_string_lossy().into_owned())
 }
 
 /// `[A-Za-z0-9][A-Za-z0-9._-]{0,99}`, whole.
