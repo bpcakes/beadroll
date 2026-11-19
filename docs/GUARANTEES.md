@@ -725,8 +725,9 @@ it, and the file is committed again.
   makes 24 rounds before it gives up, its waits doubling to at most 2 s).
 - A renumbered child key changes under the machine that created it, and so do
   the keys of the children made under it before the sync, which follow it
-  (`x.1.1` to `x.2.1`): the issue a child's key named as its writer saw the
-  tracker, whatever else was renamed from that key since. Events refer to issues by an immutable id, so nothing
+  (`x.1.1` to `x.2.1`), at every depth: the parent its create's own
+  parent edge names by id, whatever else was renamed from that key since. An
+  import keeps the keys it gives. Events refer to issues by an immutable id, so nothing
   is lost, but a key written into a commit message before the sync now names
   the other issue. An online
   `create` of a child publishes before it answers, so the key it prints is the

@@ -166,6 +166,14 @@ These were decided deliberately. Report problems *with* them, not their existenc
   directory's `r`) and `ssh://host/r` (the root's) are two, which the check passes: it cannot
   tell a forge from a server, and refusing the forge's everyday pair costs more.
 
+- A child made under its parent's key (`P.n`) follows that parent when a merge renumbers it, and
+  replay finds the parent in the create's own parent-child edge: the event its writer wrote right
+  after the create (`deps` naming the create alone, on its issue), which names the parent by id.
+  The maintainer chose this on 2026-11-19 over judging, from renames and what the writer had seen,
+  which issue held the key in its view: four such rules each failed a case review found. A create
+  whose next event is not that edge (an older bead's, or one hand-written) keeps its key, and so
+  does an import; `State::unfollowed` holds each child until its next event applies.
+
 - A claim makes its owner the issue's assignee; a release and a reopen (`reopen`, `update --status
   open`) give back the assignee it had before its first claim, which a takeover carries on
   (`Claim::assignee_before`, `projection::ENCODING` 12), and a close keeps the owner who did the

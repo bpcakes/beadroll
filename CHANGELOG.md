@@ -6,20 +6,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
-- A grandchild made offline under a child that follows its renamed parent follows it in turn
-  (`x.1.1.1` to `x.2.1.1`), at every depth: #305 gave a follow the parent as its cause, which every
-  writer of a grandchild had seen, so the grandchild kept its key.
 - The split-remote check reads scp syntax as the `ssh://` URL it is, a host in brackets included
   (`git@[fd00::1]:/srv/r`), and a home directory's path as the root's (`ssh://host/~/r` is
   `host:r`), as a forge serves both; both pairs were refused as `CONFIG`.
 - A Beads `config.yaml` whose `issue_prefix` is a YAML block, tag, anchor or flow collection is
   reported as YAML bead does not read; its first characters (`|`) were taken for the prefix.
-
-- A child follows the parent whose key its writer saw, among renames of that key: a rename the
-  writer saw made (another child following the same parent, or a copy giving way to one the writer
-  saw) is no key its issue held for it. The first rename in replay order (#303) picked another
-  child's follow, a subtree the child's parent edge did not name. Each rename records its cause, so
-  projections are rebuilt once (`ENCODING` 13).
 
 - `init --import` of an export it refuses writes nothing: the export is read before a remote or a
   workspace is chosen, where a refused one left a `.beadroll.json` with a new id behind, or a
@@ -29,8 +20,6 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 - The reading of Beads' `config.yaml` takes a key after a byte order mark and with spaces
   before its colon (`issue-prefix : br`).
 
-- A child whose writer saw two renames of its parent's key follows the parent it meant, the first
-  of them in replay order; it followed the last, a sibling.
 - `create` under two parents refuses a loop through what one passes down to the other, as `dep add`
   refuses the same second parent; it made the issue.
 - `init --import` reads bd's spelling of the prefix key, `issue-prefix`, and ends a value at a `#`
@@ -43,9 +32,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   Nothing beside standard input is read for its prefix (a `config.yaml` where the command runs is no
   Beads configuration of it).
 
-- A child made under a parent that a merge renames follows it: `x.1.1`, made under its machine's
-  own `x.1`, which became `x.2`, is `x.2.1`, and sync reports the rename. It kept `x.1.1`, which read
-  as a child of the other machine's `x.1`, whose next child then skipped a number.
+- A child made offline under a parent that a merge renumbers follows it: `x.1.1`, made under its
+  machine's own `x.1`, which became `x.2`, is `x.2.1`, at every depth (a grandchild `x.1.1.1` is
+  `x.2.1.1`), and sync reports the rename. It kept `x.1.1`, which read as a child of the issue
+  holding `x.1` now, whose next child then skipped a number. The child follows the parent its
+  create's own parent edge names by id, the edge its writer wrote right after the create, so every
+  machine judges it alike whatever else was renamed from the key; an import keeps the keys it
+  gives. Projections are rebuilt once (`ENCODING` 14).
 
 - `init --import` reads the prefix Beads keyed the records under: `.beads/config.yaml`'s
   `issue_prefix`, else the repository directory's name, before what the ids share. A lone

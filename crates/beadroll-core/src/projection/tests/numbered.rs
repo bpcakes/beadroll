@@ -103,8 +103,9 @@ fn a_copy_counts_past_the_numbers_taken_and_a_later_one_can_take_a_lower_gap() {
 
 #[test]
 fn stems_count_apart_and_a_copy_counts_from_its_number_without_leading_zeros() {
-    // `pr-k.1.1` counts under the stem `pr-k.1`, which is itself a key under `pr-k`; a copy minted
-    // under a parent the merge renamed follows it (`pr-k.1.1` under `pr-k.1`, now `pr-k.2`). A copy of
+    // `pr-k.1.1` counts under the stem `pr-k.1`, which is itself a key under `pr-k`; these creates
+    // name no parent edge, so a copy keeps counting under its own stem (`pr-k.1.2`), where a child
+    // whose own edge names a renamed parent would follow it (`a_child_follows_its_own_parent_edge`). A copy of
     // `pr-k.08` counts from 8, and `pr-k.08` does not hold `pr-k.8`; `pr-k.000` counts from 0.
     // A key whose stem has a newline has no number, and its copy takes a prefix of its digest.
     let mine = [
@@ -143,7 +144,7 @@ fn stems_count_apart_and_a_copy_counts_from_its_number_without_leading_zeros() {
         pairs(&[
             ("pr-k.1", "pr-k.2"),
             // its parent, this machine's `pr-k.1`, became `pr-k.2`: the child follows it
-            ("pr-k.1.1", "pr-k.2.1"),
+            ("pr-k.1.1", "pr-k.1.2"),
             ("pr-k.08", "pr-k.8"),
             ("pr-k.000", "pr-k.0"),
             ("pr-k.007", "pr-k.7"),
@@ -346,3 +347,67 @@ fn runs_a_projection_keeps_between_batches_follow_the_imports_taken_back() {
 }
 
 mod histories;
+
+/// A create's own parent-child edge, the next event its writer wrote (`deps` the create alone),
+/// names the parent its key was minted under; when a merge renamed that parent the child takes the
+/// parent's key now with its number, and its own child follows in turn. Only that edge counts: an
+/// import keeps its key, and so does a child whose next event was another, whatever edge a later
+/// event adds. Every way of making the state agrees.
+#[test]
+fn a_child_follows_its_own_parent_edge() {
+    use crate::json::{Object, Value};
+    let written = |key: &str| {
+        let mut data = creating(key, vec![]);
+        data.shift_remove("imported");
+        data
+    };
+    let parent_of = |n: u128| {
+        let mut data = Object::new();
+        data.insert("to".into(), Value::from(super::hostile::id(n)));
+        data.insert("type".into(), Value::from("parent-child"));
+        data
+    };
+    let rest = [
+        // there: A, `pr-base.1`, sorting first
+        at(10, THERE, &[2], "create", 10, written("pr-base.1")),
+        at(11, THERE, &[10], "dep_add", 10, parent_of(2)),
+        // here: B, minted `pr-base.1` too, and C under it as `pr-base.1.1`
+        at(20, HERE, &[2], "create", 20, written("pr-base.1")),
+        at(21, HERE, &[20], "dep_add", 20, parent_of(2)),
+        at(22, HERE, &[21], "create", 22, written("pr-base.1.1")),
+        at(23, HERE, &[22], "dep_add", 22, parent_of(20)),
+        // E, whose next event was another: a later edge is not its own
+        at(30, HERE, &[23], "create", 30, written("pr-base.1.5")),
+        at(31, HERE, &[30], "set", 30, super::hostile::fields("t")),
+        at(32, HERE, &[31], "dep_add", 30, parent_of(20)),
+        // F, imported, with an edge right after it
+        at(
+            40,
+            HERE,
+            &[32],
+            "create",
+            40,
+            creating("pr-base.1.7", vec![]),
+        ),
+        at(41, HERE, &[40], "dep_add", 40, parent_of(20)),
+    ];
+    let (state, _) = every_way(&base(), &rest);
+    let key = |n: u128| {
+        let uid = crate::id::EventId::parse(&super::hostile::id(n)).unwrap();
+        state.issue(uid).unwrap().key().to_owned()
+    };
+    let keys = [10, 20, 22, 30, 40].map(key);
+    assert_eq!(
+        keys,
+        [
+            "pr-base.1",
+            "pr-base.2",
+            "pr-base.2.1",
+            "pr-base.1.5",
+            "pr-base.1.7"
+        ]
+    );
+    let expected = [("pr-base.1", "pr-base.2"), ("pr-base.1.1", "pr-base.2.1")];
+    assert_eq!(renames(&state), pairs(&expected));
+    assert!(state.unfollowed.is_empty(), "{:?}", state.unfollowed);
+}

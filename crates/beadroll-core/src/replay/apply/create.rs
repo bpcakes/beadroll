@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{Doing, Names, dangling_type};
-use crate::event::{Field, REGISTERS};
+use crate::event::{Field, PARENT_CHILD, REGISTERS};
 use crate::id::EventId;
 use crate::json::{Int, Object, Value};
 use crate::op::Create;
@@ -24,17 +24,11 @@ pub(super) fn create(
 ) -> Result<(), KeySpace> {
     let eid = event.id;
     let mut key = create.key.clone();
-    // a child minted under its parent's key before a merge renamed that parent follows it
-    if let Some((followed, cause)) = followed(st, k, event, &key) {
-        st.renames.push(Rename {
-            from: std::mem::replace(&mut key, followed.clone()),
-            to: followed,
-            replica: event.trace.replica().to_owned(),
-            uid: eid,
-            cause,
-        });
+    // a child minted under its parent's key follows that parent when its own parent edge applies
+    if !create.imported && child_number(&key).is_some() {
+        st.unfollowed.insert(eid, key.clone());
     }
-    if let Some(&holder) = st.by_key.get(&key) {
+    if st.by_key.contains_key(&key) {
         // Two machines minted the same key before they synced.
         let free = st.free_key(&key, eid)?;
         st.renames.push(Rename {
@@ -42,7 +36,6 @@ pub(super) fn create(
             to: free,
             replica: event.trace.replica().to_owned(),
             uid: eid,
-            cause: holder,
         });
     }
     let mut issue = new_issue(event, create, key.clone(), who, when);
@@ -76,38 +69,74 @@ pub(super) fn create(
     Ok(())
 }
 
-/// The key a child minted as `minted` has once its parent's rename is followed, with that rename's
-/// cause, which the child's follow inherits: `minted`'s parent
-/// part (`t-x.15` of `t-x.15.1`) was the key of the parent its writer meant, which a merge renamed
-/// (another machine's child of that number came first), so that the child takes its parent's key
-/// now with its own number (`t-x.16.1`), where it would read as a child of the issue that holds
-/// `t-x.15`. Its writer meant the issue that held the key as it saw the tracker: one it saw renamed
-/// from the key, whose rename's cause it had not seen (so that in its view the issue had kept the
-/// key), the first of those in replay order, and not the one that holds the key now; every machine
-/// judges that alike. `None` for a key with no parent part, or when the parent was not renamed as
-/// its writer saw it.
-fn followed(
-    st: &State,
-    k: &Knowledge,
-    event: &Doing<'_>,
-    minted: &str,
-) -> Option<(String, EventId)> {
+/// `minted`'s parent part and number (`t-x.15` and `1` of `t-x.15.1`), when its last part is a
+/// number: the key of a child minted under its parent's.
+fn child_number(minted: &str) -> Option<(&str, &str)> {
     let (parent, number) = minted.rsplit_once('.')?;
-    if number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
+    (!number.is_empty() && number.bytes().all(|b| b.is_ascii_digit())).then_some((parent, number))
+}
+
+/// Settles the child a create made under its parent's key once the next event its writer wrote
+/// applies: when that is the create's own parent-child edge (`deps` naming the create alone, on the
+/// create's issue), the edge names by id the parent the key was minted from, as its writer saw the
+/// tracker. A merge may have renamed that parent since (another machine's child of its number
+/// came first): the child then takes the parent's key now with its own number (`t-x.15.1` under a
+/// parent now `t-x.16` is `t-x.16.1`), or the next free one, where it would read as a child of the
+/// issue that holds `t-x.15`. Every machine replays the same edge, so all judge it alike, and a
+/// grandchild, minted under the key the child had when its writer saw it, follows in turn.
+pub(super) fn follow_own_parent(st: &mut State, event: &Doing<'_>) -> Result<(), KeySpace> {
+    let &[created] = event.trace.deps() else {
+        return Ok(());
+    };
+    let Some(minted) = st.unfollowed.shift_remove(&created) else {
+        return Ok(());
+    };
+    let crate::op::Op::DepAdd { to, kind, .. } = &event.what.op else {
+        return Ok(());
+    };
+    let own = event.what.issue.as_deref().and_then(EventId::parse) == Some(created);
+    if !own || kind.as_deref() != Some(PARENT_CHILD) {
+        return Ok(());
     }
-    if (st.by_key.get(parent)).is_some_and(|holder| k.saw_at(event.at, *holder)) {
-        return None;
+    let Some(parent) = (EventId::parse(to)).and_then(|uid| st.issues.get(&uid)) else {
+        return Ok(());
+    };
+    let Some((minted_under, number)) = child_number(&minted) else {
+        return Ok(());
+    };
+    if parent.key() == minted_under {
+        return Ok(());
     }
-    // a rename whose cause the writer saw was made in its view too: the issue never held the key
-    // there, as a child that followed the same parent, or a copy that gave way to one it saw, did not
-    let renamed = (st.renames.iter()).find(|rename| {
-        rename.from == parent && k.saw_at(event.at, rename.uid) && !k.saw_at(event.at, rename.cause)
-    })?;
-    let now = st.issues.get(&renamed.uid)?.key();
-    // a grandchild made under the child before the sync follows the child as the child followed
-    // its parent: a writer that saw what made the parent give way saw both renames made
-    (now != parent).then(|| (format!("{now}.{number}"), renamed.cause))
+    let wanted = format!("{}.{number}", parent.key());
+    let Some(current) = st.issues.get(&created).map(|child| child.key().to_owned()) else {
+        return Ok(());
+    };
+    if current == wanted {
+        return Ok(());
+    }
+    // the key it leaves is claimed by nothing now: no run may hold it (roll-lqjj.46)
+    st.by_key.shift_remove(&current);
+    st.runs.forget(&current);
+    let key = if st.claims_key(&wanted) {
+        st.free_key(&wanted, created)?
+    } else {
+        wanted
+    };
+    st.by_key.insert(key.clone(), created);
+    if let Some(child) = st.issues.get_mut(&created) {
+        child.key = key.clone();
+    }
+    // one rename for the child, from the key its writer printed
+    match st.renames.iter_mut().find(|rename| rename.uid == created) {
+        Some(rename) => rename.to = key,
+        None => st.renames.push(Rename {
+            from: minted,
+            to: key,
+            replica: event.trace.replica().to_owned(),
+            uid: created,
+        }),
+    }
+    Ok(())
 }
 
 /// The issue a create makes, under `key`: a register for each field it carries, the status's

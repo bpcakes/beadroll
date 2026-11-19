@@ -9,6 +9,7 @@ mod graph;
 mod integrity;
 mod merges;
 mod remotes;
+mod renumbered;
 
 use std::collections::BTreeMap;
 

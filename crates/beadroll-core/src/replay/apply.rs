@@ -77,6 +77,9 @@ pub(super) fn apply_event(
         }
         other => other,
     };
+    if !st.unfollowed.is_empty() {
+        create::follow_own_parent(st, event)?;
+    }
     let Some(uid) = (event.what.issue.as_deref())
         .and_then(EventId::parse)
         .filter(|uid| st.issues.contains_key(uid))
