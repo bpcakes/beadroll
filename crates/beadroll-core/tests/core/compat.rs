@@ -177,7 +177,8 @@ mod import_dry_run {
         let found = problems(&state, memory, "issues.jsonl");
         assert_eq!(
             found[0].to_string(),
-            "issues.jsonl:1: record has no string 'id'"
+            "issues.jsonl:1: a Beads memory record (\"_type\": \"memory\"): an export holding \
+             memories is refused whole; export the issues alone"
         );
     }
 

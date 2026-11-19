@@ -219,6 +219,14 @@ fn create_problem(record: &Value, data: &Object) -> Option<ImportError> {
 
 /// The checks every record passes before anything is planned.
 fn check(path: &str, number: usize, record: &Value) -> Result<(), ImportError> {
+    // recent Beads keep memories in `issues.jsonl` beside the issues: never taken for one, with an
+    // id and a title or without
+    if record.get("_type").and_then(Value::as_str) == Some("memory") {
+        return Err(fail(format!(
+            "{path}:{number}: a Beads memory record (\"_type\": \"memory\"): an export holding \
+             memories is refused whole; export the issues alone"
+        )));
+    }
     let Some(id) = record
         .get("id")
         .and_then(Value::as_str)

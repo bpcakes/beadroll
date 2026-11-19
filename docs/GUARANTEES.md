@@ -724,7 +724,7 @@ it, and the file is committed again.
   tracker that cannot sync.
 - A Beads export that holds memory records (`{"_type": "memory", ...}`, which
   recent Beads versions keep in `issues.jsonl` beside the issues) is refused
-  whole by `import`, at the first of them (roll-dih8.16). Export writes every
+  whole by `import`, at the first of them (roll-dih8.16), one that carries an `id` and a title too. Export writes every
   dependency with br's six members, so one written without `thread_id` comes
   back with `"thread_id": ""`.
 - Not implemented: `stats`, `count`, `epic status`, `graph`, saved queries,

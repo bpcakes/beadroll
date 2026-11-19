@@ -558,3 +558,98 @@ fn init_import_takes_the_prefix_its_records_share() {
     assert_eq!(run.returncode(), 0, "{}", run.stderr);
     assert_eq!(c.bead(["info"]).unwrap()["prefix"], json!("own"));
 }
+
+/// What the import refuses whatever shape its records take: a Beads memory (`_type: memory`), with
+/// an id and a title too, which was imported as a task and exported back with its `_type`; and a
+/// record keyed under no prefix (`-1`), which started a tracker whose prefix was empty.
+#[test]
+fn memories_and_records_without_a_prefix_are_refused() {
+    let sandbox = crate::sandbox();
+    let mut memory = record("ex-9", "a memory", json!({}));
+    if let Json::Object(members) = &mut memory {
+        members.insert("_type".into(), json!("memory"));
+    }
+    let cases = [
+        ("memory", memory, "memory"),
+        ("unprefixed", record("-1", "x", json!({})), "no prefix"),
+    ];
+    for (name, record, said) in cases {
+        let file = sandbox.root().join(format!("{name}.jsonl"));
+        std::fs::write(&file, json_lines(&[record])).unwrap();
+        let machine = beadroll_test_support::Machine::new(&sandbox, name);
+        let run = machine.run(["init", "--import", file.to_str().unwrap(), "--json"]);
+        assert_eq!(code(&run), "VALIDATION", "{name}: {}", run.stderr);
+        assert!(run.stderr.contains(said), "{name}: {}", run.stderr);
+    }
+}
+
+/// A re-import that only takes back a dependency, its record imported again without it, says so,
+/// `taken_back` in `--json` too: it answered `Imported 0 issues` while it wrote a `dep_remove`.
+#[test]
+fn a_reimport_that_takes_back_a_dependency_says_so() {
+    let sandbox = crate::sandbox();
+    let machine = machine(&sandbox, "retract");
+    let dependency = json!({"issue_id": "ex-7", "depends_on_id": "ex-99", "type": "blocks"});
+    let with = sandbox.root().join("with.jsonl");
+    std::fs::write(
+        &with,
+        json_lines(&[record(
+            "ex-7",
+            "seven",
+            json!({"dependencies": [dependency]}),
+        )]),
+    )
+    .unwrap();
+    let without = sandbox.root().join("without.jsonl");
+    std::fs::write(&without, json_lines(&[record("ex-7", "seven", json!({}))])).unwrap();
+    machine.bead(["import", with.to_str().unwrap()]);
+    let again = machine.bead(["import", without.to_str().unwrap()]).unwrap();
+    assert_eq!(again["imported"], json!(0), "{again:?}");
+    assert_eq!(again["taken_back"], json!(1), "{again:?}");
+    let human = machine.run(["import", without.to_str().unwrap()]);
+    assert_eq!(
+        human.stdout.trim(),
+        "Imported 0 issues",
+        "nothing left to take back: {}",
+        human.stdout
+    );
+}
+
+/// `init --import --dry-run` reads the prefix as `init --import` would: records under several
+/// prefixes are a problem it lists, where it said the import would go through, and `--prefix`,
+/// which settles it, is taken.
+#[test]
+fn an_init_dry_run_reads_the_prefix_as_the_init_would() {
+    let sandbox = crate::sandbox();
+    let mixed = sandbox.root().join("mixed.jsonl");
+    std::fs::write(
+        &mixed,
+        json_lines(&[
+            record("ap-1", "a", json!({})),
+            record("zz-1", "b", json!({})),
+        ]),
+    )
+    .unwrap();
+    let machine = beadroll_test_support::Machine::new(&sandbox, "plan");
+    let planned = machine
+        .bead(["init", "--import", mixed.to_str().unwrap(), "--dry-run"])
+        .unwrap();
+    assert_eq!(planned["importable"], json!(false), "{planned:?}");
+    assert!(
+        planned["problems"][0]
+            .as_str()
+            .unwrap()
+            .contains("--prefix"),
+        "{planned:?}"
+    );
+    let given = [
+        "init",
+        "--import",
+        mixed.to_str().unwrap(),
+        "--dry-run",
+        "--prefix",
+        "pp",
+    ];
+    let planned = machine.bead(given).unwrap();
+    assert_eq!(planned["importable"], json!(true), "{planned:?}");
+}
