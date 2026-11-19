@@ -6,6 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A child made under a parent that a merge renames follows it: `x.1.1`, made under its machine's
+  own `x.1`, which became `x.2`, is `x.2.1`, and sync reports the rename. It kept `x.1.1`, which read
+  as a child of the other machine's `x.1`, whose next child then skipped a number.
+
 - `init --import` reads the prefix Beads keyed the records under: `.beads/config.yaml`'s
   `issue_prefix`, else the repository directory's name, before what the ids share. A lone
   slug-keyed id (`br-onboarding-style-q2`) took its slug as part of the prefix.

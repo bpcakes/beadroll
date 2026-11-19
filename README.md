@@ -211,7 +211,7 @@ output equivalence and remaining first-read cost.
 | Close with different reasons | A conflict as different statuses are, each close shown with its reason; a close made after seeing both settles it. |
 | Add comments | All comments are kept. |
 | Add and remove a label or dependency | A removal affects only additions its writer had seen. |
-| Create children of the same parent | A colliding child key is renumbered, for example `app-x.1` to `app-x.2`, and sync reports it. |
+| Create children of the same parent | A colliding child key is renumbered, for example `app-x.1` to `app-x.2`, its own children with it (`app-x.1.1` to `app-x.2.1`), and sync reports each. |
 | Add dependencies that form a blocking cycle | Dependencies are kept and reported by `bead dep cycles`; affected issues are not ready. |
 
 An edit made after seeing another is not a conflict, regardless of clock
