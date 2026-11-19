@@ -249,6 +249,30 @@ fn ending_a_claim_gives_back_the_assignee_from_before_it() {
     assert_eq!(assignee(&a, &unassigned), None);
 }
 
+/// A claim the remote accepted whose recording here fails says so: it stands, and `bead sync`
+/// records it, where a bare `IO`, which leaves nothing half-done, told its agent nothing was held.
+#[test]
+fn an_accepted_claim_whose_recording_fails_says_it_stands() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let key = json_id(&a.bead(["create", "x"]).unwrap());
+    let failed = a
+        .cmd(["claim", &key, "--json"])
+        .env("BEAD_FAILPOINTS", "atomic-flush:claims=errno(EIO)")
+        .run();
+    assert_eq!(code(&failed), "IO", "{}", failed.stderr);
+    assert!(
+        failed.stderr.contains("the remote accepted this"),
+        "{}",
+        failed.stderr
+    );
+    assert!(failed.stderr.contains("bead sync"), "{}", failed.stderr);
+    a.bead(["sync"]);
+    let shown = a.show(&key);
+    assert!(shown["claim"]["owner"].as_str().is_some(), "{shown:?}");
+}
+
 /// A takeover is online only: `--offline` is refused as `VALIDATION`, before anything is written,
 /// and the owner stays.
 #[test]

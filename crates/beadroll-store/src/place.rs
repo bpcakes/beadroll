@@ -10,7 +10,8 @@ use crate::settings::Settings;
 use crate::workspace::Workspace;
 
 /// Records branch and commit when inside a checkout unless tracked configuration sets `where` to
-/// false. Detached HEAD or a branch name that is not UTF-8 records no branch. Query git at every
+/// false, and HEAD names a commit. Detached HEAD or a branch name that is not UTF-8 records no
+/// branch. Query git at every
 /// transaction start so intervening branch changes are observed.
 pub fn capture_where(ws: &Workspace) -> Result<Option<Value>, Error> {
     if ws.config.get("where") == Some(&Value::Bool(false)) {
@@ -25,6 +26,11 @@ pub fn capture_where(ws: &Workspace) -> Result<Option<Value>, Error> {
         .map(|text| beadroll_core::text::strip(text).to_owned())
         .unwrap_or_default();
     let commit = String::from_utf8_lossy(&head.stdout);
+    // a bare repository without a commit answers `rev-parse HEAD` with `HEAD`, and success: no
+    // commit, so no place, as a checkout without one records none
+    if !is_object_name(beadroll_core::text::strip(&commit).as_bytes()) {
+        return Ok(None);
+    }
     let mut place = Object::new();
     let branch = if branch.is_empty() || branch == "HEAD" {
         Value::Null

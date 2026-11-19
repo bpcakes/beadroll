@@ -63,3 +63,24 @@ fn claims_and_log_report_claim_location_and_later_activity() {
         ]
     );
 }
+
+/// A bare repository without a commit records no place, as a checkout without one records none:
+/// `git rev-parse HEAD` answers it with `HEAD`, and success, which was recorded as the commit, so
+/// that `show` said `closed on detached HEAD at HEAD`.
+#[test]
+fn a_bare_repository_without_a_commit_records_no_place() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "bare-a");
+    a.bead(["init", "--prefix", "ex"]);
+    let bare = sandbox.root().join("unborn.git");
+    git(["init", "-q", "--bare", bare.to_str().unwrap()], None);
+    let origin = sandbox.origin().to_str().unwrap().to_owned();
+    git(["remote", "add", "origin", &origin], Some(&bare));
+    let made = a
+        .cmd(["create", "made in a bare repository", "--json"])
+        .cwd(&bare)
+        .run();
+    assert_eq!(made.returncode(), 0, "{}", made.stderr);
+    let made = beadroll_test_support::parse_json(&made.stdout).unwrap();
+    assert!(made.get("where").is_none(), "{made:?}");
+}

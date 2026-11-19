@@ -6,6 +6,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A claim (or release, takeover) the remote accepted whose recording here fails says it stands
+  and to run `bead sync`, which records it; a bare `IO`, which leaves nothing half-done, told its
+  agent nothing was held while the remote held the claim.
+- A bare repository without a commit records no place for an event, as a checkout without one
+  records none: `git rev-parse HEAD` answers there with `HEAD`, which was recorded as the commit,
+  and `show` said `closed on detached HEAD at HEAD`.
+
 - A coordination remote that git would fetch from one repository and push to another (a
   `url.<base>.pushInsteadOf` rule, with no push URL of its own) is `CONFIG` at once, naming both and
   how to make them one. Every sync ended `SYNC_CONFLICT` after 17 s of rounds, which retrying never

@@ -86,7 +86,13 @@ impl PendingAttempt {
         match outcome {
             PushOutcome::Ok => {
                 failpoints.hit("ownership.after-publish-ok");
-                confirm_ownership(ws, &self.events)?;
+                // the remote holds it now: a failure here is no `IO` that left nothing half-done
+                if let Err(error) = confirm_ownership(ws, &self.events) {
+                    return Err(Error::Store(beadroll_store::Error::io_message(format!(
+                        "the remote accepted this, so it stands, but recording it here failed \
+                         ({error}): run `bead sync` to record it here"
+                    ))));
+                }
                 if let Some(Fired::Error(code)) = failpoints.hit("ownership.after-confirm") {
                     return Err(Error::injected(code, "ownership.after-confirm"));
                 }
