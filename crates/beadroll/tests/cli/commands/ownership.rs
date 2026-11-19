@@ -77,8 +77,15 @@ fn work(t: &mut Transcript, sandbox: &beadroll_test_support::Sandbox, a: &Machin
     t.record(a, &["claim", "ow-2", "--json"]);
     t.record(b, &["sync"]);
     t.record(b, &["takeover", "ow-2", "-r", "a looked dead", "--json"]);
-    // a machine has an id once it has written
-    t.record(b, &["machines", "--name", &format!("{}=own-b", replica(b))]);
+    // a machine has an id once it has written; named, unrecorded: `machines` lists both machines
+    // by their ids, which each run mints anew, so their order is the run's
+    let named = b.run([
+        "machines",
+        "--name",
+        &format!("{}=own-b", replica(b)),
+        "--json",
+    ]);
+    assert_eq!(named.returncode(), 0, "{}", named.stderr);
     t.record(a, &["close", "ow-2", "-r", "done"]);
     // ended by its owner's close
     t.record(b, &["claim", "ow-3"]);

@@ -31,13 +31,20 @@ fn setup(sandbox: &Sandbox) -> (Machine, PathBuf) {
     (machine, aliases)
 }
 
-/// `name_over`: `machines --name abcd0003=new` over an `aliases.json` holding `text` with the
-/// permissions `mode`: what it answered, and what the file holds after it, read back with mode
-/// 0600.
+/// The id of `machine`, which `machines --name` can name: one its journal has seen.
+fn own_id(machine: &Machine) -> String {
+    let info = machine.bead(["info"]).expect("info");
+    info["machine"].as_str().expect("a machine id").to_owned()
+}
+
+/// `name_over`: `machines --name OWN=new`, `OWN` the machine's own id, over an `aliases.json`
+/// holding `text` with the permissions `mode`: what it answered, and what the file holds after
+/// it, read back with mode 0600.
 fn name_over(machine: &Machine, aliases: &Path, text: &str, mode: u32) -> (Run, String) {
+    let own = format!("{}=new", own_id(machine));
     std::fs::write(aliases, text).unwrap();
     std::fs::set_permissions(aliases, Permissions::from_mode(mode)).unwrap();
-    let named = machine.run(["machines", "--name", "abcd0003=new", "--json"]);
+    let named = machine.run(["machines", "--name", own.as_str(), "--json"]);
     std::fs::set_permissions(aliases, Permissions::from_mode(0o600)).unwrap();
     let after = std::fs::read_to_string(aliases).unwrap();
     (named, after)
@@ -83,7 +90,11 @@ fn a_hand_edited_file_with_a_trailing_comma_keeps_every_name() {
     let (named, after) = name_over(&machine, &aliases, &well_formed(), 0o600);
     assert_eq!(named.returncode(), 0, "{}", named.stderr);
     let merged = parse_json(&after).unwrap_or_else(|error| panic!("{error}: {after}"));
-    let expected = json!({"abcd0001": "desktop", "abcd0002": "ci", "abcd0003": "new"});
+    let mut expected = beadroll_core::json::Object::new();
+    expected.insert("abcd0001".into(), json!("desktop"));
+    expected.insert("abcd0002".into(), json!("ci"));
+    expected.insert(own_id(&machine), json!("new"));
+    let expected = Json::from(expected);
     // dicts compare without regard to order, and so do the objects of `Json`
     assert_eq!(merged, expected);
     let cases = [

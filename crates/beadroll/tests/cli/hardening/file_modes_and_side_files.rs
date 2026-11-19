@@ -109,10 +109,15 @@ mod data_file_modes {
         for (umask, expected) in [(0o022, 0o644), (0o002, 0o664), (0o077, 0o600)] {
             let m = Machine::new(&sandbox, &format!("v5-{umask:o}"))
                 .with_bead(under_umask(&sandbox, umask));
-            m.bead(["machines", "--name", "deadbeef=laptop"]);
             let remote = sandbox.bare(&format!("r{umask:o}.git"));
             let remote = remote.to_str().expect("a UTF-8 path");
             m.bead(["init", "--prefix", "ex", "--tracked", "--remote", remote]);
+            // a machine the journal has seen, this one, so that the alias file is written
+            let own = m.bead(["info"]).unwrap()["machine"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            m.bead(["machines", "--name", &format!("{own}=laptop")]);
             let key = printed_id(m.bead(["create", "x"]));
             let crashed = m
                 .cmd(["claim", &key, "--json"])

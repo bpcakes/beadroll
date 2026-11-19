@@ -39,10 +39,6 @@ $ bead takeover ow-2 -r a looked dead --json
 [{"id": "ow-2", "title": "Taken over, closed too late", "description": "Its own text", "status": "in_progress", "priority": 2, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [{"id": 21, "author": "seed", "text": "a comment of its own", "created_at": "<TIME>"}], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "claim": {"id": "<ID2>", "owner": "codex:own-b-thread-0001@<MACHINE2>", "machine": "<MACHINE2>", "agent": "codex", "thread": "own-b-thread-0001", "generation": 2, "since": "<TIME>", "mode": "online", "where": {"branch": "main", "commit": "<COMMIT1>"}}}]
 exit 0
 
-$ bead machines --name <MACHINE2>=own-b
-<MACHINE1>  (unnamed)          10 events  last <TIME>
-exit 0
-
 $ bead close ow-2 -r done
 ✓ Closed ow-2: Taken over, closed too late
 ! ow-2: another owner took over before this close reached the remote; it is ignored (see `bead show`, under stale)

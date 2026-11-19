@@ -6,14 +6,16 @@ use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::code::Code;
 use beadroll_core::history::HistoryEntry;
+use beadroll_core::id::EventId;
 use beadroll_core::journal::Event;
 use beadroll_core::json::{self, Format, Int, Object, Value};
+use beadroll_core::projection::Projection;
 use beadroll_core::state::State;
-use beadroll_core::text::{printed_text, str_of};
+use beadroll_core::text::{printed_text, repr_str, str_of};
 use beadroll_core::time::event_time;
 use beadroll_store::{
-    FileMode, Unreadable, history, layout, machine_aliases, projection, read_json_text,
-    view_outline, write_atomic,
+    FileMode, Unreadable, claim_files, history, layout, machine_aliases, projection,
+    read_json_text, view_outline, write_atomic,
 };
 
 use super::{Context, Failure, Line, Outcome, Tone, need_tracker, resolve_arg, text};
@@ -158,20 +160,22 @@ fn logged_summary(
 /// Each machine's journal length and latest event are the store's projection's: the journal is
 /// read only when the projection is not the journal's, to make it (roll-lqjj.31).
 pub(crate) fn machines(ctx: &Context<'_>, name: Option<&OsStr>) -> Result<Outcome, Failure> {
-    if let Some(name) = name.filter(|n| !n.is_empty()) {
-        record_alias(ctx, name)?;
-    }
     let projection = projection(ctx.ws)?;
+    let seen = machines_seen(ctx.ws, &projection)?;
+    if let Some(name) = name.filter(|n| !n.is_empty()) {
+        record_alias(ctx, name, &seen)?;
+    }
     let aliases = machine_aliases(&ctx.ws.settings);
     let mut rows = Vec::new();
     let mut lines = Vec::new();
-    for (replica, events, last) in projection.journals() {
+    for (replica, &(events, last)) in &seen {
+        let replica = replica.as_str();
         let last = event_time(last.map_or(0, |id| id.millis()));
         let alias = aliases.get(replica);
         let mut row = Object::new();
         row.insert("machine".into(), Value::from(replica));
         row.insert("alias".into(), Value::from(alias.cloned()));
-        row.insert("events".into(), Value::from(i64::from(events)));
+        row.insert("events".into(), Value::from(events));
         row.insert("last_event".into(), Value::from(last.as_str()));
         let shown = alias
             .filter(|a| !a.is_empty())
@@ -188,9 +192,72 @@ pub(crate) fn machines(ctx: &Context<'_>, name: Option<&OsStr>) -> Result<Outcom
     Ok(Outcome::new(Value::Array(rows), lines))
 }
 
-/// Records `ID=ALIAS` in `aliases.json`, retaining existing names. An unreadable file is never
-/// replaced, and a name that is not UTF-8 is refused, as every text bead writes is.
-fn record_alias(ctx: &Context<'_>, name: &OsStr) -> Result<(), Failure> {
+/// Each machine the journal has seen, by id: how many events it wrote, its segments' records and
+/// its accepted attempt files (a machine whose only writes are claims has no segment), and the
+/// latest of them.
+pub(crate) fn machines_seen(
+    ws: &beadroll_store::Workspace,
+    projection: &Projection,
+) -> Result<BTreeMap<String, (i64, Option<EventId>)>, Failure> {
+    let mut seen: BTreeMap<String, (i64, Option<EventId>)> = (projection.journals().into_iter())
+        .map(|(machine, events, last)| (machine.to_owned(), (i64::from(events), last)))
+        .collect();
+    for path in claim_files(ws)?.iter() {
+        // `events/<machine>/claims/<id>.json`
+        let machine = (path.strip_prefix(&ws.events_dir).ok())
+            .and_then(|inside| inside.components().next())
+            .and_then(|first| first.as_os_str().to_str());
+        let Some(machine) = machine else { continue };
+        let id = (path.file_stem().and_then(OsStr::to_str)).and_then(EventId::parse);
+        let (events, last) = seen.entry(machine.to_owned()).or_insert((0, None));
+        *events += 1;
+        *last = (*last).max(id);
+    }
+    Ok(seen)
+}
+
+/// The machine `ident` names among those `seen`: its id, or a prefix of one id alone.
+fn seen_machine<'s>(
+    ident: &str,
+    seen: &'s BTreeMap<String, (i64, Option<EventId>)>,
+) -> Result<&'s str, Failure> {
+    if let Some((id, _)) = seen.get_key_value(ident) {
+        return Ok(id);
+    }
+    let matches: Vec<&str> = (seen.keys())
+        .filter(|id| !ident.is_empty() && id.starts_with(ident))
+        .map(String::as_str)
+        .collect();
+    match matches[..] {
+        [id] => Ok(id),
+        [] => Err(Failure::new(
+            Code::Validation,
+            format!(
+                "no machine {} in this tracker's journal: `bead machines` lists them",
+                repr_str(ident)
+            ),
+        )),
+        _ => Err(Failure::new(
+            Code::Validation,
+            format!(
+                "{} names several machines: {}",
+                repr_str(ident),
+                matches.join(", ")
+            ),
+        )),
+    }
+}
+
+/// Records `ID=ALIAS` in `aliases.json`, retaining existing names: `ID` a machine the journal has
+/// seen, or a prefix of one alone, or an id named here already, whose name it changes or (`ID=`)
+/// takes back. An
+/// unreadable file is never replaced, and a name that is not UTF-8 is refused, as every text bead
+/// writes is.
+fn record_alias(
+    ctx: &Context<'_>,
+    name: &OsStr,
+    seen: &BTreeMap<String, (i64, Option<EventId>)>,
+) -> Result<(), Failure> {
     let name = text(name)?;
     let Some((ident, alias)) = name.split_once('=') else {
         return Err(Failure::usage(
@@ -216,6 +283,12 @@ fn record_alias(ctx: &Context<'_>, name: &OsStr) -> Result<(), Failure> {
         }
         Err(Unreadable::Missing) => Object::new(),
         Err(Unreadable::Other(problem)) => return Err(cannot(&problem)),
+    };
+    // a name stored already is this machine's to change or take back, the machine seen or not
+    let ident = if aliases.contains_key(ident) {
+        ident
+    } else {
+        seen_machine(ident, seen)?
     };
     aliases.insert(ident.to_owned(), Value::from(alias));
     let written = json::write(&Value::from(aliases), Format::INDENTED)?;

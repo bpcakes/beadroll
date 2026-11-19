@@ -10,6 +10,7 @@ use beadroll_store::{
     tracked_config_warning,
 };
 
+use super::history::machines_seen;
 use super::{Context, Failure, Outcome, VERSION, tracker_name};
 
 /// The tracker's identity and place, the remote, this machine and actor, and the journal's
@@ -101,9 +102,10 @@ fn numbers(ws: &Workspace, projection: &Projection, result: &mut Object) -> Resu
     result.insert("issues".into(), Value::from(st.issues().count() as i64));
     let events = projection.event_count();
     result.insert("events".into(), Value::from(events as i64));
+    // every machine's, a machine whose only writes are claims among them, as `machines` counts
     let mut by_machine = Object::new();
-    for (replica, length, _) in projection.journals() {
-        by_machine.insert(replica.to_owned(), Value::from(i64::from(length)));
+    for (replica, (events, _)) in machines_seen(ws, projection)? {
+        by_machine.insert(replica, Value::from(events));
     }
     result.insert("events_by_machine".into(), Value::from(by_machine));
     result.insert(

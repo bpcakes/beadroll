@@ -67,8 +67,9 @@ fn log_names_a_named_actor_and_the_fields_a_set_changed() {
     );
 }
 
-/// What a store's files hold, read as the test reads them: each machine's events in its journal,
-/// by id, every event's causes, an attempt file's among them, and how many segments there are.
+/// What a store's files hold, read as the test reads them: each machine's events, by id, its
+/// journal's and its accepted attempt files', every event's causes, an attempt file's among them,
+/// and how many segments there are.
 struct Files {
     journals: BTreeMap<String, BTreeSet<String>>,
     causes: BTreeMap<String, Vec<String>>,
@@ -106,11 +107,20 @@ fn files(store: &Path) -> Files {
         }
     }
     for folder in std::fs::read_dir(store.join("events")).unwrap() {
-        let claims = folder.unwrap().path().join("claims");
-        for file in std::fs::read_dir(claims).into_iter().flatten() {
+        let folder = folder.unwrap().path();
+        let machine = folder.file_name().unwrap().to_str().unwrap().to_owned();
+        for file in std::fs::read_dir(folder.join("claims"))
+            .into_iter()
+            .flatten()
+        {
             let text = std::fs::read_to_string(file.unwrap().path()).unwrap();
             for line in text.lines().filter(|line| !line.trim().is_empty()) {
-                add(&mut found, &parse_json(line).unwrap());
+                let id = add(&mut found, &parse_json(line).unwrap());
+                found
+                    .journals
+                    .entry(machine.clone())
+                    .or_default()
+                    .insert(id);
             }
         }
     }
@@ -378,4 +388,57 @@ fn log_says_a_claim_was_a_takeover() {
             .is_some_and(|id| !id.is_empty()),
         "{logged:?}"
     );
+}
+
+/// `machines` lists every machine the journal has seen, one whose only writes are claims too, and
+/// `info` counts its events; `--name` names one of them, by its id or a prefix of it alone, and
+/// refuses an id no machine has, while `ID=` takes back any name already stored.
+#[test]
+fn machines_lists_and_names_only_machines_the_journal_has_seen() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let key = a.bead(["create", "x"]).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let b = Machine::new(&sandbox, "b");
+    b.bead(["sync"]);
+    b.bead(["claim", key.as_str()]);
+    a.bead(["sync"]);
+    let b_id = b.bead(["info"]).unwrap()["machine"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let listed = a.bead(["machines"]).unwrap();
+    let ids: Vec<&str> = (listed.as_array().unwrap().iter())
+        .map(|row| row["machine"].as_str().unwrap())
+        .collect();
+    assert!(
+        ids.contains(&b_id.as_str()),
+        "the claiming machine is missing: {listed:?}"
+    );
+    let info = a.bead(["info"]).unwrap();
+    let counted: i64 = (info["events_by_machine"].as_object().unwrap().values())
+        .map(|n| n.as_i64().unwrap())
+        .sum();
+    assert_eq!(Some(counted), info["events"].as_i64(), "{info:?}");
+    for unknown in ["nosuch=foo", "=zz"] {
+        let refused = a.run(["machines", "--name", unknown, "--json"]);
+        assert_eq!(
+            beadroll_test_support::code(&refused),
+            "VALIDATION",
+            "{unknown}: {}",
+            refused.stderr
+        );
+    }
+    let named = a
+        .bead(["machines", "--name", &format!("{}=bee", &b_id[..4])])
+        .unwrap();
+    let alias = (named.as_array().unwrap().iter())
+        .find(|row| row["machine"].as_str() == Some(b_id.as_str()))
+        .map(|row| row["alias"].clone());
+    assert_eq!(alias, Some(json!("bee")), "{named:?}");
+    let taken = a.run(["machines", "--name", &format!("{b_id}="), "--json"]);
+    assert_eq!(taken.returncode(), 0, "{}", taken.stderr);
 }
