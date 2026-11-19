@@ -35,16 +35,17 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 - A child made offline under a parent that a merge renumbers follows it: `x.1.1`, made under its
   machine's own `x.1`, which became `x.2`, is `x.2.1`, at every depth (a grandchild `x.1.1.1` is
   `x.2.1.1`), and sync reports the rename. It kept `x.1.1`, which read as a child of the issue
-  holding `x.1` now, whose next child then skipped a number. The child follows the parent its
-  create's own parent edge names by id, the edge its writer wrote right after the create, so every
-  machine judges it alike whatever else was renamed from the key; an import keeps the keys it
-  gives. The key is settled at the create, so an import waiting for a key binds to the issue that
-  holds it, and a sibling made meanwhile keeps its own. Projections are rebuilt once (`ENCODING`
-  15).
+  holding `x.1` now, whose next child then skipped a number. `create --parent` names the parent
+  by id in the create (`parent`, added to format 1's create data; an older bead ignores it), and
+  the child follows that parent, so every machine judges it alike whatever else was renamed from
+  the key; a create without it, as every released version wrote, and an import keep their keys.
+  The key is settled at the create, so an import waiting for a key binds to the issue that holds
+  it, and a sibling made meanwhile keeps its own. Projections are rebuilt once (`ENCODING` 16).
 - `sync` reports every key its merge changed: a key an earlier sync had renamed, moved again, was
   left out, as were renames replay placed before the ones counted and an issue that holds its own
-  key again (an import a collision had displaced). Each is reported from the key the issue had
-  before the sync, in replay order.
+  key again (an import a collision had displaced) or whose key changed with no rename at all (a
+  foreign journal put back as published). Each is reported from the key the issue had before the
+  sync, in replay order.
 
 - `init --import` reads the prefix Beads keyed the records under: `.beads/config.yaml`'s
   `issue_prefix`, else the repository directory's name, before what the ids share. A lone

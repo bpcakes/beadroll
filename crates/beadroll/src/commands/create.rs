@@ -184,6 +184,10 @@ fn write_issue(
     data.insert("key".into(), Value::from(key));
     data.insert("fields".into(), Value::from(fields.values.clone()));
     data.insert("labels".into(), Value::from(labels));
+    // the parent its key was minted under, by id, which it follows when a merge renames it
+    if let Some(parent) = &parent_uid {
+        data.insert("parent".into(), Value::from(parent.as_str()));
+    }
     tx.emit(OpName::Create, None, data, Some(uid.clone()))?;
     encodable(fields.valid.and(labels_valid))?;
     if let Some(parent) = &parent_uid {

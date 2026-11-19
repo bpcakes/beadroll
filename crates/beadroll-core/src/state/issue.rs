@@ -332,6 +332,11 @@ impl Issue {
         &self.unconfirmed
     }
 
+    /// The machine whose create made it, as its event names it.
+    pub fn origin_machine(&self) -> &str {
+        &self.origin.machine
+    }
+
     /// Where it was created: the machine, the members of the create's actor, and the checkout.
     pub fn origin(&self) -> Object {
         let Origin {

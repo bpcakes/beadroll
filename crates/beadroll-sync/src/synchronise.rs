@@ -18,6 +18,7 @@ use crate::error::Error;
 use crate::link::Link;
 use crate::tx::locked;
 
+pub(crate) use self::renamed::KeysBefore;
 use self::renamed::renamed_by_merge;
 use self::round::{AfterError, Outcome, Rebuild, sync_round};
 
@@ -237,7 +238,7 @@ fn exchange(
         sync_repo_rebuilt: link.rebuilt.clone(),
         repacked: published.repacked,
         issues: state.issues().count(),
-        renamed: renamed_by_merge(state, link.renames_before.as_ref()),
+        renamed: renamed_by_merge(state, link.keys_before.as_ref()),
         forked_journals: published.merged.facts.forks,
         confirmed: published.merged.facts.confirmed,
         waiting_events: state.pending().len(),

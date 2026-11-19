@@ -72,6 +72,56 @@ fn bug_foreign_fork_report_must_not_replace_published_journal() {
     assert_eq!(a.run(["sync", "--json"]).returncode(), 0);
 }
 
+/// A sync that puts back the published copy of another machine's journal, whose local copy was
+/// rewritten to give an issue's create another key, reports the key that changed: the issue goes
+/// from the rewritten key back to the published one with no rename on either side, which a
+/// report of the renames alone left out.
+#[test]
+fn a_sync_that_puts_back_a_foreign_journal_reports_the_key_it_changed() {
+    let sandbox = crate::sandbox();
+    let (a, key) = setup(&sandbox);
+    let b = two(&sandbox, &a);
+    let segment = own_segment(&a);
+    let path = segment.strip_prefix(a.store()).unwrap();
+    let path = path.to_str().unwrap().to_owned();
+    let foreign = b.store().join(&path);
+    let text = std::fs::read_to_string(&foreign).unwrap();
+    let mut rows: Vec<Json> = text.lines().map(|row| parse_json(row).unwrap()).collect();
+    let forged = format!("{key}-forged");
+    let create = (rows.iter_mut())
+        .find(|row| {
+            row["op"] == Json::from("create") && row["data"]["key"] == Json::from(key.as_str())
+        })
+        .expect("the issue's create");
+    if let Json::Object(row) = create
+        && let Some(Json::Object(data)) = row.get_mut("data")
+    {
+        data.insert("key".into(), Json::from(forged.as_str()));
+    }
+    let rows: Vec<String> = (rows.iter())
+        .map(|row| write(row, DUMPS_COMPACT).unwrap() + "\n")
+        .collect();
+    std::fs::write(&foreign, rows.concat()).unwrap();
+    assert_eq!(
+        b.show(&forged)["title"],
+        a.show(&key)["title"],
+        "b reads the rewritten key"
+    );
+    let result = b.run(["sync", "--json"]);
+    if result.returncode() != 0 {
+        assert_eq!(code(&result), "JOURNAL_FORK");
+        return;
+    }
+    let report = parse_json(&result.stdout).unwrap();
+    let back =
+        |r: &Json| r["from"] == Json::from(forged.as_str()) && r["to"] == Json::from(key.as_str());
+    let renamed = report["renamed"].as_array().unwrap();
+    assert!(
+        renamed.iter().any(back),
+        "{forged} -> {key} not in {renamed:?}"
+    );
+}
+
 /// Assigns `row.data.fields.title`; missing members fail the test.
 fn retitle(row: &mut Json, title: &str) {
     let fields = match row {

@@ -1,13 +1,12 @@
 //! Applies a create and turns imported dependencies on its key into edges once the key exists.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::{Doing, Names, dangling_type};
-use crate::event::{Field, PARENT_CHILD, REGISTERS};
+use crate::event::{Field, REGISTERS};
 use crate::id::EventId;
-use crate::journal::{Event, Rest};
 use crate::json::{Int, Object, Value};
-use crate::op::{Create, Op};
+use crate::op::Create;
 use crate::state::{
     Comment, DepTags, Edge, IdMap, IdSet, Issue, KeySpace, Knowledge, Meta, Origin, Rename, Stamps,
     State, Target, VecMap, awaited,
@@ -26,7 +25,9 @@ pub(super) fn create(
     let eid = event.id;
     // a child minted under its parent's key follows that parent's key now, and a key another
     // machine's create took first gives way: settled here, before anything binds to it
-    let follows = (event.own_parent).and_then(|parent| followed(st, parent, &create.key));
+    let follows = (create.parent)
+        .filter(|_| !create.imported)
+        .and_then(|parent| followed(st, parent, &create.key));
     // a key the create gives may be the one an import waits for, which it then satisfies; a key it
     // follows to is no import's, and one an import waits for is passed over as an issue's is
     let taken = match &follows {
@@ -94,74 +95,6 @@ fn followed(st: &State, parent: EventId, minted: &str) -> Option<String> {
     let (under, number) = child_number(minted)?;
     let now = st.issues.get(&parent)?.key();
     (now != under).then(|| format!("{now}.{number}"))
-}
-
-/// The parent each create among `events` (`(id, trace, what)` each) names in its own parent-child
-/// edge: the next event its writer wrote, a `dep_add` of type `parent-child` on the create's issue
-/// whose `deps` name the create alone, by the same machine and actor. `bead create --parent` writes
-/// it right after the create, naming by id the parent whose key the child's was minted under, as
-/// its writer saw the tracker, so that replay settles the child's key at its create, a merge
-/// having renamed the parent since. Only a create's that is not an import's, under a numbered key,
-/// counts. With the edges of that shape whose create is not among `events`, each create with the
-/// parent named (a batch that holds an edge alone, as a projection extended an event at a time
-/// does).
-pub(crate) fn own_parents<'a>(
-    events: impl Iterator<Item = (EventId, &'a Event, &'a Rest)> + Clone,
-) -> (HashMap<EventId, EventId>, Vec<(EventId, EventId)>) {
-    let created: HashMap<EventId, &Event> = (events.clone())
-        .filter(|(_, _, what)| {
-            matches!(&what.op, Op::Create(making) if !making.imported && child_number(&making.key).is_some())
-        })
-        .map(|(id, trace, _)| (id, trace))
-        .collect();
-    let mut alone = Vec::new();
-    let mut parents: HashMap<EventId, (EventId, EventId)> = HashMap::new();
-    for (id, trace, what) in events {
-        let Op::DepAdd { to, kind, .. } = &what.op else {
-            continue;
-        };
-        let (&[create], Some(issue)) = (trace.deps(), what.issue.as_deref()) else {
-            continue;
-        };
-        if kind.as_deref() != Some(PARENT_CHILD) || EventId::parse(issue) != Some(create) {
-            continue;
-        }
-        let Some(parent) = EventId::parse(to) else {
-            continue;
-        };
-        match created.get(&create) {
-            Some(made) if made.replica() == trace.replica() && made.actor() == trace.actor() => {
-                // two such edges (attempt records the journal holds unsequenced) name it: the
-                // smallest id's parent, whatever order they were read in
-                let entry = parents.entry(create).or_insert((id, parent));
-                if id < entry.0 {
-                    *entry = (id, parent);
-                }
-            }
-            Some(_) => {}
-            None => alone.push((create, parent)),
-        }
-    }
-    let parents = (parents.into_iter())
-        .map(|(create, (_, parent))| (create, parent))
-        .collect();
-    (parents, alone)
-}
-
-/// Whether the edge naming `parent`, applying after `child`'s create in a later batch, may settle
-/// the child's key otherwise than the create did alone, had replay seen both: the key it was minted
-/// under (before a collision renamed it) is not its parent's now, or another own edge applied
-/// already, among which replay chooses by id. A projection that applied the create alone replays
-/// instead. Asked only of an edge a batch holds without its create, which is rare.
-pub(crate) fn would_follow(st: &State, child: EventId, parent: EventId) -> bool {
-    let Some(issue) = st.issues.get(&child) else {
-        return false;
-    };
-    let minted = (st.renames.iter().rev())
-        .find(|rename| rename.uid == child)
-        .map_or(issue.key(), |rename| rename.from.as_str());
-    let has_parent = (issue.deps().iter()).any(|(edge, _)| edge.kind() == PARENT_CHILD);
-    has_parent || followed(st, parent, minted).is_some()
 }
 
 /// The issue a create makes, under `key`: a register for each field it carries, the status's

@@ -4,8 +4,6 @@
 mod claims;
 mod create;
 
-pub(crate) use create::{own_parents, would_follow};
-
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -33,8 +31,6 @@ pub(super) struct Doing<'a> {
     pub(super) id: EventId,
     pub(super) trace: &'a Event,
     pub(super) what: &'a Rest,
-    /// For a create, the parent its own parent-child edge names ([`own_parents`]).
-    pub(super) own_parent: Option<EventId>,
 }
 
 /// The names that claims, comments and edges repeat (owners, machines, agents, threads, modes,

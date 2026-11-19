@@ -1,5 +1,5 @@
 //! Children made offline under a parent that a merge then renumbers: each follows the parent its
-//! create's own parent edge names, at every depth and whatever else was renamed from the key its
+//! create names by id, at every depth and whatever else was renamed from the key its
 //! writer saw, so that an issue keyed `A.n` is always a child of `A`.
 
 use beadroll_test_support::{Json, Machine, json, json_id, json_line};

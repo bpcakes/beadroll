@@ -390,6 +390,15 @@ fn create_problem(data: Option<&Object>, strings: &dyn Fn(&str) -> bool) -> Opti
     {
         return Some(problem);
     }
+    // added to format 1 (#307): the parent a child was made under, by its id
+    let parent_valid = match get("parent") {
+        None => true,
+        Some(Value::Str(parent)) => crate::id::EventId::parse(parent).is_some(),
+        Some(_) => false,
+    };
+    if !parent_valid {
+        return Some("create event has a malformed 'parent'".into());
+    }
     let extra_valid = matches!(get("extra"), None | Some(Value::Object(_)));
     let comments_valid = matches!(get("comments"), None | Some(Value::Array(_)));
     if !strings("labels") || !extra_valid || !comments_valid {

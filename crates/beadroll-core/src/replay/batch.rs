@@ -1,6 +1,6 @@
 //! Owns state while applying events. Temporary dependency holes never leave a batch.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use super::{Names, apply_one, finish, finish_some};
 use crate::id::EventId;
@@ -22,9 +22,18 @@ impl Batch {
         at: usize,
         event: &Rest,
         inert: Option<&String>,
-        with: (&HashSet<EventId>, &Names, &HashMap<EventId, EventId>),
+        superseded: &HashSet<EventId>,
+        names: &Names,
     ) -> Result<(), KeySpace> {
-        apply_one(&mut self.state, knowledge, at, event, inert, with)
+        apply_one(
+            &mut self.state,
+            knowledge,
+            at,
+            event,
+            inert,
+            superseded,
+            names,
+        )
     }
 
     /// Replay can retry exhausted takeovers without exposing a partially applied State.

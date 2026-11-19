@@ -104,9 +104,8 @@ fn a_copy_counts_past_the_numbers_taken_and_a_later_one_can_take_a_lower_gap() {
 #[test]
 fn stems_count_apart_and_a_copy_counts_from_its_number_without_leading_zeros() {
     // `pr-k.1.1` counts under the stem `pr-k.1`, which is itself a key under `pr-k`; these creates
-    // name no parent edge, so a copy keeps counting under its own stem (`pr-k.1.2`), where a child
-    // whose own edge names a renamed parent would follow it (`a_child_follows_its_own_parent_edge`). A copy of
-    // `pr-k.08` counts from 8, and `pr-k.08` does not hold `pr-k.8`; `pr-k.000` counts from 0.
+    // name no parent, so a copy keeps counting under its own stem (`pr-k.1.2`), where a child whose
+    // create names a renamed parent follows it (`followed`). A copy of `pr-k.08` counts from 8, and `pr-k.08` does not hold `pr-k.8`; `pr-k.000` counts from 0.
     // A key whose stem has a newline has no number, and its copy takes a prefix of its digest.
     let mine = [
         "pr-k.1",

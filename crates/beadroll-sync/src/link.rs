@@ -27,9 +27,7 @@ use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use std::path::PathBuf;
 
-use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
-use beadroll_core::state::Rename;
 use beadroll_git::{
     CountRules, Env, IoError, local_damage, normalize_remote, sync_env, transport_config,
     transport_settings, with_settings,
@@ -40,6 +38,7 @@ use beadroll_store::{
 };
 
 use crate::error::Error;
+use crate::synchronise::KeysBefore;
 use crate::tx::Spent;
 
 use self::helpers::Helpers;
@@ -100,10 +99,10 @@ pub struct Link<'a> {
     pub hashed: Vec<String>,
     /// Unchanged claims directories named directly in publication trees, without mktree input.
     pub reused_trees: Vec<String>,
-    /// Each rename the store's state held, by issue, when a merge that was asked to count renames
-    /// first read it ([`Link::merge_from`]): a sync reports each key its merge changed, from the
-    /// key the issue had then.
-    pub(crate) renames_before: Option<HashMap<EventId, Rename>>,
+    /// The keys the store's state held when a merge that was asked to count renames first read it
+    /// ([`Link::merge_from`]): a sync reports each key its merge changed, from the key the issue
+    /// had then.
+    pub(crate) keys_before: Option<KeysBefore>,
     /// The public merge API cannot return its view. Retain only disposable state until the next
     /// merge or this link's destruction; internal rounds never read or reuse it.
     retained: Spent,
@@ -340,7 +339,7 @@ impl<'a> Link<'a> {
             known: KnownObjects::default(),
             hashed: Vec::new(),
             reused_trees: Vec::new(),
-            renames_before: None,
+            keys_before: None,
             retained: Spent::default(),
         })
     }

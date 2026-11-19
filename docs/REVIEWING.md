@@ -99,7 +99,7 @@ reads, and the published tree is also read by `br`/`bv` through `bead export` an
 | `aliases.json`, `moved.json` | `indent=1`, ASCII-escaped, no trailing newline | Unknown or invalid entries are ignored on read |
 | `<ws>/lock` | Empty, 0600, `flock(2)` exclusive | |
 | `<ws>/meta.json` | `indent=1`, ASCII-escaped; keys `remote` (the remote as it was chosen: a configured remote's name, or a URL), `name`, `last_sync`, `published`, and (added after 0.2.0) `published_to`, the place `published` was published to, read as the URL-derived id reads origin (a relative path from the top of the checkout, normalised), so that every clone and worktree of the store names it alike | origin is never stored as `remote`; a version without `published_to` leaves it as it was, so that a count read after its sync may err high, never low |
-| `<ws>/events/<machine>/NNNNNN.jsonl` | One event per line: `,`/`:` separators, raw UTF-8, keys in the order `v, id, replica, deps, actor, op, issue, data[, where]`; appended with `O_APPEND` and fsynced; a new segment starts at `BEAD_ROTATE_BYTES` | A torn tail is repaired before the next write and kept as `*.torn-<ns>` |
+| `<ws>/events/<machine>/NNNNNN.jsonl` | One event per line: `,`/`:` separators, raw UTF-8, keys in the order `v, id, replica, deps, actor, op, issue, data[, where]`; appended with `O_APPEND` and fsynced; a new segment starts at `BEAD_ROTATE_BYTES` | A torn tail is repaired before the next write and kept as `*.torn-<ns>`. Added after 0.2.0: a create's `data` may hold `parent`, the id of the issue it was made under (§2) |
 | `<ws>/events/<machine>/claims/<event-id>.json` | The attempt's events, compact lines, written atomically | Immutable; on a mismatch the local copy is kept as `*.fork-<ns>` |
 | `<ws>/pending/<id>.json`, `<id>.command` | The pending attempt and its receipt | The receipt's signature is below |
 | `<ws>/projection`, `<ws>/projection-texts` | A cache of one build of bead (§2) | No part of format 1: another build never reads them, and deleting them is always safe |
@@ -159,19 +159,18 @@ These were decided deliberately. Report problems *with* them, not their existenc
   directory's `r`) and `ssh://host/r` (the root's) are two, which the check passes: it cannot
   tell a forge from a server, and refusing the forge's everyday pair costs more.
 
-- A child made under its parent's key (`P.n`) follows that parent when a merge renumbers it, and
-  replay finds the parent in the create's own parent-child edge: the event its writer wrote right
-  after the create (`deps` naming the create alone, on its issue), which names the parent by id.
-  The maintainer chose this on 2026-11-19 over judging, from renames and what the writer had seen,
-  which issue held the key in its view: four such rules each failed a case review found. Replay
-  finds every create's own edge before it applies any event (`own_parents`), so the child's key is
-  settled at its create, a collision with it, and nothing binds to a key it then leaves. The edge
-  must be by the create's machine and actor and one replay applies (not one it reports); of two
-  such, unsequenced attempt records, the smaller id's counts. A create whose next event is not that
-  edge (an older bead's, one hand-written, another writer's on its frontier) keeps its key, and so
-  does an import. A key a child follows to passes over one an import waits for, where a key a
-  create gives may be the one it waits for. A projection extended by the edge alone, after the
-  create, replays when the edge would settle the key otherwise.
+- A child made under its parent's key (`P.n`) follows that parent when a merge renumbers it: its
+  create names the parent by id (`parent`, a member of a create's data added to format 1 after
+  0.2.0, which `bead create --parent` writes), and replay gives the child the parent's key now with
+  its own number, settled at the create, before anything binds to it. The maintainer chose this on
+  2026-11-19, over judging from renames and what the writer had seen which issue held the key in
+  its view (four such rules each failed a case review found), and then over finding the create's
+  own parent-child edge among the events after it, which a torn append could make a later `dep add`
+  of the same writer stand in for. A create without the member (all a released version wrote, none
+  of which followed) keeps its key, and so does an import; an edge never moves a key. A key a
+  child follows to passes over one an import waits for, where a key a create gives may be the one
+  it waits for. An older bead reads the member and ignores it, so its machine follows nothing
+  until it upgrades, as with any change to replay.
 
 - A claim makes its owner the issue's assignee; a release and a reopen (`reopen`, `update --status
   open`) give back the assignee it had before its first claim, which a takeover carries on

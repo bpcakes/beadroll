@@ -15,7 +15,7 @@ use beadroll_store::{
 use super::Link;
 use crate::error::{Error, OWN_CHAIN};
 use crate::link::write::BlobUse;
-use crate::synchronise::SyncReport;
+use crate::synchronise::{KeysBefore, SyncReport};
 use crate::tx::Spent;
 
 const OWN_FORK: &str = "this machine's journal differs from the published one: the same machine \
@@ -152,12 +152,9 @@ impl<'l, 'w> Merging<'l, 'w> {
             repair_tail(self.link.ws, &path)?;
         }
         // the store's projection, with every whole line its segments hold
-        let found = if count == SyncReport::Collect && self.link.renames_before.is_none() {
+        let found = if count == SyncReport::Collect && self.link.keys_before.is_none() {
             let found = projection_sourced(self.link.ws)?;
-            let renamed = (found.state().renames().iter())
-                .map(|rename| (rename.uid, rename.clone()))
-                .collect();
-            self.link.renames_before = Some(renamed);
+            self.link.keys_before = Some(KeysBefore::of(found.state()));
             Some(found)
         } else {
             None

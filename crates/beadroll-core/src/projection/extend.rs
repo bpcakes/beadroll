@@ -51,7 +51,7 @@ use crate::journal::{Event, Journal, Parts, Rest};
 use crate::json::Value;
 use crate::op::Op;
 use crate::order::position;
-use crate::replay::{Batch, Contents, Names, Room, observe_one, own_parents, would_follow};
+use crate::replay::{Batch, Contents, Names, Room, observe_one};
 use crate::state::{KeySpace, Texts, is_text};
 
 /// How an operation uses issue texts.
@@ -75,8 +75,7 @@ pub enum Extended {
 impl Projection {
     /// Applies `records`, read from the journal's files after the records this projection was made
     /// from, as replay would apply them after every event of that journal; or declines
-    /// ([`Extended::Replay`]), also where a renamed copy finds no free key: replay judges every event
-    /// of the batch first, and reports it.
+    /// ([`Extended::Replay`]). Fails only as replay does, when a renamed copy finds no free key.
     pub(crate) fn extend(mut self, records: Vec<Record>) -> Result<Extended, KeySpace> {
         if records.is_empty() {
             return Ok(Extended::Applied(Box::new(self)));
@@ -129,13 +128,6 @@ impl Projection {
         let Some(ordered) = self.after_all(&events) else {
             return Ok(Extended::Replay);
         };
-        // a create's own parent edge settles its key at the create: one held already whose key the
-        // edge would have moved is replayed with its edge, which this batch holds alone
-        let (parents, alone) =
-            own_parents((events.iter().zip(&doing)).map(|((id, e), w)| (*id, e, &**w)));
-        if (alone.iter()).any(|(child, parent)| would_follow(&self.state, *child, *parent)) {
-            return Ok(Extended::Replay);
-        }
         let mut knowledge = std::mem::take(&mut self.state.knowledge);
         // Every new record in its place first, as replay places every record before it observes
         // any: whether one builds on its predecessor is asked of the predecessor in the journal,
@@ -171,20 +163,7 @@ impl Projection {
             {
                 return Ok(Extended::Replay);
             }
-            // placed before every event of the batch is judged, so a key space it exhausts is
-            // replay's to report, which may judge the edge that led there void
-            if batch
-                .apply(
-                    &knowledge,
-                    placed,
-                    what,
-                    None,
-                    (&self.superseded, &names, &parents),
-                )
-                .is_err()
-            {
-                return Ok(Extended::Replay);
-            }
+            batch.apply(&knowledge, placed, what, None, &self.superseded, &names)?;
         }
         self.state = batch.finish_some(knowledge, &doing);
         self.advance(&events, &order);
