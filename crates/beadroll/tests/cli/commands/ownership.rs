@@ -53,19 +53,13 @@ fn transcript_path() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/cli/commands/ownership/transcript.txt")
 }
 
-/// The machine id of `machine`.
-fn replica(machine: &Machine) -> String {
-    let info = machine.bead(["info"]).expect("info");
-    info["machine"].as_str().expect("a machine id").to_owned()
-}
-
 /// Two machines' work, recorded on `t`: every ending of a claim there is, and a claim that lost.
 fn work(t: &mut Transcript, sandbox: &beadroll_test_support::Sandbox, a: &Machine, b: &Machine) {
     let issues = sandbox.root().join("issues.jsonl");
     std::fs::write(&issues, ISSUES).expect("the export");
     let import = issues.display().to_string();
     t.record(a, &["init", "--prefix", "ow", "--import", &import]);
-    t.record(a, &["machines", "--name", &format!("{}=own-a", replica(a))]);
+    t.record(a, &["machines", "--name", &format!("{}=own-a", a.id())]);
     // texts written here, beside the imported ones (a comment would export a number its id makes)
     t.record(a, &["update", "ow-1", "--design", "drawn here"]);
     t.record(a, &["sync"]);
@@ -79,12 +73,7 @@ fn work(t: &mut Transcript, sandbox: &beadroll_test_support::Sandbox, a: &Machin
     t.record(b, &["takeover", "ow-2", "-r", "a looked dead", "--json"]);
     // a machine has an id once it has written; named, unrecorded: `machines` lists both machines
     // by their ids, which each run mints anew, so their order is the run's
-    let named = b.run([
-        "machines",
-        "--name",
-        &format!("{}=own-b", replica(b)),
-        "--json",
-    ]);
+    let named = b.run(["machines", "--name", &format!("{}=own-b", b.id()), "--json"]);
     assert_eq!(named.returncode(), 0, "{}", named.stderr);
     t.record(a, &["close", "ow-2", "-r", "done"]);
     // ended by its owner's close

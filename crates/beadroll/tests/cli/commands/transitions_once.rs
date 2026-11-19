@@ -355,10 +355,7 @@ fn an_issue_named_again_is_as_the_events_before_left_it_though_they_did_not_see_
     assert_eq!(info["frontier"].as_array().map(<[Json]>::len), Some(1));
     // this machine's records
     let own = || {
-        let me = a.bead(["info"]).unwrap()["machine"]
-            .as_str()
-            .unwrap()
-            .to_owned();
+        let me = a.id();
         (std::fs::read_dir(a.store().join("events").join(me)).unwrap())
             .map(|entry| std::fs::read_to_string(entry.unwrap().path()).unwrap())
             .map(|text| text.lines().count())

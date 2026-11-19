@@ -348,7 +348,7 @@ fn aliases_are_utf8_and_existing_members_survive_a_rename() {
     json(&m, &["init", "--prefix", "ex"]);
     let file = m.home().join("aliases.json");
     std::fs::write(&file, seeded).unwrap();
-    let replica = json(&m, &["info"])["machine"].as_str().unwrap().to_owned();
+    let replica = m.id();
     let refused = m
         .cmd([
             OsStr::new("machines"),

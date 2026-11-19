@@ -113,10 +113,7 @@ fn each_event_is_its_log_row_with_title_summary_machine_and_commit() {
         .json();
     a.bead(["claim", &key]);
     a.bead(["close", &key, "-r", "Shipped"]);
-    let machine = a.bead(["info"]).unwrap()["machine"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    let machine = a.id();
     a.bead(["machines", "--name", &format!("{machine}=laptop")]);
     let commit = git(["rev-parse", "HEAD"], Some(a.checkout()));
     // --json marks nothing, and leaves nothing behind
