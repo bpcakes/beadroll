@@ -4,7 +4,7 @@
 use beadroll_core::json::{Format, Style, write};
 use beadroll_test_support::{Json, Machine, Run, Sandbox, code, copy_tree, json_line, parse_json};
 
-use super::{own_segment, remote_blob, setup, two};
+use super::{own_segment, remote_blob, setup, setup_with, two, two_with};
 
 /// Compact, ASCII-escaped JSON with members in insertion order.
 const DUMPS_COMPACT: Format = Format {
@@ -79,8 +79,9 @@ fn bug_foreign_fork_report_must_not_replace_published_journal() {
 #[test]
 fn a_sync_that_puts_back_a_foreign_journal_reports_the_key_it_changed() {
     let sandbox = crate::sandbox();
-    let (a, key) = setup(&sandbox);
-    let b = two(&sandbox, &a);
+    // the report is this build's contract, which an older bead does not keep
+    let (a, key) = setup_with(&sandbox, crate::rust_only);
+    let b = two_with(&sandbox, &a, crate::rust_only);
     let segment = own_segment(&a);
     let path = segment.strip_prefix(a.store()).unwrap();
     let path = path.to_str().unwrap().to_owned();

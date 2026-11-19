@@ -107,7 +107,11 @@ fn followed(st: &State, parent: EventId, minted: &str) -> Option<String> {
     // than that is no merge's work, and is followed nowhere, so that no record makes a key more
     // than a bounded multiple of its own (a chain of them would grow every key it makes)
     let levels = under.bytes().filter(|b| *b == b'.').count() + 1;
-    let bounded = now.len() <= under.len() + levels * LEVEL_GROWTH;
+    // saturating, so that a key of more dots than an address counts bounds alike everywhere
+    let bounded = now.len()
+        <= under
+            .len()
+            .saturating_add(levels.saturating_mul(LEVEL_GROWTH));
     (now != under && bounded).then(|| format!("{now}.{number}"))
 }
 
