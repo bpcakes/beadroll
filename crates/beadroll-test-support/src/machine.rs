@@ -146,6 +146,13 @@ impl Machine {
         shown[0].clone()
     }
 
+    /// The machine's id, as `bead info` names it: the one its journal is kept under, minted by the
+    /// first command that needs one.
+    pub fn id(&self) -> String {
+        let info = self.bead(["info"]).expect("bead info prints a document");
+        info["machine"].as_str().expect("a machine id").to_owned()
+    }
+
     /// The ids `bead ready` offers.
     pub fn ready(&self) -> BTreeSet<String> {
         let ready = self.bead(["ready"]).expect("bead ready prints a list");

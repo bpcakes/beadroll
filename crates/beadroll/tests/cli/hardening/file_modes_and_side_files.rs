@@ -113,10 +113,7 @@ mod data_file_modes {
             let remote = remote.to_str().expect("a UTF-8 path");
             m.bead(["init", "--prefix", "ex", "--tracked", "--remote", remote]);
             // a machine the journal has seen, this one, so that the alias file is written
-            let own = m.bead(["info"]).unwrap()["machine"]
-                .as_str()
-                .unwrap()
-                .to_owned();
+            let own = m.id();
             m.bead(["machines", "--name", &format!("{own}=laptop")]);
             let key = printed_id(m.bead(["create", "x"]));
             let crashed = m

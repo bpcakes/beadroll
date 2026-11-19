@@ -200,7 +200,7 @@ fn troubled(sandbox: &Sandbox) -> Machine {
     // waiting for their causes
     let own = segments(&store)
         .into_iter()
-        .find(|path| path.parent().unwrap() == store.join("events").join(machine_id(&a)))
+        .find(|path| path.parent().unwrap() == store.join("events").join(a.id()))
         .unwrap();
     let text = std::fs::read_to_string(&own).unwrap();
     std::fs::write(&own, text + "this is not json\n").unwrap();
@@ -279,12 +279,6 @@ fn info_machines_and_log_count_what_the_journals_files_hold() {
     let kept = histories(&a);
     std::fs::remove_file(store.join("projection")).unwrap();
     assert_eq!(histories(&a), kept);
-}
-
-/// The id of `machine`'s own journal, as `info` names it.
-fn machine_id(machine: &Machine) -> String {
-    let info = machine.bead(["info"]).unwrap();
-    info["machine"].as_str().unwrap().to_owned()
 }
 
 /// `bead log` before any tracker is made is `NOT_INITIALIZED`, as `show`, `list` and `comments`
@@ -406,10 +400,7 @@ fn machines_lists_and_names_only_machines_the_journal_has_seen() {
     b.bead(["sync"]);
     b.bead(["claim", key.as_str()]);
     a.bead(["sync"]);
-    let b_id = b.bead(["info"]).unwrap()["machine"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    let b_id = b.id();
     let listed = a.bead(["machines"]).unwrap();
     let ids: Vec<&str> = (listed.as_array().unwrap().iter())
         .map(|row| row["machine"].as_str().unwrap())

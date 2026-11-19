@@ -160,10 +160,7 @@ fn machines_name_as_first_command_makes_a_private_home() {
         assert_eq!(loose(m.home()), Vec::<String>::new());
     }
     m.bead(["init", "--prefix", "ex"]);
-    let own = m.bead(["info"]).unwrap()["machine"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    let own = m.id();
     let named = m.run(["machines", "--name", &format!("{own}=laptop"), "--json"]);
     assert_eq!(named.returncode(), 0, "{}", named.stderr);
     assert!(m.home().join("aliases.json").exists());
