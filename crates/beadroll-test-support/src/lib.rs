@@ -21,6 +21,7 @@ mod files;
 mod gate;
 mod isolation;
 mod machine;
+mod output;
 mod pool;
 mod sandbox;
 mod shell;
@@ -35,6 +36,7 @@ pub use isolation::assert_git_isolation;
 pub use machine::{
     Invocation, Machine, Run, UNPROFILED, code, converge, failure_code, reported_code,
 };
+pub use output::uncoloured;
 pub use pool::pool_map;
 pub use sandbox::{Sandbox, UNDER_TEST, built_bead, git, git_command};
 pub use shell::{git_on_path, shell_quoted, ulimit_block};

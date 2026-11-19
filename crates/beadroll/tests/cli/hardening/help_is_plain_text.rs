@@ -13,7 +13,9 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
-use beadroll_test_support::{Drained, Machine, Run, Sandbox, drain, exited_within, parse_json};
+use beadroll_test_support::{
+    Drained, Machine, Run, Sandbox, drain, exited_within, parse_json, uncoloured,
+};
 use rustix::io::{FdFlags, fcntl_setfd};
 use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
 
@@ -128,27 +130,6 @@ fn drained(master: OwnedFd) -> Receiver<Vec<u8>> {
 /// Machine `help`.
 fn set_up(sandbox: &Sandbox) -> Machine {
     Machine::new(sandbox, "help")
-}
-
-/// `text` without its colour codes (`ESC [ … m`).
-fn uncoloured(text: &str) -> String {
-    let mut out = String::new();
-    let mut rest = text;
-    while let Some(at) = rest.find("\u{1b}[") {
-        out.push_str(&rest[..at]);
-        let after = &rest[at + 2..];
-        let end = after
-            .find(|c: char| !(c.is_ascii_digit() || c == ';'))
-            .unwrap_or(after.len());
-        assert!(
-            after[end..].starts_with('m'),
-            "not a colour code: {:?}",
-            start(rest)
-        );
-        rest = &after[end + 1..];
-    }
-    out.push_str(rest);
-    out
 }
 
 /// G59: `bead help create` and `bead create --help` on a terminal are coloured with codes the
