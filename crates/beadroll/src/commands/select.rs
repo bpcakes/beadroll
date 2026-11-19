@@ -1,5 +1,6 @@
 //! The issues `list` and `ready` show: filtered, limited and laid out as rows.
 
+use beadroll_core::code::Code;
 use beadroll_core::event::{DONE, Field, PARENT_CHILD, status};
 use beadroll_core::json::{Int, Value};
 use beadroll_core::op::IntegerField;
@@ -33,6 +34,14 @@ pub(crate) struct Filters {
 /// no issue and a priority that is none are errors, never an empty answer: both are read before
 /// anything is filtered.
 pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Issue>, Failure> {
+    // an empty assignee is no one named: refused, never every issue instead
+    if filters
+        .assignee
+        .as_deref()
+        .is_some_and(|a| a.trim().is_empty())
+    {
+        return Err(Failure::new(Code::Validation, "--assignee needs a name"));
+    }
     let statuses = split_list(&filters.status);
     // `--status all` names every status; `--all` only lifts the default that leaves done and
     // deferred issues out, so that statuses named beside it still filter
@@ -73,7 +82,7 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
         if (priority.as_ref()).is_some_and(|priority| issue.priority() != *priority) {
             continue;
         }
-        if let Some(assignee) = filters.assignee.as_ref().filter(|a| !a.is_empty()) {
+        if let Some(assignee) = filters.assignee.as_ref() {
             let held = issue
                 .read_field(Field::Assignee)?
                 .filter(|value| **value != Value::Null);

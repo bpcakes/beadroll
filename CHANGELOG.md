@@ -6,6 +6,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- An option given as nothing is refused, never read as not given: `--status ""` (it left the
+  status), `log ""` (it listed every event), `--assignee ""` (every issue), `--author ""` (it wrote
+  the actor), `export -o ""` (it wrote to standard output), `machines --name ""` (it only listed),
+  `init --prefix ""` and `--remote ""` (the repository's name or origin). An empty `dep --type` is
+  still none given, and an empty label adds nothing, as decided.
+
 - `init --import` without `--prefix` reads the prefix real Beads exports hold: what every id shares
   before its last segment, slug-keyed ids among them (`syrup-rail-simplification-audit-x1` beside
   `syrup-rail-0u9`). It took each id's text before its last `-`, so every real export tried was

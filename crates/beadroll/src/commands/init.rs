@@ -359,10 +359,31 @@ fn publication_note(ws: &Workspace, live: Option<&Endpoint>) -> Result<Option<St
     )))
 }
 
+/// Refuses a `--prefix` or a `--remote` given as nothing: none is no prefix or remote, never the
+/// repository's name or origin read instead.
+fn refuse_nothing_given(args: &InitArgs) -> Result<(), Failure> {
+    if (args.prefix.as_ref())
+        .is_some_and(|p| beadroll_core::text::strip(&p.to_string_lossy()).is_empty())
+    {
+        return Err(Failure::new(
+            Code::Validation,
+            "--prefix needs a prefix, such as bd",
+        ));
+    }
+    if args.remote.as_ref().is_some_and(|r| r.is_empty()) {
+        return Err(Failure::new(
+            Code::Validation,
+            "--remote needs a remote's name or URL; leave it out for origin",
+        ));
+    }
+    Ok(())
+}
+
 /// Creates the tracker here: the `init` event (once), an optional import, the remote recorded,
 /// and publishes at once unless `--offline`. A tracker the remote already publishes is joined
 /// instead of a second one started ([`join_published`]).
 pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure> {
+    refuse_nothing_given(&args)?;
     if args.mode == ImportMode::DryRun {
         return dry_run(ctx, &args);
     }
