@@ -12,15 +12,15 @@ use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
 use beadroll_core::state::{Issue, State};
-use beadroll_core::text::{str_of, strip};
+use beadroll_core::text::str_of;
 use beadroll_store::Label;
 use beadroll_sync::{Emitter, Mode, NetworkMode, coordinated, publish_soon, writing_state};
 
 use super::ownership::{ClaimStep, claim_note, command_signature, details, still_held};
 use super::{
     ContentArgs, Context, Failure, Line, Outcome, Payload, Tone, arg_texts, edge_data, encodable,
-    ended_by, field_args, issue_line, need_tracker, refuse_foreign_claim, remove_edge, resolve_arg,
-    split_args, view_of, view_of_written,
+    ended_by, field_args, holds_nothing, issue_line, need_tracker, refuse_foreign_claim,
+    remove_edge, resolve_arg, split_args, view_of, view_of_written,
 };
 
 /// Whether an update requested any changes.
@@ -51,11 +51,7 @@ pub(crate) struct UpdateArgs {
 /// Changes each issue as asked; its detail afterwards.
 pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Failure> {
     // a title is never cleared, by null or by text that holds nothing, as create refuses one
-    if args
-        .title
-        .as_deref()
-        .is_some_and(|t| strip(&t.to_string_lossy()).is_empty())
-    {
+    if args.title.as_deref().is_some_and(holds_nothing) {
         return Err(Failure::new(Code::Validation, "a title cannot be empty"));
     }
     let mut fields = field_args(args.title.as_deref(), &args.fields)?;

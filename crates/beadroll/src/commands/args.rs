@@ -9,9 +9,12 @@ use beadroll_core::code::Code;
 use beadroll_core::event::STATUSES;
 use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::state::{Issue, State};
-use beadroll_core::text::{is_space, repr_bytes, strip};
+use beadroll_core::text::{is_space, repr_bytes};
 
-use super::{Failure, issue_not_found, parse_priority, priority_out_of_range, read_utf8, resolve};
+use super::{
+    Failure, holds_nothing, issue_not_found, parse_priority, priority_out_of_range, read_utf8,
+    resolve,
+};
 
 /// Whether command-line text can be encoded in an event. It travels with the text from where the
 /// argument is read to the [`encodable`] check after the event is emitted.
@@ -213,21 +216,13 @@ pub(crate) fn field_args(title: Option<&OsStr>, flags: &ContentArgs) -> Result<P
             .insert("priority".into(), Value::from(priority));
     }
     // an empty type or parent is not one: refused, as an empty title is, never read as not given
-    if flags
-        .issue_type
-        .as_deref()
-        .is_some_and(|t| strip(&t.to_string_lossy()).is_empty())
-    {
+    if flags.issue_type.as_deref().is_some_and(holds_nothing) {
         return Err(Failure::new(
             Code::Validation,
             "--type needs a type, such as task or bug",
         ));
     }
-    if flags
-        .parent
-        .as_deref()
-        .is_some_and(|p| strip(&p.to_string_lossy()).is_empty())
-    {
+    if flags.parent.as_deref().is_some_and(holds_nothing) {
         return Err(Failure::new(
             Code::Validation,
             "--parent needs an issue's key; take an issue out of its parent with \
@@ -243,11 +238,7 @@ pub(crate) fn field_args(title: Option<&OsStr>, flags: &ContentArgs) -> Result<P
             .insert("estimated_minutes".into(), Value::Int(estimate.clone()));
     }
     // an empty status is none: refused, as an empty type is, never read as not given
-    if flags
-        .status
-        .as_deref()
-        .is_some_and(|s| strip(&s.to_string_lossy()).is_empty())
-    {
+    if flags.status.as_deref().is_some_and(holds_nothing) {
         return Err(Failure::new(
             Code::Validation,
             "--status needs a status, such as open or closed",

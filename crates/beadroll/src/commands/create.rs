@@ -8,13 +8,14 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
 use beadroll_core::query::blocking;
 use beadroll_core::state::{Issue, State};
-use beadroll_core::text::strip;
+
 use beadroll_store::{uuid7, view_outline};
 use beadroll_sync::{NetworkMode, Tx, publish_soon, writing_spent};
 
 use super::{
     ContentArgs, Context, Failure, Line, Outcome, Payload, Tone, arg_text, arg_texts, edge_data,
-    encodable, field_args, need_tracker, resolve_arg, rpartition, split_args, texts_in,
+    encodable, field_args, holds_nothing, need_tracker, resolve_arg, rpartition, split_args,
+    texts_in,
 };
 
 /// `create`'s arguments.
@@ -37,7 +38,7 @@ pub(crate) fn create(ctx: &Context<'_>, args: &CreateArgs) -> Result<Outcome, Fa
     let title = [&args.title, &args.title_pos]
         .into_iter()
         .flatten()
-        .find(|t| !strip(&t.to_string_lossy()).is_empty());
+        .find(|t| !holds_nothing(t));
     let Some(title) = title else {
         return Err(Failure::new(Code::Validation, "a title is required"));
     };

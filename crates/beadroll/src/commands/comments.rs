@@ -10,7 +10,8 @@ use beadroll_core::text::{str_of, strip};
 use beadroll_sync::writing_spent;
 
 use super::{
-    Context, Failure, Outcome, arg_text, encodable, need_tracker, read_utf8, resolve_arg, view_of,
+    Context, Failure, Outcome, arg_text, encodable, holds_nothing, need_tracker, read_utf8,
+    resolve_arg, view_of,
 };
 use crate::commands::args::TextValidity;
 
@@ -113,11 +114,7 @@ fn add(
         return Err(Failure::new(Code::Validation, "comment text is required"));
     }
     // an empty author is none: refused, never the actor instead
-    if args
-        .author
-        .as_deref()
-        .is_some_and(|a| strip(&a.to_string_lossy()).is_empty())
-    {
+    if args.author.as_deref().is_some_and(holds_nothing) {
         return Err(Failure::new(Code::Validation, "--author needs a name"));
     }
     let author = args.author.as_deref().map(arg_text);

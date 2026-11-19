@@ -329,6 +329,13 @@ pub(crate) fn tracker_name(meta: &beadroll_core::metadata::Metadata, st: &State)
         .cloned()
 }
 
+/// Whether `text` holds nothing: empty, or Unicode spaces alone, as Python's `strip()` reads them.
+/// A title, a type, a parent, a status, an author or a prefix that holds nothing is none, and
+/// refused, never read as not given.
+pub(crate) fn holds_nothing(text: impl AsRef<OsStr>) -> bool {
+    beadroll_core::text::strip(&text.as_ref().to_string_lossy()).is_empty()
+}
+
 /// There must be a tracker here.
 pub(crate) fn need_tracker(st: &State) -> Result<(), Failure> {
     if st.prefix().is_none() {
