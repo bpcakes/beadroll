@@ -9,7 +9,7 @@ use beadroll_core::state::{Issue, State, Target};
 use std::ffi::OsString;
 
 use super::args::{parse_priority_arg, resolve_arg};
-use super::{Failure, Line, Tone, split_list};
+use super::{Failure, Line, Tone, holds_nothing, split_list};
 
 /// The filters shared by `list` and `ready`, as given. Command-line text that is not UTF-8 matches
 /// nothing (`args.rs`): the values that are UTF-8 are kept, and `unmatched` says that a filter
@@ -35,11 +35,7 @@ pub(crate) struct Filters {
 /// anything is filtered.
 pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Issue>, Failure> {
     // an empty assignee is no one named: refused, never every issue instead
-    if filters
-        .assignee
-        .as_deref()
-        .is_some_and(|a| a.trim().is_empty())
-    {
+    if filters.assignee.as_deref().is_some_and(holds_nothing) {
         return Err(Failure::new(Code::Validation, "--assignee needs a name"));
     }
     let statuses = split_list(&filters.status);

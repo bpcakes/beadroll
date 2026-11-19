@@ -22,7 +22,7 @@ use super::import::{
     Imported, answer_dry_run, export_records, import_records, read_only, records_prefix,
     shared_prefix,
 };
-use super::{Context, Failure, ImportMode, Outcome, counted, text};
+use super::{Context, Failure, ImportMode, Outcome, counted, holds_nothing, text};
 
 /// Which workspace id a tracked file records.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -363,9 +363,7 @@ fn publication_note(ws: &Workspace, live: Option<&Endpoint>) -> Result<Option<St
 /// Refuses a `--prefix` or a `--remote` given as nothing: none is no prefix or remote, never the
 /// repository's name or origin read instead.
 fn refuse_nothing_given(args: &InitArgs) -> Result<(), Failure> {
-    if (args.prefix.as_ref())
-        .is_some_and(|p| beadroll_core::text::strip(&p.to_string_lossy()).is_empty())
-    {
+    if (args.prefix.as_ref()).is_some_and(holds_nothing) {
         return Err(Failure::new(
             Code::Validation,
             "--prefix needs a prefix, such as bd",
