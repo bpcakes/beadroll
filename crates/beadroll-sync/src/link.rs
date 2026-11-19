@@ -215,9 +215,21 @@ fn one_repository(ws: &Workspace, env: &Env, remote: &Endpoint) -> Result<(), Er
 fn place(url: &OsStr, cwd: &std::path::Path) -> Vec<u8> {
     let normalized = normalize_remote(url, cwd);
     if url.as_bytes().windows(3).any(|w| w == b"://") {
-        without_port(&normalized)
-    } else {
-        normalized.into_vec()
+        return without_port(&normalized);
+    }
+    if beadroll_git::is_local_path(url) {
+        return normalized.into_vec();
+    }
+    // scp's `host:PATH` is `ssh://host/PATH`: its colon read as the slash, whatever follows it
+    let bytes = normalized.as_bytes();
+    match bytes.iter().position(|b| *b == b':') {
+        Some(colon) if !bytes[..colon].contains(&b'/') => {
+            let path = bytes[colon + 1..]
+                .strip_prefix(b"/")
+                .unwrap_or(&bytes[colon + 1..]);
+            [&bytes[..colon], b"/", path].concat()
+        }
+        _ => bytes.to_vec(),
     }
 }
 
@@ -501,7 +513,16 @@ mod tests {
         assert_ne!(place("ssh://git@other.example:2222/o/r.git"), https);
         assert_ne!(place("https://forge.example/o/other.git"), https);
         assert_eq!(place("/srv/git/r.git"), place("/srv/git/r.git/"));
-        // scp syntax has no port: `2222/o/r` is its path, another repository
+        // scp syntax has no port: `2222/o/r` is its path, another repository, the same one as
+        // `https://forge.example/2222/o/r`; an absolute scp path is the ssh URL's
         assert_ne!(place("git@forge.example:2222/o/r.git"), https);
+        assert_eq!(
+            place("git@forge.example:2222/o/r.git"),
+            place("https://forge.example/2222/o/r")
+        );
+        assert_eq!(
+            place("git@forge.example:/srv/r.git"),
+            place("ssh://git@forge.example/srv/r.git")
+        );
     }
 }

@@ -25,11 +25,11 @@ Reviewers: propose new rows in your report using the next free id for your revie
 ## Weeding audit (2026-11-17, ids AT)
 
 Not reported by a review: an audit for workarounds and copied patterns that the next change would
-copy as the established way (PRs #143 to #303), each candidate checked against the code. Most of
+copy as the established way (PRs #143 to #304), each candidate checked against the code. Most of
 its slices changed no behaviour; these rows are the bugs it found on the way, each fixed with a
 test that fails without the fix. From AT13 on, many were found by fresh reviews run within the
 audit and by runs of the built bead in scratch repositories, the seven real Beads exports on the
-maintainer's machine among them (AT77), and AT78 to AT84 by a review of the audit's own changes;
+maintainer's machine among them (AT77), and AT78 to AT94 by reviews of the audit's own changes;
 none of those runs left a report under `reviews/`.
 
 | Id | Severity | Finding | Status | Resolution | Tests |
@@ -125,6 +125,9 @@ none of those runs left a report under `reviews/`.
 | AT89 | Medium | `create` under two parents made an issue whose parents closed a loop through it (p1 waits for its child, which inherits p2's prerequisite, which waits for p1), which `dep add` refuses for the same second parent; `dep cycles` then reported nothing | fixed | `create` asks whether what one parent passes down reaches another (`State::passes_down_to`) (#303) | `beadroll`: `commands::end_to_end::graph::a_new_issue_under_two_parents_that_close_a_loop_is_refused` |
 | AT90 | Low | AT83's prefix read missed bd's spelling of the key, `issue-prefix`, and kept a comment after a tab in the value | fixed | Both spellings are read, and a value ends at a `#` after any whitespace (#303) | `beadroll`: `commands::input::init_import_takes_the_prefix_beads_keyed_the_records_under` |
 | AT91 | Low | AT79's port rule took an scp path beginning with digits (`git@host:2222/r`, the path `2222/r`) for a port, so a push URL reaching another repository passed for the fetch one | fixed | Only a URL with a scheme has its port set aside (#303) | `beadroll-sync`: `link::tests::a_port_does_not_make_another_place` |
+| AT92 | Medium | `init --tracked --import bad.jsonl` refused the export as not UTF-8 but left a `.beadroll.json` with a new workspace id behind, and against a remote that publishes a tracker had joined it first: the export was read after the remote and the workspace were chosen | fixed | `init` reads the export before it chooses or writes anything (#304) | `beadroll`: `commands::input::a_refused_init_import_writes_nothing` |
+| AT93 | Low | AT91's rule kept an scp URL's colon, so `git@host:/srv/r.git` and `ssh://git@host/srv/r.git`, one repository, were refused as `CONFIG` | fixed | Scp's `host:PATH` is compared as `host/PATH`, the colon read as the slash (#304) | `beadroll-sync`: `link::tests::a_port_does_not_make_another_place` |
+| AT94 | Low | A `config.yaml` beginning with a byte order mark, or holding `issue-prefix : br`, had its prefix ignored, so a lone slug-keyed record gave its slug again (AT83) | fixed | A key is read after a byte order mark and with spaces before its colon, unindented (#304) | `beadroll`: `commands::input::init_import_takes_the_prefix_beads_keyed_the_records_under` |
 
 ## Published-count race (roll-byaq, 2026-11-12)
 
