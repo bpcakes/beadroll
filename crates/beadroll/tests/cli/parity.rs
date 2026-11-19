@@ -167,7 +167,9 @@ fn common_writes_export_the_same_on_both_machines() {
             "45",
         ],
     );
-    json(&r, &["update", &x, "--set-labels", "c", "--parent", &y]);
+    // a parent that closes no loop: `y` depends on `x`, so `x` under `y` would wait for itself
+    let w = json_id(&json(&r, &["create", "r parent"]));
+    json(&r, &["update", &x, "--set-labels", "c", "--parent", &w]);
     let comment = [
         "comments", "add", &y, "-m", "from r", "--author", "reviewer",
     ];

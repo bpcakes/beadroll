@@ -228,10 +228,12 @@ fn change(
         let shown = match (action, target) {
             (Action::Add, Some(target)) => {
                 let kind = kind.as_deref().unwrap_or(BLOCKS);
+                // a child inherits its ancestors' prerequisites: a loop through them is refused
+                // as a cycle is, though `dep cycles` finds none
                 let looped = if blocking(kind) {
-                    st.reaches(target.uid(), issue.uid())
+                    st.prerequisite_would_loop(issue.uid(), target.uid())
                 } else if kind == PARENT_CHILD {
-                    st.reaches(issue.uid(), target.uid())
+                    st.parent_would_loop(issue.uid(), target.uid())
                 } else {
                     false
                 };

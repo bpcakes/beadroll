@@ -353,6 +353,7 @@ fn execute(
             None,
         ),
     };
+    let notes = outcome.notes;
     let finished = finish(
         outcome,
         ws.as_ref().filter(|_| !free),
@@ -361,9 +362,21 @@ fn execute(
         run_lifetime,
         |warning| warn(&warning, output_mode, colors.stderr),
     )?;
-    let Some(answer) = finished else {
+    let Some(mut answer) = finished else {
         return Ok(None);
     };
+    // an answer that is its first line alone: what follows it is said on standard error
+    if notes == commands::Notes::OnStderr
+        && output_mode == OutputMode::Human
+        && let Some(lines) = &mut answer.1
+        && lines.len() > 1
+    {
+        let said = lines.split_off(1);
+        let _ = output::emit(
+            Some(&paint::render_all(&said, colors.stderr)),
+            output::Stream::Stderr,
+        );
+    }
     Ok(rendered(answer, output_mode, colors)?.map(Printed::from))
 }
 
@@ -405,6 +418,8 @@ fn finish(
         settled,
         held,
         count_warning,
+        // read by the command line before it calls this, to place the lines this returns
+        notes: _,
     } = outcome;
     let ws = ws.filter(|_| !settled);
     // where what the command wrote goes, chosen before what it held is let go of: a write with no

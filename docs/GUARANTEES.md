@@ -488,7 +488,10 @@ it, and the file is committed again.
 - A `--status` change made with `update` follows the same ownership rules and
   publishes an owner's close immediately, like `bead close`; `--parent` refuses a
   loop, like `dep add`. So does `create`, whether it names the new issue's parent by
-  `--parent` or as a `parent-child` dependency in `--deps`.
+  `--parent` or as a `parent-child` dependency in `--deps`. A loop through a
+  prerequisite a child inherits from its ancestors is one too, though `dep cycles`
+  follows no such edge: a parent that waits already for its new child, or a `blocks`
+  dependency on one's own descendant, is `CYCLE`.
 - Exported Beads comment ids: an imported comment keeps its id, unless a
   comment made here derived the same one, or an imported one exported before it
   holds it, when it moves on to the next free number: no two comments export one id; a comment made

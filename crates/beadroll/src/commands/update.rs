@@ -69,6 +69,21 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
     // in_progress is reached only through a claim
     let wants_claim = args.claim || status.as_deref() == Some(status::IN_PROGRESS);
     let status = status.filter(|named| named != status::IN_PROGRESS);
+    // a reopen ends the claim it would take: refused before anything is written, never written
+    // whole and answered NOT_OWNER, as each retry would write it again
+    if wants_claim && status.as_deref() == Some(status::OPEN) {
+        return Err(Failure::new(
+            Code::Validation,
+            "--claim with --status open would end the claim it takes: claim the issue, or reopen it",
+        ));
+    }
+    // a set replaces the labels whole: what is added or taken back beside it would be undone
+    if args.set_labels.is_some() && !(args.add_label.is_empty() && args.remove_label.is_empty()) {
+        return Err(Failure::new(
+            Code::Usage,
+            "--set-labels replaces the labels: give it alone, or --add-label and --remove-label",
+        ));
+    }
     let kind = if fields.values.is_empty()
         && status.is_none()
         && !wants_claim
@@ -268,7 +283,7 @@ fn check(st: &State, issue: &Issue, change: &Change<'_>) -> Result<(), Failure> 
         ..
     } = *change;
     if let Some(parent) = new_parent
-        && (parent == issue.uid() || st.reaches(issue.uid(), parent))
+        && st.parent_would_loop(issue.uid(), parent)
     {
         return Err(Failure::new(
             Code::Cycle,

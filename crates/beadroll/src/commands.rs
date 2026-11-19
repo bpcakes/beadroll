@@ -106,6 +106,20 @@ pub(crate) struct Outcome {
     /// before it publishes), and the tests that pin it: `cli::ending` the order, `xtask/tests/heap`
     /// the heap.
     pub(crate) held: Option<Box<dyn Held>>,
+    /// Where the lines after the answer's first go when a human reads it ([`Outcome::first_line_alone`]).
+    pub(crate) notes: Notes,
+}
+
+/// Where an outcome's lines after its first go in human output: with it on standard output, or,
+/// for an answer that is that line alone (`create --silent`, captured as `ID=$(…)`), to standard
+/// error, as warnings are. `--json` is one document either way.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Notes {
+    /// On standard output, after the answer.
+    #[default]
+    WithAnswer,
+    /// On standard error: standard output holds the first line alone.
+    OnStderr,
 }
 
 /// What a command leaves for the command line to keep until the process exits, or to free first
@@ -127,6 +141,16 @@ impl Outcome {
             settled: false,
             count_warning: None,
             held: None,
+            notes: Notes::WithAnswer,
+        }
+    }
+
+    /// This outcome, whose first line is the whole answer, as `--silent` promises: what is said
+    /// after it (that a write is not yet published) goes to standard error.
+    pub(crate) fn first_line_alone(self) -> Outcome {
+        Outcome {
+            notes: Notes::OnStderr,
+            ..self
         }
     }
 
@@ -139,6 +163,7 @@ impl Outcome {
             settled: false,
             count_warning: None,
             held: None,
+            notes: Notes::WithAnswer,
         }
     }
 

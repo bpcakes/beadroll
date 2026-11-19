@@ -338,3 +338,51 @@ fn an_empty_parent_or_type_is_refused() {
         "a refused create made an issue: {listed:?}"
     );
 }
+
+/// What `update` cannot do as asked is refused before anything is written: `--claim --status open`,
+/// whose reopen would end the claim it takes (it wrote both and answered `NOT_OWNER`, again on
+/// each retry), and `--set-labels` beside `--add-label` or `--remove-label`, which it overwrote.
+#[test]
+fn update_refuses_what_it_would_undo_itself() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    machine.bead(["init", "--prefix", "ex"]);
+    let key = machine.bead(["create", "x"]).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let events = || machine.bead(["info"]).unwrap()["events"].clone();
+    let before = events();
+    let claimed = machine.run([
+        "update",
+        key.as_str(),
+        "--claim",
+        "--status",
+        "open",
+        "--title",
+        "y",
+        "--json",
+    ]);
+    assert_eq!(code(&claimed), "VALIDATION", "{}", claimed.stderr);
+    let labels = machine.run([
+        "update",
+        key.as_str(),
+        "--set-labels",
+        "a,b",
+        "--add-label",
+        "c",
+        "--json",
+    ]);
+    assert_eq!(code(&labels), "USAGE", "{}", labels.stderr);
+    let removed = machine.run([
+        "update",
+        key.as_str(),
+        "--set-labels",
+        "a",
+        "--remove-label",
+        "a",
+        "--json",
+    ]);
+    assert_eq!(code(&removed), "USAGE", "{}", removed.stderr);
+    assert_eq!(events(), before, "a refused update wrote");
+}
