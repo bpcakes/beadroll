@@ -43,9 +43,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   it, and a sibling made meanwhile keeps its own. Projections are rebuilt once (`ENCODING` 16).
   Upgrading: until every machine runs this bead, an older one keeps such a child's minted key
   (*Format and upgrades* in `docs/GUARANTEES.md`). A build of `main` made after #301 and before
-  this one followed children whose creates name no parent; once upgraded, such a child takes back
-  the key its create gave, and an issue that held that key since (an import, another child) gives
-  way to the next free one, with no rename in any sync's report. A key such a build printed may
+  this one followed children whose creates name no parent; once upgraded, such a child is keyed
+  again from the key its create gave, under the rule every copy of a key keeps (the issue that
+  sorts first holds it, a later one takes the next free number), so that it, or an issue that held
+  its key since (an import, another child), can move, with no rename in any sync's report. A key such a build printed may
   name another issue now: find the issue by its title (`bead search --all "TITLE"`) and check it
   with `bead show NEW_KEY` before writing by a key.
 - `sync` reports every key its merge changed: a key an earlier sync had renamed, moved again, was

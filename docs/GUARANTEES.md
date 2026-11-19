@@ -280,8 +280,9 @@ write made by that key goes to the issue it names there: during a rolling
 upgrade, sync the machine that writes first, then look the issue up there
 (`bead search`, `bead show`), rather than writing by a key another machine
 printed. An online claim merges before it reads its key, so a publication made
-meanwhile can still move one; `bead show` after the write says which issue it
-went to. An imported
+meanwhile can still move one. A key looked up after the write may name another
+issue by then; the write's own event does not change: it names its issue by an
+immutable id, which `bead log --json` of the issue shows with the key it has. An imported
 dependency still waiting for a key binds to the issue that holds it on each
 machine, which can differ, so the two can see different blockers, and readiness,
 for the importing issue.
