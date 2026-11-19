@@ -398,13 +398,15 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
     if args.mode == ImportMode::DryRun {
         return dry_run(ctx, &args);
     }
+    // read before anything is chosen or written: an export refused leaves no tracked file, no
+    // joined tracker, nothing half-done
+    let export = read_export(&args)?;
     let mut notes = Vec::new();
     let given = given_remote(ctx, &args, &mut notes)?;
     let live = given.as_ref().map(|given| given.live.clone());
     let Chosen { ws: chosen, joined } = workspace_for(ctx, given.as_ref(), &args)?;
     let ws: &Workspace = chosen.as_ref().unwrap_or(ctx.ws);
     let prefix_flag = args.prefix.as_deref().map(text).transpose()?;
-    let export = read_export(&args)?;
     let (prefix, imported) = writing(ws, ctx.actor, |tx| -> Result<_, Failure> {
         if tx.state()?.prefix().is_none() {
             let name = match &ws.name {

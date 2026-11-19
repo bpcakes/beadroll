@@ -6,6 +6,14 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `init --import` of an export it refuses writes nothing: the export is read before a remote or a
+  workspace is chosen, where a refused one left a `.beadroll.json` with a new id behind, or a
+  published tracker joined.
+- An scp URL with an absolute path (`git@host:/srv/r.git`) is the same repository as
+  `ssh://git@host/srv/r.git` to the split-remote check, which refused the pair as `CONFIG`.
+- The reading of Beads' `config.yaml` takes a key after a byte order mark and with spaces
+  before its colon (`issue-prefix : br`).
+
 - A child whose writer saw two renames of its parent's key follows the parent it meant, the first
   of them in replay order; it followed the last, a sibling.
 - `create` under two parents refuses a loop through what one passes down to the other, as `dep add`

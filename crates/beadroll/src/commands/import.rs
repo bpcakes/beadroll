@@ -129,18 +129,20 @@ fn configured_prefix(beads: &Path) -> Result<Option<String>, Failure> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(beadroll_git::IoError::at(&error, &file).into()),
     };
-    // `issue_prefix`, or bd's `issue-prefix`; a comment begins at a `#` after whitespace
+    // `issue_prefix`, or bd's `issue-prefix`, a top-level key (unindented, spaces allowed before its
+    // colon); a comment begins at a `#` after whitespace; a byte order mark begins no key
     let without_comment = |value: &str| {
         let at = (value.char_indices().skip(1))
             .find(|(at, c)| *c == '#' && value[..*at].ends_with(char::is_whitespace))
             .map_or(value.len(), |(at, _)| at);
         value[..at].to_owned()
     };
+    let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
     let value = (text.lines())
-        .filter_map(|line| {
-            (line.strip_prefix("issue_prefix:")).or_else(|| line.strip_prefix("issue-prefix:"))
-        })
-        .map(without_comment)
+        .filter(|line| !line.starts_with(char::is_whitespace))
+        .filter_map(|line| line.split_once(':'))
+        .filter(|(key, _)| matches!(key.trim_end(), "issue_prefix" | "issue-prefix"))
+        .map(|(_, value)| without_comment(value))
         .map(|value| value.trim().trim_matches(['"', '\'']).to_owned())
         .find(|value| !value.is_empty());
     Ok(value)
