@@ -37,7 +37,14 @@ pub(super) fn renamed_by_merge(state: &State, before: Option<&KeysBefore>) -> Ve
     let Some(before) = before else {
         return Vec::new();
     };
-    let had: HashMap<EventId, &str> = (before.keys.iter())
+    // indexed are only the issues whose key moved: an issue the merge left alone holds its key in
+    // `before` still, and one new to the sync holds none there
+    let moved: HashMap<EventId, &str> = (before.keys.iter())
+        .filter(|(key, uid)| {
+            state
+                .issue(**uid)
+                .is_some_and(|issue| issue.key() != key.as_str())
+        })
         .map(|(key, uid)| (*uid, key.as_str()))
         .collect();
     // the renames are in replay order, at most one an issue, as the issues are: walked alongside
@@ -46,14 +53,15 @@ pub(super) fn renamed_by_merge(state: &State, before: Option<&KeysBefore>) -> Ve
     for issue in state.issues() {
         let (uid, now) = (issue.uid(), issue.key());
         let renamed = renames.next_if(|rename| rename.uid == uid);
-        let rename = match had.get(&uid) {
-            Some(had) if *had == now => continue,
+        let rename = match moved.get(&uid) {
             Some(had) => Rename {
                 from: (*had).to_owned(),
                 to: now.to_owned(),
                 replica: issue.origin_machine().to_owned(),
                 uid,
             },
+            None if before.keys.get(now) == Some(&uid) => continue,
+            // new to the sync
             None => match renamed {
                 Some(rename) => (*rename).clone(),
                 None => continue,

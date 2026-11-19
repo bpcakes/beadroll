@@ -277,8 +277,11 @@ child under another sibling; an upgraded machine follows the parent the create
 names. Ids and the edges that name them agree everywhere. Until every machine is
 upgraded, a key learned on one machine can name another issue on another, and a
 write made by that key goes to the issue it names there: during a rolling
-upgrade, look the issue up on the machine that writes (`bead search`, `bead
-show`) rather than writing by a key another machine printed. An imported
+upgrade, sync the machine that writes first, then look the issue up there
+(`bead search`, `bead show`), rather than writing by a key another machine
+printed. An online claim merges before it reads its key, so a publication made
+meanwhile can still move one; `bead show` after the write says which issue it
+went to. An imported
 dependency still waiting for a key binds to the issue that holds it on each
 machine, which can differ, so the two can see different blockers, and readiness,
 for the importing issue.
