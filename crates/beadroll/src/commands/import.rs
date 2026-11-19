@@ -4,6 +4,7 @@
 
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
+use std::path::Path;
 
 use beadroll_core::code::Code;
 use beadroll_core::import::dry_run::{Preview, preview, problems};
@@ -70,11 +71,79 @@ pub(crate) fn imported_line(result: &mut Object, imported: &Imported) -> String 
 
 /// Emits the events that import the export at `path` (`-`: standard input) into `tx`; how many
 /// records were new.
-/// The prefix every record of the export at `path` is keyed under (`bd-1`, `bd-2.1` → `bd`), for a
-/// tracker `init --import` starts without `--prefix`: none when the export has no record, and
-/// `VALIDATION` asking for `--prefix` when its records disagree, never one of theirs guessed at.
-pub(crate) fn records_prefix(path: &OsStr) -> Result<Option<String>, Failure> {
-    shared_prefix(&export_records(&read_utf8(path, path)?, path)?)
+/// The prefix a tracker `init --import` starts from the export at `path` takes without `--prefix`
+/// ([`tracker_prefix`]).
+pub(crate) fn records_prefix(path: &OsStr, cwd: &Path) -> Result<Option<String>, Failure> {
+    tracker_prefix(path, &export_records(&read_utf8(path, path)?, path)?, cwd)
+}
+
+/// The prefix a tracker started from `records`, the export at `path`, takes without `--prefix`, as
+/// Beads keyed them: the `issue_prefix` its `config.yaml` beside the export names, every record
+/// keyed under it; else the name of the directory the `.beads` directory is in, Beads' default,
+/// when the ids share it ([`shared_prefix`]); else what the ids share. A slug-keyed id
+/// (`br-onboarding-style-q2`) does not say where its prefix ends, and these do. `None` without a
+/// record; `VALIDATION` asking for `--prefix` when the records share none, or step outside the one
+/// configured. A relative `path` is read from `cwd`, the command's directory.
+pub(crate) fn tracker_prefix(
+    path: &OsStr,
+    records: &[Value],
+    cwd: &Path,
+) -> Result<Option<String>, Failure> {
+    let file = cwd.join(path);
+    let beads = file.parent();
+    if let Some(configured) = beads.map(configured_prefix).transpose()?.flatten() {
+        let keyed = |record: &Value| {
+            let id = record.get("id").and_then(Value::as_str).unwrap_or_default();
+            id.strip_prefix(configured.as_str())
+                .is_some_and(|rest| rest.starts_with('-'))
+        };
+        if !records.iter().all(keyed) {
+            return Err(Failure::new(
+                Code::Validation,
+                format!(
+                    "the records to import are not all keyed under {configured}, the prefix \
+                     config.yaml beside them names: give --prefix"
+                ),
+            ));
+        }
+        return Ok(Some(configured));
+    }
+    let Some(shared) = shared_prefix(records)? else {
+        return Ok(None);
+    };
+    // Beads' default prefix is the repository's directory's name, which a slug may follow
+    let named = (beads.filter(|dir| dir.file_name() == Some(OsStr::new(".beads"))))
+        .and_then(Path::parent)
+        .and_then(Path::file_name)
+        .and_then(OsStr::to_str);
+    Ok(Some(match named {
+        Some(name) if shared == name || shared.starts_with(&format!("{name}-")) => name.to_owned(),
+        _ => shared,
+    }))
+}
+
+/// The `issue_prefix` Beads' `config.yaml` in `beads` names, when it names one: a line
+/// `issue_prefix: VALUE` at the start, its quotes taken off; `None` without the file or the line
+/// (a commented one is none).
+fn configured_prefix(beads: &Path) -> Result<Option<String>, Failure> {
+    let file = beads.join("config.yaml");
+    let text = match std::fs::read(&file) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(beadroll_git::IoError::at(&error, &file).into()),
+    };
+    let value = (text.lines())
+        .filter_map(|line| line.strip_prefix("issue_prefix:"))
+        .map(|value| {
+            value
+                .split(" #")
+                .next()
+                .unwrap_or(value)
+                .trim()
+                .trim_matches(['"', '\''])
+        })
+        .find(|value| !value.is_empty());
+    Ok(value.map(str::to_owned))
 }
 
 /// The records of `content`, the export read from `path`: what every message about one of them

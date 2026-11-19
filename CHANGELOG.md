@@ -6,6 +6,14 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `init --import` reads the prefix Beads keyed the records under: `.beads/config.yaml`'s
+  `issue_prefix`, else the repository directory's name, before what the ids share. A lone
+  slug-keyed id (`br-onboarding-style-q2`) took its slug as part of the prefix.
+- Upgrading: a clone made from a `file://` URL through a symbolic link (`/tmp`, `/var` on macOS)
+  or a path with `..`, and a checkout whose local origin path did not exist, derive another
+  workspace id than before. Each reads `NOT_INITIALIZED` until its first `bead sync`, which adopts
+  the tracker under the old id and publishes what it held, as after a repository move.
+
 - The loop check judges the graph as it will be after the change: a child moved under an issue that
   waits on one of the child's own descendants, and a prerequisite waiting on what its issue passes
   down to a child, are `CYCLE`, where both were accepted; a child moved to a parent that waits on its

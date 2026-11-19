@@ -31,9 +31,11 @@ starts no store and asks no remote. It says:
 
 - how many issues would come in, by status, and how many the tracker already
   has (an import leaves those as they are);
-- the prefix the tracker would start under: the one the records share
-  (`syrup-rail` for `syrup-rail-0u9` and `syrup-rail-audit-x1`), so that issues
-  made after the move are keyed as the imported ones are. Records under
+- the prefix the tracker would start under, as Beads keyed the records: the
+  `issue_prefix` in `.beads/config.yaml`, else the repository directory's name,
+  else what the ids share (`syrup-rail` for `syrup-rail-0u9` and
+  `syrup-rail-audit-x1`), so that issues made after the move are keyed as the
+  imported ones are. Records under
   prefixes that share nothing are a problem it lists; give `--prefix` to choose
   one, which the dry run takes too;
 - every record the import would be refused for, not only the first: one bad

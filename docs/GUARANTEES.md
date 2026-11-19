@@ -516,10 +516,13 @@ it, and the file is committed again.
   `dep cycles` reports it. Only a record that depends on itself is refused, and so are a
   record it would create whose title holds nothing and a dependency naming another record
   as its own (`VALIDATION`, nothing imported).
-- `init --import FILE` without `--prefix` starts the tracker under the prefix the records
-  share: the leading `-`-separated segments every id holds before its last (`bd-1`, `bd-2` →
-  `bd`; `syrup-rail-0u9`, `syrup-rail-audit-x1` → `syrup-rail`), so that what is made after
-  joins them; records that share none are `VALIDATION` asking for `--prefix`.
+- `init --import FILE` without `--prefix` starts the tracker under the prefix Beads keyed
+  the records under: the `issue_prefix` its `config.yaml` beside the file names, every record
+  keyed under it; else the name of the directory `.beads` is in, Beads' default, when the ids
+  share it; else the leading `-`-separated segments every id holds before its last (`bd-1`,
+  `bd-2` → `bd`; `syrup-rail-0u9`, `syrup-rail-audit-x1` → `syrup-rail`), so that what is made
+  after joins them. Records that share none, or step outside the configured prefix, are
+  `VALIDATION` asking for `--prefix`.
 - What each event had seen is kept as one clock per event over chains: every
   machine's journal is a chain, and the claims, releases and takeovers of
   attempt files join chains of their own, about one for each machine that
