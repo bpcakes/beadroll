@@ -107,11 +107,9 @@ fn a_sync_that_puts_back_a_foreign_journal_reports_the_key_it_changed() {
         a.show(&key)["title"],
         "b reads the rewritten key"
     );
+    // another machine's journal rewritten here is put back as published (GUARANTEES)
     let result = b.run(["sync", "--json"]);
-    if result.returncode() != 0 {
-        assert_eq!(code(&result), "JOURNAL_FORK");
-        return;
-    }
+    assert_eq!(result.returncode(), 0, "{}", result.stderr);
     let report = parse_json(&result.stdout).unwrap();
     let back =
         |r: &Json| r["from"] == Json::from(forged.as_str()) && r["to"] == Json::from(key.as_str());

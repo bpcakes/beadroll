@@ -2,10 +2,12 @@
 
 use std::path::{Path, PathBuf};
 
+use beadroll_core::json::Value;
 use beadroll_store::{Endpoint, claim_files, read_attempt};
 use beadroll_sync::synchronise;
-use beadroll_test_support::Machine;
+use beadroll_test_support::{Machine, git, json, json_line};
 
+use super::damage_tip;
 use crate::support::{Gate, alongside, sandbox, text, workspace};
 
 /// A pending twin of an already published attempt models a lost confirmation before recovery.
@@ -86,4 +88,75 @@ fn a_retry_reports_only_its_final_confirmations_and_all_incoming_events() {
     assert_eq!(ws.settings.failpoints.hits("backoff"), 1);
     b.bead(["sync"]);
     assert_eq!(a.export(), b.export());
+}
+
+/// A merge that renames a copy, then finds `sync.git` damaged reading a later file, still reports
+/// the rename once the rebuilt round succeeds: the keys a sync reports against are kept before
+/// the merge's first write. Kept as that merge ended, they were taken in the next round, after the
+/// rename, which the report then left out.
+#[test]
+fn a_rebuilt_round_reports_the_rename_its_first_merge_made() {
+    let sandbox = sandbox();
+    let (mut m1, m2) = (Machine::new(&sandbox, "m1"), Machine::new(&sandbox, "m2"));
+    m1.extra.insert("BEAD_ROTATE_BYTES".into(), "1".into());
+    m1.bead(["init", "--prefix", "ex"]);
+    m2.bead(["sync"]);
+    let record = json!({
+        "id": "ex-a", "title": "A", "status": "open", "priority": 2, "issue_type": "task",
+        "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+    });
+    let path = sandbox.root().join("ext.jsonl");
+    std::fs::write(&path, json_line(&record) + "\n").unwrap();
+    let path = path.to_str().expect("a UTF-8 path");
+    // m1's import and a later create, each in a segment of its own, in that order
+    m1.bead(["import", path]);
+    m1.bead(["create", "later"]);
+    m2.bead(["import", path, "--offline"]);
+    let origin = sandbox.origin().to_str().unwrap();
+    let tip = git(
+        ["--git-dir", origin, "rev-parse", "refs/beads/journal"],
+        None,
+    );
+    let listed = git(
+        [
+            "--git-dir",
+            origin,
+            "ls-tree",
+            "-r",
+            "--name-only",
+            tip.trim(),
+        ],
+        None,
+    );
+    let last = (listed.lines())
+        .filter(|path| path.ends_with(".jsonl") && !path.contains("/claims/"))
+        .max()
+        .expect("m1's last segment")
+        .to_owned();
+    let blob = git(
+        [
+            "--git-dir",
+            origin,
+            "rev-parse",
+            &format!("{}:{last}", tip.trim()),
+        ],
+        None,
+    );
+    // held once fetched, before the merge reads a blob: the damage is to m1's last segment, which
+    // the merge reads after it wrote the segment before it
+    let gate = Gate::new(&sandbox, "fetched");
+    let faults = format!("fetch.fetched={};backoff@always=skip", gate.action());
+    let ws = workspace(&m2, sandbox.origin(), &[("BEAD_FAILPOINTS", &faults)]);
+    let (result, met) = alongside(
+        || synchronise(&ws, &Endpoint::at(sandbox.origin())),
+        |done| gate.meet(done, || damage_tip(&ws.dir.join("sync.git"), blob.trim())),
+    );
+    assert!(met.is_some(), "the sync fetched");
+    let synced = result.expect("the rebuilt round succeeds");
+    assert!(
+        synced.sync_repo_rebuilt.is_some(),
+        "the merge found sync.git damaged"
+    );
+    let from = |r: &Value| r.get("from").and_then(Value::as_str) == Some("ex-a");
+    assert!(synced.renamed.iter().any(from), "{:?}", synced.renamed);
 }

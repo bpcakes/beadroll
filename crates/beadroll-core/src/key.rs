@@ -45,6 +45,50 @@ pub fn free_key(key: &str, uid: &str, taken: &dyn Fn(&str) -> bool) -> Option<St
     })
 }
 
+/// Whether `a` and `b` could both be what merges made of one key, level by level: as many numbered
+/// parts, each pair a number under a stem that is alike in turn (a collision counts a copy up from
+/// the number it was minted with, a follow gives a child its parent's key now, so the numbers may
+/// differ, by a bounded number of digits), down to a first part both share, with at most a
+/// digest's prefix after it ([`free_key`]). A child follows its parent only from a key the parent
+/// could have had, so that a record naming an unrelated parent cannot copy that parent's key,
+/// however long, into every child's: a followed key outgrows the one a child was minted under by
+/// at most a few bytes a level.
+pub(crate) fn renamed_alike(a: &str, b: &str) -> bool {
+    // a copy counts up past the numbers others hold: as many more digits as the number of issues
+    // in a tracker has, at most
+    const MORE_DIGITS: usize = 20;
+    let (mut a, mut b) = (a, b);
+    loop {
+        if a == b {
+            return true;
+        }
+        match (split_number(a), split_number(b)) {
+            (Some((stem_a, digits_a)), Some((stem_b, digits_b))) => {
+                if digits_a.len().abs_diff(digits_b.len()) > MORE_DIGITS {
+                    return false;
+                }
+                (a, b) = (stem_a, stem_b);
+            }
+            (None, None) => return digest_alike(a, b),
+            _ => return false,
+        }
+    }
+}
+
+/// Whether `a` and `b` are one key, the other with a digest's prefix after it: each copy of a key
+/// with no number takes a prefix of its own issue's digest ([`free_key`]), so that two keys merges
+/// made of one are each other's start.
+fn digest_alike(a: &str, b: &str) -> bool {
+    let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+    let Some(rest) = long.strip_prefix(short) else {
+        return false;
+    };
+    rest.len() < b36(&[0xff; 32]).len()
+        && rest
+            .bytes()
+            .all(|b| b.is_ascii_digit() || b.is_ascii_lowercase())
+}
+
 /// The number a copy of a key ending in `digits` counts from: its ASCII digits without leading
 /// zeros, `0` when they are all zeros (`x.007` counts from 7, `x.000` from 0).
 pub(crate) fn counted_from(digits: &str) -> &str {
@@ -198,5 +242,24 @@ mod tests {
             mint_key("ex", "s", Some("ex-1"), &[&format!("ex-1.{BELOW}")]).as_deref(),
             Ok(&*format!("ex-1.{MOST}"))
         );
+    }
+
+    /// Keys merges could have made of one key are alike; others, and a long tail after a shared
+    /// part, are not (AT100).
+    #[test]
+    fn keys_merges_make_of_one_key_are_alike() {
+        assert!(renamed_alike("x.2", "x.3"));
+        assert!(renamed_alike("x.1.2", "x.1.10"));
+        // a child that followed its parent: another stem, alike in turn
+        assert!(renamed_alike("x.1.1", "x.2.1"));
+        assert!(renamed_alike("x-ab.1.1", "x-abq.2.3"));
+        assert!(!renamed_alike("x.1", &format!("x.{}", "9".repeat(40))));
+        assert!(renamed_alike("p-ab", "p-abq"));
+        assert!(!renamed_alike("p-abq", "p-ab3"));
+        assert!(!renamed_alike("x.2", "y.2"));
+        assert!(!renamed_alike("x.1.2", "x.2"));
+        assert!(!renamed_alike("p-ab", "x.1"));
+        assert!(!renamed_alike("p-ab", &format!("p-ab{}", "q".repeat(80))));
+        assert!(!renamed_alike("p-ab", "p-abQ"));
     }
 }

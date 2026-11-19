@@ -54,7 +54,7 @@ fn fixture_git_isolation_keeps_the_selected_binary_without_a_default() {
 
 /// Unpack before emptying the commit, so git cannot fall back to a healthy packed copy. The
 /// remote's object remains intact, and the live reader may finish any read it already started.
-fn damage_tip(sync_git: &Path, tip: &str) {
+pub(crate) fn damage_tip(sync_git: &Path, tip: &str) {
     let packs = sync_git.join("objects/pack");
     let aside = sync_git.join("packs-before-damage");
     std::fs::create_dir(&aside).unwrap();

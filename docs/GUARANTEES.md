@@ -267,9 +267,12 @@ none is planned. One addition is read differently by an older bead, by the
 maintainer's choice: a child's create names its parent (`parent`), which an older
 bead ignores, so where a merge renumbered that parent the child's key on an older
 machine stays the one it was minted with while an upgraded machine follows the
-parent. Ids and edges agree everywhere; until every machine is upgraded, a key
-learned on one machine can name another issue on the other, and a write made by
-that key goes to the issue it names there. Should one ever be needed it follows
+parent. Ids and the edges that name them agree everywhere. Until every machine
+is upgraded, a key learned on one machine can name another issue on the other,
+and a write made by that key goes to the issue it names there; an imported
+dependency still waiting for a key binds to the issue that holds it on each
+machine, which can differ, so the two can see different blockers, and readiness,
+for the importing issue. Should one ever be needed it follows
 *writers lag readers*: the new bead reads both formats but writes the old one
 until every machine on the tracker has announced, in the manifest it publishes,
 that it reads the new one; then it flips. Nothing ever rewrites existing events.

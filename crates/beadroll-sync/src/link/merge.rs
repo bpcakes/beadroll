@@ -92,6 +92,9 @@ struct Merging<'l, 'w> {
     link: &'l mut Link<'w>,
     facts: MergeFacts,
     wrote: bool,
+    /// The store's projection as a reporting sync's merge read it before merging, which it goes on
+    /// with when it writes nothing and keeps the keys of before its first write.
+    found: Option<Sourced>,
 }
 
 impl Link<'_> {
@@ -140,6 +143,7 @@ impl<'l, 'w> Merging<'l, 'w> {
             link,
             facts: MergeFacts::default(),
             wrote: false,
+            found: None,
         }
     }
 
@@ -152,7 +156,7 @@ impl<'l, 'w> Merging<'l, 'w> {
             repair_tail(self.link.ws, &path)?;
         }
         // the store's projection, with every whole line its segments hold
-        let found = if count == SyncReport::Collect && self.link.keys_before.is_none() {
+        self.found = if count == SyncReport::Collect && self.link.keys_before.is_none() {
             Some(projection_sourced(self.link.ws)?)
         } else {
             None
@@ -187,17 +191,9 @@ impl<'l, 'w> Merging<'l, 'w> {
         }
         self.link.save_memo();
         // the store's projection, the records merged applied to it, or the journal replayed
-        let merged = match found {
+        let merged = match self.found.take() {
             Some(found) if !self.wrote => found,
-            found => {
-                // the keys before this merge wrote, which a sync reports what changed against; a
-                // merge that wrote nothing changed no key, and keeps none
-                if let Some(found) = found {
-                    self.link.ws.settings.failpoints.hit("sync.keys-before");
-                    self.link.keys_before = Some(KeysBefore::of(found.state()));
-                }
-                projection_sourced(self.link.ws)?
-            }
+            _ => projection_sourced(self.link.ws)?,
         };
         if let Some(own) = &own
             && merged.state().chain_breaks().contains_key(own)
@@ -216,6 +212,7 @@ impl<'l, 'w> Merging<'l, 'w> {
         data: &[u8],
         blob: Option<&str>,
     ) -> Result<(), Error> {
+        self.before_writing();
         write_atomic(
             target,
             data,
@@ -224,6 +221,20 @@ impl<'l, 'w> Merging<'l, 'w> {
         )?;
         self.wrote(path, target, data, blob);
         Ok(())
+    }
+
+    /// Keeps the keys of the state before the merge's first write to a journal file, which a sync
+    /// reports what changed against: taken before anything is written, so that a merge that fails
+    /// partway and is retried still reports against the keys before it. A merge that writes nothing
+    /// changes no key, and keeps none.
+    fn before_writing(&mut self) {
+        if self.wrote || self.link.keys_before.is_some() {
+            return;
+        }
+        if let Some(found) = &self.found {
+            self.link.ws.settings.failpoints.hit("sync.keys-before");
+            self.link.keys_before = Some(KeysBefore::of(found.state()));
+        }
     }
 
     /// The journal file at `target` (`path` under the store) was written with `data`: the memo
@@ -332,6 +343,7 @@ impl<'l, 'w> Merging<'l, 'w> {
             match theirs.get(ours.len()..).filter(|_| !ours.is_empty()) {
                 // what ours lacks, appended: the segment stays the file it was (roll-lqjj.2)
                 Some(more) => {
+                    self.before_writing();
                     extend_segment(&target, more)?;
                     self.wrote(path, &target, &theirs, written);
                 }

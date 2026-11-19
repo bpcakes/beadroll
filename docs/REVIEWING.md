@@ -173,9 +173,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   until it upgrades: in a mixed fleet the key of such a child differs between an older machine
   and an upgraded one, and a write made by a key learned on the other goes to the issue it names
   there. GUARANTEES' *Format and upgrades* names this exception; gating the member on every
-  reader's support (*writers lag readers*, announced in the manifest) is not built. A parent named
-  at another depth than the key was minted under holds no merge's rename (a merge renames a key in
-  its last part) and is followed nowhere, so that no chain of records grows its keys.
+  reader's support (*writers lag readers*, announced in the manifest) is not built. A parent whose
+  key merges could not have made of the one the child was minted under (level by level, as many
+  numbered parts, each number within a few digits of the other's, down to one key the other starts
+  with a digest's prefix after it: `key::renamed_alike`) is followed nowhere, so that no record
+  grows the keys it makes by more than a few bytes a level.
 
 - A claim makes its owner the issue's assignee; a release and a reopen (`reopen`, `update --status
   open`) give back the assignee it had before its first claim, which a takeover carries on

@@ -76,6 +76,7 @@ impl Merging<'_, '_> {
                     .remote_counts
                     .insert(download.path.clone(), download.count);
                 if let Some(prepared) = prepared? {
+                    self.before_writing();
                     prepared.install(&self.link.ws.settings.failpoints)?;
                     self.wrote(
                         &download.path,

@@ -200,3 +200,27 @@ fn a_parent_named_at_another_depth_is_followed_nowhere() {
     let (state, _) = every_way(&base(), &rest);
     assert_eq!([11, 12].map(|n| key(&state, n)), ["pr-z.1", "pr-w.1"]);
 }
+
+/// A parent whose key could not have been the one its children were minted under, however long,
+/// is followed by none of them: a record naming it copied the whole key into every child's, so that
+/// replay held the parent's length times the children.
+#[test]
+fn a_parent_whose_key_no_merge_made_from_the_childs_is_followed_nowhere() {
+    let long = format!("pr-{}", "q".repeat(400));
+    let mut rest = vec![at(10, HERE, &[2], "create", 10, written(&long))];
+    for n in 0..20u128 {
+        let previous = if n == 0 { 10 } else { 19 + n };
+        rest.push(at(
+            20 + n,
+            HERE,
+            &[previous],
+            "create",
+            20 + n,
+            under(&format!("pr-b.{}", n + 1), 10),
+        ));
+    }
+    let (state, _) = every_way(&base(), &rest);
+    for n in 0..20u128 {
+        assert_eq!(key(&state, 20 + n), format!("pr-b.{}", n + 1));
+    }
+}
