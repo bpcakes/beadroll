@@ -106,16 +106,19 @@ pub(crate) const BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 /// answers alone changed, as each changed line of the fixtures' pinned answers shows. All five were
 /// made again where two closes with different reasons became a status conflict (`query::split`),
 /// whose alternatives give each `close_reason`: the histories' concurrent closes now dispute the
-/// status, and the fixtures' pinned answers changed only by an existing conflict's reasons.
-pub(crate) const DIFFERENTIAL: u64 = 0xded8_aca6_100c_db24;
+/// status, and the fixtures' pinned answers changed only by an existing conflict's reasons. All
+/// five were made again where the end of a claim by a release or a reopen began giving back the
+/// assignee from before the claim (`Claim::assignee_before`): the histories' releases and reopens
+/// of a hand-assigned issue, and their reopens of a claimed one; no fixture's pinned answer moved.
+pub(crate) const DIFFERENTIAL: u64 = 0xcfad_13c1_fdd9_6f29;
 /// See [`DIFFERENTIAL`].
-pub(crate) const FLAWED: u64 = 0xb1f6_ddca_3823_a4ae;
+pub(crate) const FLAWED: u64 = 0xad99_6e1e_521c_780e;
 /// See [`DIFFERENTIAL`].
-pub(crate) const DELIVERED: u64 = 0x8eff_3790_b1bd_fee7;
+pub(crate) const DELIVERED: u64 = 0x4849_22e0_aba8_759f;
 /// See [`DIFFERENTIAL`].
-pub(crate) const DELIVERED_FLAWED: u64 = 0x8d53_da17_becc_8858;
+pub(crate) const DELIVERED_FLAWED: u64 = 0xd7c2_0fbc_e09a_9e49;
 /// See [`DIFFERENTIAL`]: of the world of [`next_batch`].
-const OWNED: u64 = 0x616a_347f_a435_210a;
+const OWNED: u64 = 0xf69a_8e6b_3d80_87bf;
 
 /// What replay answered at 9cbd60a of the issues of the journals of three stores bead built: the
 /// golden tracker and the fleet of two machines `shown` pins the fields of ([`FIXTURES`]), and two

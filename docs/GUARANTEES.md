@@ -172,6 +172,10 @@ command) is one small file under `events/<machine>/claims/`, written whole, and
 such a file exists only once the remote has accepted the push that carried it.
 A reader therefore sees all of an attempt or none of it.
 
+A claim makes its owner the issue's assignee. A release or a reopen (a takeover's
+too) gives back the assignee the issue had before the claim, none or a hand-set
+one; a close keeps the owner.
+
 | Action | What happens |
 |---|---|
 | `bead claim X` | Under the store lock: fetches the ref, checks nobody holds X, writes the claim as a *pending attempt*, and pushes it as a fast-forward of the head just fetched. Accepted: the file is moved into place and the claim is confirmed. Refused (another machine moved the ref first): the attempt is dropped and the decision is made again against the new head. No answer: the attempt stays pending, counting for nothing, until the next contact with the remote finds it there (confirmed) or pushes a *fence* commit on the same head, after which the lost push can no longer land, and drops it. Nothing in the journal is ever written or taken back for a claim. |

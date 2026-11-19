@@ -29,6 +29,9 @@ pub struct Claim {
     pub mode: Arc<str>,
     /// The checkout it was made in.
     pub where_: Option<Arc<Value>>,
+    /// The assignee the issue had before its first claim, which a takeover carries on: what a
+    /// release or a reopen gives back (a close keeps the owner who did the work).
+    pub assignee_before: Value,
 }
 
 impl Claim {

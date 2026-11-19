@@ -58,7 +58,7 @@ pub use parts::decode_state;
 pub use writeback::Writeback;
 
 /// The version of the bytes [`Projection::encode`] writes. Bytes of another are not read.
-pub const ENCODING: u32 = 11;
+pub const ENCODING: u32 = 12;
 
 /// How many times the events a projection took in of what every event had seen since it was last
 /// compacted go into the events it knew then, at most, before a write-back compacts it again
