@@ -480,6 +480,67 @@ fn importing_legacy_comment_does_not_renumber_existing_local_comment() {
     );
 }
 
+/// One case of an export kept where Beads keeps it: the directory `.beads` is in, the records' ids,
+/// what `config.yaml` holds, and the prefix the tracker starts under, or the code it is refused with.
+type Keyed = (
+    &'static str,
+    &'static [&'static str],
+    Option<&'static str>,
+    Result<&'static str, &'static str>,
+);
+
+/// `init --import` of an export where Beads keeps it, `DIR/.beads/issues.jsonl`, takes the prefix
+/// Beads keyed it under: the `issue_prefix` its `config.yaml` names, which a lone slug-keyed id
+/// (`br-onboarding-style-q2`) cannot show, else the directory's name, Beads' default, which a slug
+/// may follow (`proj-fix-login-x1`). Records outside the configured prefix are `VALIDATION`.
+#[test]
+fn init_import_takes_the_prefix_beads_keyed_the_records_under() {
+    let cases: [Keyed; 3] = [
+        (
+            "onesales",
+            &["br-onboarding-style-q2"],
+            Some("issue_prefix: br\n"),
+            Ok("br"),
+        ),
+        (
+            "proj",
+            &["proj-fix-login-x1", "proj-fix-logout-x2"],
+            Some("# issue_prefix: x\n"),
+            Ok("proj"),
+        ),
+        (
+            "mixed",
+            &["zz-1", "br-2"],
+            Some("issue_prefix: \"br\"\n"),
+            Err("VALIDATION"),
+        ),
+    ];
+    for (dir, ids, config, expected) in cases {
+        let sandbox = crate::sandbox();
+        let beads = sandbox.root().join(dir).join(".beads");
+        std::fs::create_dir_all(&beads).unwrap();
+        let records: Vec<Json> = ids.iter().map(|id| record(id, id, json!({}))).collect();
+        std::fs::write(beads.join("issues.jsonl"), json_lines(&records)).unwrap();
+        if let Some(config) = config {
+            std::fs::write(beads.join("config.yaml"), config).unwrap();
+        }
+        let machine = beadroll_test_support::Machine::new(&sandbox, "a");
+        let file = beads.join("issues.jsonl");
+        let run = machine.run(["init", "--import", file.to_str().unwrap(), "--json"]);
+        match expected {
+            Ok(prefix) => {
+                assert_eq!(run.returncode(), 0, "{dir}: {}", run.stderr);
+                assert_eq!(
+                    machine.bead(["info"]).unwrap()["prefix"],
+                    json!(prefix),
+                    "{dir}"
+                );
+            }
+            Err(failure) => assert_eq!(code(&run), failure, "{dir}: {}", run.stderr),
+        }
+    }
+}
+
 /// A record to import with a title that holds nothing, or a dependency that names another issue as
 /// its own, is refused whole, naming it, and nothing is imported: an issue no reader can name, or a
 /// dependency moved onto another record without a word, is never made.

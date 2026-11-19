@@ -20,7 +20,7 @@ use beadroll_sync::{
 
 use super::import::{
     Imported, answer_dry_run, export_records, import_records, read_only, records_prefix,
-    shared_prefix,
+    tracker_prefix,
 };
 use super::{Context, Failure, ImportMode, Outcome, counted, holds_nothing, text};
 
@@ -402,7 +402,7 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
             // and the ones made after share one prefix
             let imported = match args.import_path.as_ref().filter(|p| !p.is_empty()) {
                 Some(path) if prefix_flag.as_ref().is_none_or(String::is_empty) => {
-                    records_prefix(path)?
+                    records_prefix(path, &ws.settings.cwd)?
                 }
                 _ => None,
             };
@@ -533,9 +533,11 @@ fn dry_run(ctx: &Context<'_>, args: &InitArgs) -> Result<Outcome, Failure> {
         // file it cannot read records from is the dry run's own problem to list, once
         let content = super::read_utf8(path, path)?;
         let records = export_records(&content, path);
-        match records.map_or(Ok(None), |records| shared_prefix(&records)) {
+        match records.map_or(Ok(None), |records| {
+            tracker_prefix(path, &records, &ctx.ws.settings.cwd)
+        }) {
             Ok(Some(prefix)) => notes.push(format!(
-                "The tracker would start under the prefix the records share, {prefix}."
+                "The tracker would start under the prefix {prefix}, as Beads keyed the records."
             )),
             Ok(None) => {}
             Err(failure) => refused_first = Some(failure.message),
