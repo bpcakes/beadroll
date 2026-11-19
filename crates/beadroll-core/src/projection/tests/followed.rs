@@ -187,25 +187,33 @@ fn a_child_of_a_parent_with_a_newline_settles_every_way() {
     assert_eq!(key(&state, 21), format!("{}.1", key(&state, 20)));
 }
 
-/// A create naming a parent at another depth than the key it was minted under (`pr-z.1` under a
-/// parent keyed `pr-x.1`) holds no merge's rename, and keeps its key: a chain of such records made
-/// each key longer than the last.
+/// A chain of records each naming the one before as its parent, every one minted short, makes no
+/// key longer than a bounded multiple of its own: each follows while its parent's key is within
+/// that bound, and keeps its own once it is not, where every key had been longer than the last.
 #[test]
-fn a_parent_named_at_another_depth_is_followed_nowhere() {
-    let rest = [
-        at(10, HERE, &[2], "create", 10, written("pr-x.1")),
-        at(11, HERE, &[10], "create", 11, under("pr-z.1", 10)),
-        at(12, HERE, &[11], "create", 12, under("pr-w.1", 11)),
-    ];
+fn a_chain_of_records_stops_growing_the_keys_it_makes() {
+    let mut rest = vec![at(10, HERE, &[2], "create", 10, written("pr-x"))];
+    for n in 11..111u128 {
+        rest.push(at(n, HERE, &[n - 1], "create", n, under("pr-b.1", n - 1)));
+    }
     let (state, _) = every_way(&base(), &rest);
-    assert_eq!([11, 12].map(|n| key(&state, n)), ["pr-z.1", "pr-w.1"]);
+    let longest = (11..111u128).map(|n| key(&state, n).len()).max().unwrap();
+    assert!(
+        longest <= 2 * "pr-b".len() + 64 + ".1".len(),
+        "a key of {longest} bytes"
+    );
+    assert_eq!(
+        key(&state, 11),
+        "pr-x.1",
+        "a parent within the bound is followed"
+    );
 }
 
-/// A parent whose key could not have been the one its children were minted under, however long,
-/// is followed by none of them: a record naming it copied the whole key into every child's, so that
-/// replay held the parent's length times the children.
+/// A parent whose key is far longer than the one its children were minted under is followed by
+/// none of them: a record naming it copied the whole key into every child's, so that replay held
+/// the parent's length times the children.
 #[test]
-fn a_parent_whose_key_no_merge_made_from_the_childs_is_followed_nowhere() {
+fn a_parent_far_longer_than_the_childs_key_is_followed_nowhere() {
     let long = format!("pr-{}", "q".repeat(400));
     let mut rest = vec![at(10, HERE, &[2], "create", 10, written(&long))];
     for n in 0..20u128 {
@@ -223,4 +231,49 @@ fn a_parent_whose_key_no_merge_made_from_the_childs_is_followed_nowhere() {
     for n in 0..20u128 {
         assert_eq!(key(&state, 20 + n), format!("pr-b.{}", n + 1));
     }
+}
+
+/// Renames bead makes are followed at every depth, whatever the key: a copy of a key padded with
+/// zeros counts from the number without them (`pr-a.0…07` gives way as `pr-a.7`), and a stem with a
+/// newline takes a digest (`pr-a\nb` as `pr-a\nbq`), and so does a key ending in a dot, which may
+/// then read as numbered (`pr-e.` as `pr-e.3`), each child and grandchild following.
+#[test]
+fn renames_of_unusual_keys_are_followed_at_every_depth() {
+    let padded = format!("pr-a.{}7", "0".repeat(24));
+    let rest = [
+        at(10, THERE, &[2], "create", 10, written(&padded)),
+        at(20, HERE, &[2], "create", 20, written(&padded)),
+        at(
+            21,
+            HERE,
+            &[20],
+            "create",
+            21,
+            under(&format!("{padded}.1"), 20),
+        ),
+        at(
+            22,
+            HERE,
+            &[21],
+            "create",
+            22,
+            under(&format!("{padded}.1.1"), 21),
+        ),
+        at(30, THERE, &[10], "create", 30, written("pr-a\nb")),
+        at(40, HERE, &[22], "create", 40, written("pr-a\nb")),
+        at(41, HERE, &[40], "create", 41, under("pr-a\nb.1", 40)),
+        at(42, HERE, &[41], "create", 42, under("pr-a\nb.1.1", 41)),
+        at(50, THERE, &[30], "create", 50, written("pr-e.")),
+        at(60, HERE, &[42], "create", 60, written("pr-e.")),
+        at(61, HERE, &[60], "create", 61, under("pr-e..1", 60)),
+    ];
+    let (state, _) = every_way(&base(), &rest);
+    for (parent, child) in [(20, 21), (21, 22), (40, 41), (41, 42), (60, 61)] {
+        assert_eq!(
+            key(&state, child),
+            format!("{}.1", key(&state, parent)),
+            "{child}"
+        );
+    }
+    assert_ne!(key(&state, 20), padded, "the copy gave way");
 }

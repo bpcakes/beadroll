@@ -174,10 +174,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   and an upgraded one, and a write made by a key learned on the other goes to the issue it names
   there. GUARANTEES' *Format and upgrades* names this exception; gating the member on every
   reader's support (*writers lag readers*, announced in the manifest) is not built. A parent whose
-  key merges could not have made of the one the child was minted under (level by level, as many
-  numbered parts, each number within a few digits of the other's, down to one key the other starts
-  with a digest's prefix after it: `key::renamed_alike`) is followed nowhere, so that no record
-  grows the keys it makes by more than a few bytes a level.
+  key is more than twice the length of the one the child was minted under, and 64 bytes, is no
+  merge's work (a rename adds a counted number or a digest's prefix) and is followed nowhere, so
+  that no record makes a key more than a bounded multiple of its own. Modelling which renames
+  merges make was tried first and wrongly refused some (a number's leading zeros, a stem with a
+  newline, a key ending in a dot).
 
 - A claim makes its owner the issue's assignee; a release and a reopen (`reopen`, `update --status
   open`) give back the assignee it had before its first claim, which a takeover carries on

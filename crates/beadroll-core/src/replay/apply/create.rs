@@ -87,6 +87,10 @@ fn child_number(minted: &str) -> Option<(&str, &str)> {
     (numbered && !parent.is_empty()).then_some((parent, number))
 }
 
+/// How much longer than twice the key a child was minted under its parent's key may be for the child
+/// to follow it: more than any merge's renames make it.
+const FOLLOWED_GROWTH: usize = 64;
+
 /// The key a child minted as `minted` under `parent`'s key, as its writer saw the tracker, has
 /// now: `parent`'s key with its own number (`t-x.15.1` under a parent now `t-x.16` is `t-x.16.1`),
 /// where it would read as a child of the issue that holds `t-x.15`. `None` when the parent's key is
@@ -94,10 +98,12 @@ fn child_number(minted: &str) -> Option<(&str, &str)> {
 fn followed(st: &State, parent: EventId, minted: &str) -> Option<String> {
     let (under, number) = child_number(minted)?;
     let now = st.issues.get(&parent)?.key();
-    // merges rename a key alike (a number under its stem, or a digest's prefix after it): a parent
-    // whose key could not have been the one the child was minted under is a record that does not
-    // hold together, followed nowhere, so that no record can grow the keys it makes
-    (now != under && crate::key::renamed_alike(now, under)).then(|| format!("{now}.{number}"))
+    // a merge's rename makes a key a little longer at most (a number counted up, a digest's
+    // prefix): a parent whose key is far longer than the one the child was minted under is no
+    // merge's work, and is followed nowhere, so that no record makes a key more than a bounded
+    // multiple of its own (a chain of them would grow every key it makes)
+    let bounded = now.len() <= 2 * under.len() + FOLLOWED_GROWTH;
+    (now != under && bounded).then(|| format!("{now}.{number}"))
 }
 
 /// The issue a create makes, under `key`: a register for each field it carries, the status's
