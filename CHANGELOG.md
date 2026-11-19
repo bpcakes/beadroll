@@ -6,6 +6,9 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `init --import` of a file whose name is not UTF-8 names it in a message about one of its records,
+  as `import` does; it began `:1:`.
+
 - An option given as nothing is refused, never read as not given: `--status ""` (it left the
   status), `log ""` (it listed every event), `--assignee ""` (every issue), `--author ""` (it wrote
   the actor), `export -o ""` (it wrote to standard output), `machines --name ""` (it only listed),

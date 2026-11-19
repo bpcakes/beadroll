@@ -74,9 +74,19 @@ pub(crate) fn imported_line(result: &mut Object, imported: &Imported) -> String 
 /// tracker `init --import` starts without `--prefix`: none when the export has no record, and
 /// `VALIDATION` asking for `--prefix` when its records disagree, never one of theirs guessed at.
 pub(crate) fn records_prefix(path: &OsStr) -> Result<Option<String>, Failure> {
-    let content = read_utf8(path, path)?;
-    let records = read_records(&content, path.to_str().unwrap_or_default())?;
-    shared_prefix(&records)
+    shared_prefix(&export_records(&read_utf8(path, path)?, path)?)
+}
+
+/// The records of `content`, the export read from `path`: what every message about one of them
+/// begins with is `path` as it was given, its own bytes when they are not UTF-8.
+pub(crate) fn export_records(content: &str, path: &OsStr) -> Result<Vec<Value>, Failure> {
+    Ok(match path.to_str() {
+        Some(shown) => read_records(content, shown)?,
+        None => read_records(content, "").map_err(|error| {
+            let message = [path.as_bytes(), error.to_string().as_bytes()].concat();
+            Failure::bytes(error.code(), message)
+        })?,
+    })
 }
 
 /// The prefix every one of `records` is keyed under, as [`records_prefix`] reads it: what a dry
@@ -133,14 +143,7 @@ pub(crate) fn shared_prefix(records: &[Value]) -> Result<Option<String>, Failure
 
 pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<Imported, Failure> {
     let content = read_utf8(path, path)?;
-    // the file's name begins every message about its records, as it was given
-    let records = match path.to_str() {
-        Some(shown) => read_records(&content, shown)?,
-        None => read_records(&content, "").map_err(|error| {
-            let message = [path.as_bytes(), error.to_string().as_bytes()].concat();
-            Failure::bytes(error.code(), message)
-        })?,
-    };
+    let records = export_records(&content, path)?;
     // each form of the export let go of once the next is made: the text once read, the records
     // once planned (roll-lqjj.9)
     drop(content);

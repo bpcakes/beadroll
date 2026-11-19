@@ -19,7 +19,8 @@ use beadroll_sync::{
 };
 
 use super::import::{
-    Imported, answer_dry_run, import_records, read_only, records_prefix, shared_prefix,
+    Imported, answer_dry_run, export_records, import_records, read_only, records_prefix,
+    shared_prefix,
 };
 use super::{Context, Failure, ImportMode, Outcome, counted, text};
 
@@ -533,8 +534,7 @@ fn dry_run(ctx: &Context<'_>, args: &InitArgs) -> Result<Outcome, Failure> {
         // what `init --import` reads the prefix from, as it would: a mix is refused there too; a
         // file it cannot read records from is the dry run's own problem to list, once
         let content = super::read_utf8(path, path)?;
-        let records =
-            beadroll_core::import::read_records(&content, path.to_str().unwrap_or_default());
+        let records = export_records(&content, path);
         match records.map_or(Ok(None), |records| shared_prefix(&records)) {
             Ok(Some(prefix)) => notes.push(format!(
                 "The tracker would start under the prefix the records share, {prefix}."
