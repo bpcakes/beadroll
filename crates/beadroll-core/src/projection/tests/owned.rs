@@ -110,15 +110,18 @@ pub(crate) const BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 /// five were made again where the end of a claim by a release or a reopen began giving back the
 /// assignee from before the claim (`Claim::assignee_before`): the histories' releases and reopens
 /// of a hand-assigned issue, and their reopens of a claimed one; no fixture's pinned answer moved.
-pub(crate) const DIFFERENTIAL: u64 = 0xcfad_13c1_fdd9_6f29;
+/// Made again where two deletes with different reasons stopped disputing the status, which only a
+/// close's reason does (`query::given_reason`): the histories' concurrent deletes are one tombstone
+/// again; no fixture's pinned answer moved.
+pub(crate) const DIFFERENTIAL: u64 = 0xe2dd_0812_0521_a2c3;
 /// See [`DIFFERENTIAL`].
-pub(crate) const FLAWED: u64 = 0xad99_6e1e_521c_780e;
+pub(crate) const FLAWED: u64 = 0x9cbd_b173_9726_1d4b;
 /// See [`DIFFERENTIAL`].
-pub(crate) const DELIVERED: u64 = 0x4849_22e0_aba8_759f;
+pub(crate) const DELIVERED: u64 = 0xf395_d657_1b6c_b20a;
 /// See [`DIFFERENTIAL`].
 pub(crate) const DELIVERED_FLAWED: u64 = 0xd7c2_0fbc_e09a_9e49;
 /// See [`DIFFERENTIAL`]: of the world of [`next_batch`].
-const OWNED: u64 = 0xf69a_8e6b_3d80_87bf;
+const OWNED: u64 = 0x798a_97b0_590f_e356;
 
 /// What replay answered at 9cbd60a of the issues of the journals of three stores bead built: the
 /// golden tracker and the fleet of two machines `shown` pins the fields of ([`FIXTURES`]), and two

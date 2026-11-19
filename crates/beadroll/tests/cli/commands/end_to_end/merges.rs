@@ -241,6 +241,26 @@ fn closes_with_different_reasons_are_a_conflict_a_new_close_settles() {
     }
 }
 
+/// Two deletes with different reasons are one tombstone, each reason kept as the delete's own: no
+/// dispute, and what depends on the issue is ready. Comparing a done status by its reason, as two
+/// closes are, held a dependent up behind a deleted issue.
+#[test]
+fn deletes_with_different_reasons_are_one_tombstone() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, _) = two_machines(&sandbox);
+    let after = json_id(&a.bead(["create", "after x"]).unwrap());
+    a.bead(["dep", "add", &after, &x]);
+    b.bead(["sync"]);
+    a.bead(["delete", &x, "-r", "a duplicate", "--offline"]);
+    b.bead(["delete", &x, "-r", "obsolete"]);
+    settle(&[&a, &b]);
+    assert!(a.show(&x).get("conflicts").is_none(), "{:?}", a.show(&x));
+    assert!(
+        a.ready().contains(&after),
+        "{after} is held behind a deleted issue"
+    );
+}
+
 /// Two closes with the same reason agree: nothing is disputed.
 #[test]
 fn closes_with_the_same_reason_agree() {

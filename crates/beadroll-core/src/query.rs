@@ -380,10 +380,11 @@ fn shown(field: Field, value: &Value) -> Value {
     }
 }
 
-/// The reason a `status` value of a done status was closed with, when it was given one: what tells
-/// two closes apart, beside the status.
+/// The reason a `status` value of a close was closed with, when it was given one: what tells two
+/// closes apart, beside the status. A delete's reason is not one: two deletes are one tombstone,
+/// each reason kept in `delete_reason`, as the maintainer's decision is of closes alone.
 fn given_reason(field: Field, value: &Value) -> Option<Value> {
-    (field == Field::Status)
+    (field == Field::Status && value.get("status") == Some(&Value::from(status::CLOSED)))
         .then(|| value.get("close_reason"))
         .flatten()
         .filter(|reason| reason.truthy())

@@ -190,7 +190,10 @@ fn one_repository(ws: &Workspace, env: &Env, remote: &Endpoint) -> Result<(), Er
     let fetched = rewrite(&fetch_rules, url).unwrap_or_else(|| url.to_vec());
     let (fetched, pushed) = (OsString::from_vec(fetched), OsString::from_vec(pushed));
     let cwd = &ws.settings.cwd;
-    if normalize_remote(&fetched, cwd) == normalize_remote(&pushed, cwd) {
+    // one repository whatever port each reaches it on (https on 443, ssh on 2222, as a forge serves
+    // them): only a host or a path that differs is another place
+    let place = |url: &OsStr| without_port(&normalize_remote(url, cwd));
+    if place(&fetched) == place(&pushed) {
         return Ok(());
     }
     let shown = |url: &OsStr| url.to_string_lossy().into_owned();
@@ -204,6 +207,23 @@ fn one_repository(ws: &Workspace, env: &Env, remote: &Endpoint) -> Result<(), Er
         shown(&fetched),
         shown(&pushed)
     ))))
+}
+
+/// `normalized`, a remote as `normalize_remote` gives it, without a port after its host
+/// (`host:2222/o/r` is `host/o/r`); a local path as it is.
+fn without_port(normalized: &OsStr) -> Vec<u8> {
+    let bytes = normalized.as_bytes();
+    if bytes.starts_with(b"/") {
+        return bytes.to_vec();
+    }
+    let host_end = bytes.iter().position(|b| *b == b'/').unwrap_or(bytes.len());
+    let (host, rest) = bytes.split_at(host_end);
+    match host.iter().rposition(|b| *b == b':') {
+        Some(colon) if host[colon + 1..].iter().all(u8::is_ascii_digit) => {
+            [&host[..colon], rest].concat()
+        }
+        _ => bytes.to_vec(),
+    }
 }
 
 /// `url` rewritten by the one of `rules` (`(base, prefix)`, as `url.<base>.insteadOf = prefix`)
@@ -451,4 +471,23 @@ fn count_unpublished(
         }
     }
     Ok(count)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One repository whatever port each URL reaches it on, a forge's https and its ssh on 2222;
+    /// another host or path is another place.
+    #[test]
+    fn a_port_does_not_make_another_place() {
+        let cwd = std::path::Path::new("/");
+        let place = |url: &str| without_port(&normalize_remote(OsStr::new(url), cwd));
+        let https = place("https://forge.example/o/r.git");
+        assert_eq!(place("ssh://git@forge.example:2222/o/r.git"), https);
+        assert_eq!(place("git@forge.example:o/r.git"), https);
+        assert_ne!(place("ssh://git@other.example:2222/o/r.git"), https);
+        assert_ne!(place("https://forge.example/o/other.git"), https);
+        assert_eq!(place("/srv/git/r.git"), place("/srv/git/r.git/"));
+    }
 }
