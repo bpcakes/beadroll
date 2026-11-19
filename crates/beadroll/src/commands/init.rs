@@ -19,8 +19,7 @@ use beadroll_sync::{
 };
 
 use super::import::{
-    Imported, answer_dry_run, export_records, import_records, read_only, records_prefix,
-    tracker_prefix,
+    Imported, answer_dry_run, export_records, import_read, read_only, tracker_prefix,
 };
 use super::{Context, Failure, ImportMode, Outcome, counted, holds_nothing, text};
 
@@ -360,6 +359,19 @@ fn publication_note(ws: &Workspace, live: Option<&Endpoint>) -> Result<Option<St
     )))
 }
 
+/// The export `--import` names, read once, before the write, for its prefix and its import alike:
+/// standard input (`--import -`) yields its bytes once, and a second read found it empty. `None`
+/// without `--import`.
+fn read_export(args: &InitArgs) -> Result<Option<(&OsString, Vec<Value>)>, Failure> {
+    let Some(path) = args.import_path.as_ref().filter(|p| !p.is_empty()) else {
+        return Ok(None);
+    };
+    Ok(Some((
+        path,
+        export_records(&super::read_utf8(path, path)?, path)?,
+    )))
+}
+
 /// Refuses a `--prefix` or a `--remote` given as nothing: none is no prefix or remote, never the
 /// repository's name or origin read instead.
 fn refuse_nothing_given(args: &InitArgs) -> Result<(), Failure> {
@@ -392,6 +404,7 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
     let Chosen { ws: chosen, joined } = workspace_for(ctx, given.as_ref(), &args)?;
     let ws: &Workspace = chosen.as_ref().unwrap_or(ctx.ws);
     let prefix_flag = args.prefix.as_deref().map(text).transpose()?;
+    let export = read_export(&args)?;
     let (prefix, imported) = writing(ws, ctx.actor, |tx| -> Result<_, Failure> {
         if tx.state()?.prefix().is_none() {
             let name = match &ws.name {
@@ -400,9 +413,9 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
             };
             // without --prefix, an import's own, read only for a tracker started here: its issues
             // and the ones made after share one prefix
-            let imported = match args.import_path.as_ref().filter(|p| !p.is_empty()) {
-                Some(path) if prefix_flag.as_ref().is_none_or(String::is_empty) => {
-                    records_prefix(path, &ws.settings.cwd)?
+            let imported = match &export {
+                Some((path, records)) if prefix_flag.as_ref().is_none_or(String::is_empty) => {
+                    tracker_prefix(path, records, &ws.settings.cwd)?
                 }
                 _ => None,
             };
@@ -420,8 +433,9 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
         // read before the import, which never changes it: the state then never takes in what an
         // import emits, which would hold every imported text beside the events (roll-lqjj.9)
         let prefix = tx.state()?.prefix().cloned().unwrap_or(Value::Null);
-        let imported = match args.import_path.as_ref().filter(|p| !p.is_empty()) {
-            Some(path) => import_records(tx, path)?,
+        // the records the prefix was read from, imported, not copied (roll-lqjj.9)
+        let imported = match export.map(|(_, records)| records) {
+            Some(records) => import_read(tx, records)?,
             None => Imported {
                 issues: 0,
                 taken_back: 0,
@@ -513,6 +527,8 @@ fn dry_run(ctx: &Context<'_>, args: &InitArgs) -> Result<Outcome, Failure> {
         ));
     };
     let state = read_only(ctx.ws)?;
+    // read once, for the prefix and the plan alike: standard input yields its bytes once
+    let content = super::read_utf8(path, path)?;
     let mut notes = vec![
         "The remote was not asked: if it already publishes a tracker, init joins it and imports \
          only the records it lacks."
@@ -531,7 +547,6 @@ fn dry_run(ctx: &Context<'_>, args: &InitArgs) -> Result<Outcome, Failure> {
     } else {
         // what `init --import` reads the prefix from, as it would: a mix is refused there too; a
         // file it cannot read records from is the dry run's own problem to list, once
-        let content = super::read_utf8(path, path)?;
         let records = export_records(&content, path);
         match records.map_or(Ok(None), |records| {
             tracker_prefix(path, &records, &ctx.ws.settings.cwd)
@@ -543,5 +558,6 @@ fn dry_run(ctx: &Context<'_>, args: &InitArgs) -> Result<Outcome, Failure> {
             Err(failure) => refused_first = Some(failure.message),
         }
     }
-    Ok(answer_dry_run(ctx.ws, &state, path, notes, refused_first)?.answered_from(state))
+    let answer = answer_dry_run(ctx.ws, &state, (path, &content), notes, refused_first)?;
+    Ok(answer.answered_from(state))
 }

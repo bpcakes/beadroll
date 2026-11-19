@@ -25,7 +25,7 @@ Reviewers: propose new rows in your report using the next free id for your revie
 ## Weeding audit (2026-11-17, ids AT)
 
 Not reported by a review: an audit for workarounds and copied patterns that the next change would
-copy as the established way (PRs #143 to #301), each candidate checked against the code. Most of
+copy as the established way (PRs #143 to #302), each candidate checked against the code. Most of
 its slices changed no behaviour; these rows are the bugs it found on the way, each fixed with a
 test that fails without the fix. From AT13 on, many were found by fresh reviews run within the
 audit and by runs of the built bead in scratch repositories, the seven real Beads exports on the
@@ -119,6 +119,8 @@ none of those runs left a report under `reviews/`.
 | AT83 | Low | One record keyed `br-onboarding-style-q2` started a tracker under `br-onboarding-style` (AT77's rule): a lone slug-keyed id cannot show where its prefix ends | fixed | `init --import` takes the `issue_prefix` Beads' `config.yaml` beside the file names, else the repository directory's name when the ids share it, before what the ids share; records outside a configured prefix are `VALIDATION` (#299) | `beadroll`: `commands::input::init_import_takes_the_prefix_beads_keyed_the_records_under` |
 | AT84 | Low | Upgrading gave a `file://` clone reached through a symbolic link or a `..` path, and a checkout whose local origin path did not exist (AT46, AT63), another workspace id, which CHANGELOG did not say: each read `NOT_INITIALIZED` until a sync | by design | The id is the one the path's own clones derive; CHANGELOG says what an upgrade does to such a clone and that its first sync adopts the tracker under the old id (#299) | none: an upgrade note |
 | AT85 | Low | A child made under a parent that a merge then renamed (`x.1` became `x.2`) kept the key it was minted with: `x.1.1` read as a child of the other machine's `x.1`, whose next child skipped to `x.1.2` | fixed | The child follows its parent's rename (`x.2.1`), reported as a rename, when its writer had seen the renamed parent's create and not that of the issue holding the old key; REVIEWING §2 (#301) | `beadroll`: `commands::end_to_end::merges::a_child_follows_its_parents_rename`; `beadroll-core`: `projection::tests::numbered::stems_count_apart_and_a_copy_counts_from_its_number_without_leading_zeros` |
+| AT86 | High | `init --import - < issues.jsonl` answered success, `imported: 0`, and started an empty tracker under the records' prefix: AT38's prefix read took every byte of standard input, and the import that followed found none; its dry run counted 0 | fixed | `init` reads the export once, before the write, for its prefix and its import alike, and its dry run reads it once for its prefix and its plan (#302) | `beadroll`: `commands::input::init_imports_standard_input_once_for_its_prefix_and_its_records` |
+| AT87 | Low | For an import from standard input, AT83's prefix rule read a `config.yaml` in the directory the command ran in as Beads' configuration of it, and a directory of that name failed the dry run | fixed | Nothing beside standard input is read for its prefix (#302) | `beadroll`: `commands::input::init_imports_standard_input_once_for_its_prefix_and_its_records` |
 
 ## Published-count race (roll-byaq, 2026-11-12)
 
