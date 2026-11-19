@@ -609,3 +609,33 @@ fn info_and_recap_name_a_moved_tracker_alike() {
     );
     assert_eq!(recapped["name"], info["name"], "{recap:?}");
 }
+
+/// A clone made from `file:///…/origin.git` is the repository at that path, as git reads it: it
+/// finds the tracker the path's clones have at once, never `NOT_INITIALIZED` until a sync adopts it.
+#[test]
+fn a_file_url_clone_finds_the_tracker_its_path_has() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    json(&a, &["create", "made from the path's clone"]);
+    // through a symbolic link, as `/tmp` is on macOS: the URL's path resolves elsewhere
+    let link = sandbox.root().join("linked");
+    std::os::unix::fs::symlink(sandbox.origin().parent().unwrap(), &link).unwrap();
+    let named = link.join(sandbox.origin().file_name().unwrap());
+    let clone = sandbox.root().join("by-url");
+    let url = format!("file://{}", path_text(&named));
+    git(["clone", "-q", &url, path_text(&clone)], None);
+    let info = a.cmd(["info", "--json"]).cwd(&clone).run();
+    assert_eq!(info.returncode(), 0, "{}", info.stderr);
+    assert_eq!(
+        parse_json(&info.stdout).unwrap()["workspace"].as_str(),
+        Some(workspace(&a).as_str())
+    );
+    let listed = a.cmd(["list", "--json"]).cwd(&clone).run();
+    assert_eq!(listed.returncode(), 0, "{}", listed.stderr);
+    assert!(
+        listed.stdout.contains("made from the path's clone"),
+        "{}",
+        listed.stdout
+    );
+}

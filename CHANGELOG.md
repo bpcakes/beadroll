@@ -6,6 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A clone made from `file:///…/origin.git` derives the id of the path's clones: the URL's path is
+  resolved as the path is. Through a symbolic link (`/tmp`, `/var` on macOS) it derived another id
+  and said `NOT_INITIALIZED` until a sync adopted the tracker.
+
 - `prime` says which issues you hold provisionally (claimed offline, not exclusive) and how many
   events are not yet published, as `claims` and every other command say; after an offline claim it
   said `0 held by you` and nothing more.
