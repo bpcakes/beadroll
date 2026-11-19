@@ -145,6 +145,13 @@ agents and tests match parts of them; `bead prime` lists the codes.
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
+- A child made under a parent that a merge renames follows it (the maintainer's decision of
+  2026-11-19): replay gives it its parent's key now with its own number (`x.1.1` to `x.2.1`),
+  recorded and reported as a rename, when its writer had seen the renamed parent's create and not
+  the create of the issue that holds the old key (`replay::apply::create::followed`), which every
+  machine judges alike. It kept the key it was minted with, which read as a child of the other
+  issue, and that issue's next child skipped a number.
+
 - A coordination remote that git fetches from one repository and pushes to another, through a
   `url.<base>.pushInsteadOf` rule when it has no push URL of its own (its own `pushurl` is used
   for both), is `CONFIG` when the link is made (`link::one_repository`), naming both places. bead

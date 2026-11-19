@@ -24,6 +24,15 @@ pub(super) fn create(
 ) -> Result<(), KeySpace> {
     let eid = event.id;
     let mut key = create.key.clone();
+    // a child minted under its parent's key before a merge renamed that parent follows it
+    if let Some(followed) = followed(st, k, event, &key) {
+        st.renames.push(Rename {
+            from: std::mem::replace(&mut key, followed.clone()),
+            to: followed,
+            replica: event.trace.replica().to_owned(),
+            uid: eid,
+        });
+    }
     if st.by_key.contains_key(&key) {
         // Two machines minted the same key before they synced.
         let free = st.free_key(&key, eid)?;
@@ -63,6 +72,27 @@ pub(super) fn create(
     st.awaiting.wait(&issue);
     st.issues.insert(eid, Box::new(issue));
     Ok(())
+}
+
+/// The key a child minted as `minted` has once its parent's rename is followed: `minted`'s parent
+/// part (`t-x.15` of `t-x.15.1`) was the key of the parent its writer meant, which a merge renamed
+/// (another machine's child of that number came first), so that the child takes its parent's key
+/// now with its own number (`t-x.16.1`), where it would read as a child of the issue that holds
+/// `t-x.15`. Its writer meant the renamed issue when it had seen that issue's create and not the
+/// create of the one that holds the key now, which every machine judges alike. `None` for a key with
+/// no parent part, or when the parent was not renamed as its writer saw it.
+fn followed(st: &State, k: &Knowledge, event: &Doing<'_>, minted: &str) -> Option<String> {
+    let (parent, number) = minted.rsplit_once('.')?;
+    if number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    if (st.by_key.get(parent)).is_some_and(|holder| k.saw_at(event.at, *holder)) {
+        return None;
+    }
+    let renamed = (st.renames.iter().rev())
+        .find(|rename| rename.from == parent && k.saw_at(event.at, rename.uid))?;
+    let now = st.issues.get(&renamed.uid)?.key();
+    (now != parent).then(|| format!("{now}.{number}"))
 }
 
 /// The issue a create makes, under `key`: a register for each field it carries, the status's

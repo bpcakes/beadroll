@@ -273,6 +273,60 @@ fn closes_with_the_same_reason_agree() {
     assert!(shown.get("conflicts").is_none(), "{shown:?}");
 }
 
+/// A child made under a parent that a merge then renames follows it: `x.1.1`, made on b under b's
+/// own `x.1`, which a's child of that number came first and made `x.2`, is `x.2.1`, and sync
+/// reports both renames. It kept `x.1.1`, which read as a child of a's `x.1`, whose next child then
+/// skipped a number.
+#[test]
+fn a_child_follows_its_parents_rename() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, _) = two_machines(&sandbox);
+    let first = format!("{x}.1");
+    assert_eq!(
+        json_id(&a.bead(["create", "on a", "--parent", &x]).unwrap()),
+        first
+    );
+    let made = json_id(
+        &b.bead(["create", "on b", "--parent", &x, "--offline"])
+            .unwrap(),
+    );
+    let grand = json_id(
+        &b.bead(["create", "under b's", "--parent", &made, "--offline"])
+            .unwrap(),
+    );
+    assert_eq!(grand, format!("{first}.1"));
+    let report = b.bead(["sync"]).unwrap();
+    let renamed: Vec<(String, String)> = (report["renamed"].as_array().unwrap().iter())
+        .map(|r| {
+            (
+                r["from"].as_str().unwrap().to_owned(),
+                r["to"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
+    let second = format!("{x}.2");
+    assert_eq!(
+        renamed,
+        [
+            (first.clone(), second.clone()),
+            (format!("{first}.1"), format!("{second}.1"))
+        ]
+    );
+    settle(&[&a, &b]);
+    for machine in [&a, &b] {
+        assert_eq!(
+            machine.show(&format!("{second}.1"))["title"].as_str(),
+            Some("under b's")
+        );
+        assert_eq!(
+            machine.show(&format!("{second}.1"))["parent"].as_str(),
+            Some(second.as_str())
+        );
+    }
+    let next = json_id(&a.bead(["create", "next on a", "--parent", &first]).unwrap());
+    assert_eq!(next, format!("{first}.1"), "a's child skipped a number");
+}
+
 /// Three machines syncing at the same moment all succeed, and converge on everything they made.
 #[test]
 fn concurrent_sync_from_three_machines_all_succeed() {

@@ -723,9 +723,11 @@ it, and the file is committed again.
   or a push, a write took 1.5 s at the median and 23 s at the longest, and
   every machine converged with nothing left unpublished (roll-lqjj.7: a sync
   makes 24 rounds before it gives up, its waits doubling to at most 2 s).
-- A renumbered child key changes under the machine that created it. Events
-  refer to issues by an immutable id, so nothing is lost, but a key written
-  into a commit message before the sync now names the other issue. An online
+- A renumbered child key changes under the machine that created it, and so do
+  the keys of the children made under it before the sync, which follow it
+  (`x.1.1` to `x.2.1`). Events refer to issues by an immutable id, so nothing
+  is lost, but a key written into a commit message before the sync now names
+  the other issue. An online
   `create` of a child publishes before it answers, so the key it prints is the
   one its own publish settled; an offline one's can change at the next sync.
 - A repository with neither a remote nor a `.beadroll.json` gets a machine-local

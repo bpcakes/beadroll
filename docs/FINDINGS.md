@@ -25,7 +25,7 @@ Reviewers: propose new rows in your report using the next free id for your revie
 ## Weeding audit (2026-11-17, ids AT)
 
 Not reported by a review: an audit for workarounds and copied patterns that the next change would
-copy as the established way (PRs #143 to #299), each candidate checked against the code. Most of
+copy as the established way (PRs #143 to #301), each candidate checked against the code. Most of
 its slices changed no behaviour; these rows are the bugs it found on the way, each fixed with a
 test that fails without the fix. From AT13 on, many were found by fresh reviews run within the
 audit and by runs of the built bead in scratch repositories, the seven real Beads exports on the
@@ -118,6 +118,7 @@ none of those runs left a report under `reviews/`.
 | AT82 | Low | Moving a child with `update --parent` to a parent that waits on its old one was refused as `CYCLE`, judged on the graph with the old parent still in it, though `--parent` takes its place | fixed | The change is judged with the old parents gone (#298) | `beadroll`: `commands::end_to_end::graph::a_loop_is_judged_on_the_graph_as_it_will_be` |
 | AT83 | Low | One record keyed `br-onboarding-style-q2` started a tracker under `br-onboarding-style` (AT77's rule): a lone slug-keyed id cannot show where its prefix ends | fixed | `init --import` takes the `issue_prefix` Beads' `config.yaml` beside the file names, else the repository directory's name when the ids share it, before what the ids share; records outside a configured prefix are `VALIDATION` (#299) | `beadroll`: `commands::input::init_import_takes_the_prefix_beads_keyed_the_records_under` |
 | AT84 | Low | Upgrading gave a `file://` clone reached through a symbolic link or a `..` path, and a checkout whose local origin path did not exist (AT46, AT63), another workspace id, which CHANGELOG did not say: each read `NOT_INITIALIZED` until a sync | by design | The id is the one the path's own clones derive; CHANGELOG says what an upgrade does to such a clone and that its first sync adopts the tracker under the old id (#299) | none: an upgrade note |
+| AT85 | Low | A child made under a parent that a merge then renamed (`x.1` became `x.2`) kept the key it was minted with: `x.1.1` read as a child of the other machine's `x.1`, whose next child skipped to `x.1.2` | fixed | The child follows its parent's rename (`x.2.1`), reported as a rename, when its writer had seen the renamed parent's create and not that of the issue holding the old key; REVIEWING §2 (#301) | `beadroll`: `commands::end_to_end::merges::a_child_follows_its_parents_rename`; `beadroll-core`: `projection::tests::numbered::stems_count_apart_and_a_copy_counts_from_its_number_without_leading_zeros` |
 
 ## Published-count race (roll-byaq, 2026-11-12)
 
