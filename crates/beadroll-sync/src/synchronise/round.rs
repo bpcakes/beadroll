@@ -125,19 +125,23 @@ pub(super) fn sync_round(
     // process may run a merge before, as the sync reports against the keys of its start: a
     // rejected push, or a damaged `sync.git` a rebuild retries. Taken once the store is let go of,
     // from the state the round began with; an error that ends the sync keeps none
-    let began = (discarded.map(|merged| merged.state)).or_else(|| link.unwritten.take());
     let again = match &outcome {
         Ok(Outcome::Contended) => true,
         Err(Error::SyncRepoDamaged(_)) => matches!(rebuild, Rebuild::Available),
         _ => false,
     };
-    if let Some(began) = began
-        && again
-        && report == SyncReport::Collect
-        && link.keys_before.is_none()
-    {
-        ws.settings.failpoints.hit("sync.keys-before");
-        link.keys_before = Some(KeysBefore::taken(began.into_projection().into_state()));
+    let unwritten = link.unwritten.take();
+    if again && report == SyncReport::Collect && link.keys_before.is_none() {
+        let began = (discarded.map(|merged| merged.state)).or(unwritten);
+        if let Some(began) = began {
+            ws.settings.failpoints.hit("sync.keys-before");
+            link.keys_before = Some(KeysBefore::taken(began.into_projection().into_state()));
+        }
+    } else {
+        // the merge the round made, whole, after the store is let go of: its last field, a test's
+        // probe, goes after its projection
+        drop(discarded);
+        drop(unwritten);
     }
     Round { pulled, outcome }
 }

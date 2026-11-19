@@ -105,6 +105,9 @@ pub struct KeySpace {
     pub key: String,
 }
 
+/// Every key and the issue that has it, in the order they were taken ([`State::keys`]).
+pub type Keys = IndexMap<String, EventId>;
+
 /// Current state, as any machine holding the same events derives it.
 #[derive(Clone, Debug)]
 pub struct State {
@@ -231,7 +234,7 @@ impl State {
 
     /// Every key and the issue that has it, taken out of the state, which is dropped: a caller that
     /// needs the keys alone keeps them without copying one.
-    pub fn into_keys(self) -> IndexMap<String, EventId> {
+    pub fn into_keys(self) -> Keys {
         self.by_key
     }
 

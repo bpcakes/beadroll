@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use beadroll_core::id::EventId;
 use beadroll_core::json::Value;
-use beadroll_core::state::{Rename, State};
+use beadroll_core::state::{Keys, Rename, State};
 
 /// Every issue's key in the store's state as a reporting sync's first merge to write read it, before
 /// it wrote. A merge may change a key with no rename before or after it (a foreign journal replaced
@@ -13,17 +13,17 @@ use beadroll_core::state::{Rename, State};
 /// renamed ones; a sync whose merges wrote nothing keeps none.
 #[derive(Debug, Default)]
 pub(crate) struct KeysBefore {
-    keys: HashMap<EventId, String>,
+    keys: Keys,
 }
 
 impl KeysBefore {
     /// The keys `state` holds, moved out of it: a merge about to write, which goes on with the
     /// state it writes, has no more use for the one it began with.
+    /// Kept as the state held them, the index each key's issue is found by made only when the
+    /// report is, once the sync has let go of the store.
     pub(crate) fn taken(state: State) -> KeysBefore {
         KeysBefore {
-            keys: (state.into_keys().into_iter())
-                .map(|(key, uid)| (uid, key))
-                .collect(),
+            keys: state.into_keys(),
         }
     }
 }
@@ -37,16 +37,19 @@ pub(super) fn renamed_by_merge(state: &State, before: Option<&KeysBefore>) -> Ve
     let Some(before) = before else {
         return Vec::new();
     };
+    let had: HashMap<EventId, &str> = (before.keys.iter())
+        .map(|(key, uid)| (*uid, key.as_str()))
+        .collect();
     // the renames are in replay order, at most one an issue, as the issues are: walked alongside
     let mut renames = state.renames().iter().peekable();
     let mut changed = Vec::new();
     for issue in state.issues() {
         let (uid, now) = (issue.uid(), issue.key());
         let renamed = renames.next_if(|rename| rename.uid == uid);
-        let rename = match before.keys.get(&uid) {
-            Some(had) if had == now => continue,
+        let rename = match had.get(&uid) {
+            Some(had) if *had == now => continue,
             Some(had) => Rename {
-                from: had.clone(),
+                from: (*had).to_owned(),
                 to: now.to_owned(),
                 replica: issue.origin_machine().to_owned(),
                 uid,
