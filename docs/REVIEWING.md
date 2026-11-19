@@ -174,9 +174,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   and an upgraded one, and a write made by a key learned on the other goes to the issue it names
   there. GUARANTEES' *Format and upgrades* names this exception; gating the member on every
   reader's support (*writers lag readers*, announced in the manifest) is not built. A parent whose
-  key is more than twice the length of the one the child was minted under, and 64 bytes, is no
-  merge's work (a rename adds a counted number or a digest's prefix) and is followed nowhere, so
-  that no record makes a key more than a bounded multiple of its own. Modelling which renames
+  key is longer than the one the child was minted under by more than 20 bytes a level of it and
+  64 for its root is no merge's work (a rename counts a number up past others at each level and
+  gives the root a digest's prefix) and is followed nowhere, so that no record makes a key more
+  than a bounded multiple of its own. Modelling which renames
   merges make was tried first and wrongly refused some (a number's leading zeros, a stem with a
   newline, a key ending in a dot).
 

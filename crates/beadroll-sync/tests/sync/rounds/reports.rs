@@ -160,3 +160,55 @@ fn a_rebuilt_round_reports_the_rename_its_first_merge_made() {
     let from = |r: &Value| r.get("from").and_then(Value::as_str) == Some("ex-a");
     assert!(synced.renamed.iter().any(from), "{:?}", synced.renamed);
 }
+
+/// A round that wrote nothing and was contended keeps the keys it began with: another process's
+/// sync during the backoff renames m2's copy, the retry then writes nothing, and the report says the
+/// copy moved from the key m2 had when its sync began. The keys kept only by a merge that wrote,
+/// the retry kept none and reported nothing.
+#[test]
+fn a_retried_round_reports_against_the_keys_the_sync_began_with() {
+    let sandbox = sandbox();
+    let (m1, m2, m3) = (
+        Machine::new(&sandbox, "m1"),
+        Machine::new(&sandbox, "m2"),
+        Machine::new(&sandbox, "m3"),
+    );
+    m1.bead(["init", "--prefix", "ex"]);
+    m2.bead(["sync"]);
+    m3.bead(["sync"]);
+    let record = json!({
+        "id": "ex-a", "title": "A", "status": "open", "priority": 2, "issue_type": "task",
+        "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+    });
+    let path = sandbox.root().join("ext.jsonl");
+    std::fs::write(&path, json_line(&record) + "\n").unwrap();
+    let path = path.to_str().expect("a UTF-8 path");
+    // m3's copy is made first, so m2's gives way once both are merged
+    m3.bead(["import", path, "--offline"]);
+    m2.bead(["import", path, "--offline"]);
+    let publishing = Gate::new(&sandbox, "publishing");
+    let backoff = Gate::new(&sandbox, "backoff");
+    let faults = format!(
+        "publish.before={};backoff={}",
+        publishing.action(),
+        backoff.action()
+    );
+    let ws = workspace(&m2, sandbox.origin(), &[("BEAD_FAILPOINTS", &faults)]);
+    let (result, met) = alongside(
+        || synchronise(&ws, &Endpoint::at(sandbox.origin())),
+        |done| {
+            // m3 publishes while m2 holds its old head, so m2's push is rejected
+            let published = publishing.meet(done, || m3.bead(["sync"]));
+            // the store is unlocked: another process's sync merges m3's copy, renaming m2's
+            let retried = backoff.meet(done, || m2.bead(["sync"]));
+            (published, retried)
+        },
+    );
+    assert!(
+        met.0.is_some() && met.1.is_some(),
+        "both round boundaries were reached"
+    );
+    let synced = result.expect("the retried round succeeds");
+    let from = |r: &Value| r.get("from").and_then(Value::as_str) == Some("ex-a");
+    assert!(synced.renamed.iter().any(from), "{:?}", synced.renamed);
+}

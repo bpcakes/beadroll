@@ -4,7 +4,7 @@ use beadroll_core::json::Object;
 use beadroll_git::PushOutcome;
 use beadroll_store::{Workspace, load_pending, segment_files};
 
-use super::{SyncReport, nothing_published, refused};
+use super::{KeysBefore, SyncReport, nothing_published, refused};
 use crate::PublishMode;
 use crate::error::Error;
 use crate::link::{Link, Merged};
@@ -109,6 +109,13 @@ pub(super) fn sync_round(ws: &Workspace, link: &mut Link<'_>, report: SyncReport
                     merged: Box::new(merged),
                 })),
                 other => {
+                    // a round that wrote nothing keeps the keys it began with before another
+                    // round, which another process may run a merge before, as the sync reports
+                    // against the keys of its start
+                    if report == SyncReport::Collect && link.keys_before.is_none() {
+                        ws.settings.failpoints.hit("sync.keys-before");
+                        link.keys_before = Some(KeysBefore::of(merged.state.state()));
+                    }
                     // A failed or contended round also frees its view after unlocking.
                     discarded = Some(merged);
                     other.map(|_| Outcome::Contended)

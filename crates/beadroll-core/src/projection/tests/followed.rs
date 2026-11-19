@@ -199,7 +199,7 @@ fn a_chain_of_records_stops_growing_the_keys_it_makes() {
     let (state, _) = every_way(&base(), &rest);
     let longest = (11..111u128).map(|n| key(&state, n).len()).max().unwrap();
     assert!(
-        longest <= 2 * "pr-b".len() + 64 + ".1".len(),
+        longest <= "pr-b".len() + 20 + 64 + ".1".len(),
         "a key of {longest} bytes"
     );
     assert_eq!(
@@ -276,4 +276,26 @@ fn renames_of_unusual_keys_are_followed_at_every_depth() {
         );
     }
     assert_ne!(key(&state, 20), padded, "the copy gave way");
+}
+
+/// A parent many levels deep whose every level merges counted up (`.1` to `.1000` at each of 72)
+/// is followed: the bound grows with the levels of the key the child was minted under. Twice the
+/// key's length and 64 bytes, it refused this one.
+#[test]
+fn a_parent_renumbered_at_every_level_is_followed() {
+    let minted = format!("ex-base{}", ".1".repeat(72));
+    let now = format!("ex-base{}", ".1000".repeat(72));
+    let rest = [
+        at(10, HERE, &[2], "create", 10, written(&now)),
+        at(
+            11,
+            HERE,
+            &[10],
+            "create",
+            11,
+            under(&format!("{minted}.1"), 10),
+        ),
+    ];
+    let (state, _) = every_way(&base(), &rest);
+    assert_eq!(key(&state, 11), format!("{now}.1"));
 }
