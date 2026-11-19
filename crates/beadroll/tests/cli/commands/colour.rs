@@ -1,7 +1,7 @@
 //! Colour (roll-dih8.23): where it is asked for, or a terminal shows it, and never in JSON or
 //! instead of escaping what an issue says. Terminals are `hardening::help_is_plain_text`'s and `hardening::terminals_and_git_maintenance`'s.
 
-use beadroll_test_support::{Machine, Run, parse_json};
+use beadroll_test_support::{Machine, Run, parse_json, uncoloured};
 
 /// Machine a with tracker `ex` and one issue whose title holds a colour code of its own.
 fn set_up(sandbox: &beadroll_test_support::Sandbox) -> (Machine, String) {
@@ -14,26 +14,6 @@ fn set_up(sandbox: &beadroll_test_support::Sandbox) -> (Machine, String) {
 /// Whether `text` holds an escape character.
 fn coloured(text: &str) -> bool {
     text.contains('\u{1b}')
-}
-
-/// `text` without bead's colour codes (`ESC [`, digits and semicolons, `m`).
-fn uncoloured(text: &str) -> String {
-    let mut out = String::new();
-    let mut rest = text;
-    while let Some(at) = rest.find("\u{1b}[") {
-        out.push_str(&rest[..at]);
-        let after = &rest[at + 2..];
-        let end = after
-            .find(|c: char| !(c.is_ascii_digit() || c == ';'))
-            .unwrap_or(after.len());
-        assert!(
-            after[end..].starts_with('m'),
-            "not a colour code in {text:?}"
-        );
-        rest = &after[end + 1..];
-    }
-    out.push_str(rest);
-    out
 }
 
 /// `bead ARGS` on `a` with `vars` set: what it printed, having succeeded.
