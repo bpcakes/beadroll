@@ -68,7 +68,8 @@ pub struct Rename {
     /// The issue.
     pub uid: EventId,
     /// Why it was renamed: the issue holding `from` that it gave way to, or, for a child that
-    /// followed its parent's rename, that parent. A writer that saw it saw the rename made too.
+    /// followed its parent's rename, that rename's cause. A writer that saw it saw the rename made
+    /// too.
     pub cause: EventId,
 }
 

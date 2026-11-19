@@ -6,6 +6,15 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A grandchild made offline under a child that follows its renamed parent follows it in turn
+  (`x.1.1.1` to `x.2.1.1`), at every depth: #305 gave a follow the parent as its cause, which every
+  writer of a grandchild had seen, so the grandchild kept its key.
+- The split-remote check reads scp syntax as the `ssh://` URL it is, a host in brackets included
+  (`git@[fd00::1]:/srv/r`), and a home directory's path as the root's (`ssh://host/~/r` is
+  `host:r`), as a forge serves both; both pairs were refused as `CONFIG`.
+- A Beads `config.yaml` whose `issue_prefix` is a YAML block, tag, anchor or flow collection is
+  reported as YAML bead does not read; its first characters (`|`) were taken for the prefix.
+
 - A child follows the parent whose key its writer saw, among renames of that key: a rename the
   writer saw made (another child following the same parent, or a copy giving way to one the writer
   saw) is no key its issue held for it. The first rename in replay order (#303) picked another

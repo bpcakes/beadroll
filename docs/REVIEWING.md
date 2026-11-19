@@ -159,7 +159,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `SYNC_CONFLICT` after its rounds. The maintainer chose this on 2026-11-19, read-only mirrors
   included, over V9's setup (a read-only mirror fetched, the primary pushed), which worked only
   while the mirror kept up: too much complexity for little benefit. The rules are applied as git
-  applies them (the longest prefix; a push's own rule first) for this check alone.
+  applies them (the longest prefix; a push's own rule first) for this check alone. Places are
+  compared as a forge reads them: a port aside, scp's `host:PATH` as `ssh://host/PATH`, and a
+  home directory's path (`~/r`, or scp's relative `r`) as the root's, so that `git@forge:o/r`
+  and `https://forge/o/r` are one repository. On a plain ssh server `host:r` (the home
+  directory's `r`) and `ssh://host/r` (the root's) are two, which the check passes: it cannot
+  tell a forge from a server, and refusing the forge's everyday pair costs more.
 
 - A claim makes its owner the issue's assignee; a release and a reopen (`reopen`, `update --status
   open`) give back the assignee it had before its first claim, which a takeover carries on

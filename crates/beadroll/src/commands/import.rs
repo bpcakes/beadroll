@@ -121,7 +121,8 @@ pub(crate) fn tracker_prefix(
 
 /// The `issue_prefix` Beads' `config.yaml` in `beads` names, when it names one: a line
 /// `issue_prefix: VALUE` at the start, its quotes taken off; `None` without the file or the line
-/// (a commented one is none).
+/// (a commented one is none), and refused when the value is YAML other than a plain or quoted
+/// scalar.
 fn configured_prefix(beads: &Path) -> Result<Option<String>, Failure> {
     let file = beads.join("config.yaml");
     let text = match std::fs::read(&file) {
@@ -145,6 +146,19 @@ fn configured_prefix(beads: &Path) -> Result<Option<String>, Failure> {
         .map(|(_, value)| without_comment(value))
         .map(|value| value.trim().trim_matches(['"', '\'']).to_owned())
         .find(|value| !value.is_empty());
+    // a block (`|`, `>`), a tag, an anchor, an alias or a flow collection is YAML this reading does
+    // not follow: reported, where its first character would have been taken for the prefix
+    if let Some(value) = &value
+        && value.starts_with(['|', '>', '!', '&', '*', '[', '{', '@', '`'])
+    {
+        return Err(Failure::new(
+            Code::Validation,
+            format!(
+                "the issue prefix {} names ({value}) is YAML bead does not read: give --prefix",
+                file.display()
+            ),
+        ));
+    }
     Ok(value)
 }
 

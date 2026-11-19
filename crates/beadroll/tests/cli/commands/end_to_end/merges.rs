@@ -327,6 +327,44 @@ fn a_child_follows_its_parents_rename() {
     assert_eq!(next, format!("{first}.1"), "a's child skipped a number");
 }
 
+/// A grandchild made under a child that follows its parent follows it in turn, at every depth:
+/// b's `x.1`, `x.1.1` and `x.1.1.1`, made offline under one another while a's `x.1` came first,
+/// are `x.2`, `x.2.1` and `x.2.1.1`. The grandchild kept `x.1.1.1` when a follow's cause was the
+/// parent followed, which every writer of a grandchild has seen.
+#[test]
+fn a_grandchild_follows_its_parent_that_followed() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, _) = two_machines(&sandbox);
+    a.bead(["create", "A", "--parent", &x]);
+    let mut parent = x.clone();
+    for title in ["B", "C", "G"] {
+        let made = b.bead(["create", title, "--parent", &parent, "--offline"]);
+        parent = json_id(&made.unwrap());
+    }
+    assert_eq!(parent, format!("{x}.1.1.1"));
+    settle(&[&a, &b]);
+    for machine in [&a, &b] {
+        let listed = machine.bead(["list", "--all", "--limit", "0"]).unwrap();
+        let key_of = |title: &str| {
+            (listed["issues"].as_array().unwrap().iter())
+                .find(|issue| issue["title"] == Json::from(title))
+                .map(json_id)
+                .unwrap_or_else(|| panic!("no {title} in {listed:?}"))
+        };
+        let keys = ["B", "C", "G"].map(key_of);
+        assert_eq!(
+            keys,
+            [".2", ".2.1", ".2.1.1"].map(|tail| format!("{x}{tail}"))
+        );
+        let shown = machine.show(&keys[2]);
+        assert_eq!(
+            shown["parent"].as_str(),
+            Some(keys[1].as_str()),
+            "{shown:?}"
+        );
+    }
+}
+
 /// A child follows the parent its writer meant when that writer saw two renames of one key: c saw
 /// b's child as `x.1` and its own as `x.2`, made a child of `x.1`, and a's `x.1` then came first,
 /// so b's became `x.2` and c's `x.3`. The child follows b's, its parent, to `x.2.1`, never c's.
