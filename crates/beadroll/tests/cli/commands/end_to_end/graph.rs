@@ -324,3 +324,63 @@ fn dep_tree_json_gives_each_row_as_data() {
         "{nodes:?}"
     );
 }
+
+/// The loop check judges the graph as it will be: a child moved under an issue that waits on one of
+/// the child's own descendants, and a prerequisite waiting on what its issue passes down to a
+/// child, are `CYCLE`; a child moved from a parent to one that waits on that old parent is not,
+/// since `--parent` takes the old one's place. Both loops were accepted, and the move refused.
+#[test]
+fn a_loop_is_judged_on_the_graph_as_it_will_be() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let made = |title: &str, parent: Option<&str>| {
+        let mut args = vec!["create", title];
+        if let Some(parent) = parent {
+            args.extend(["--parent", parent]);
+        }
+        json_id(&a.bead(args).unwrap())
+    };
+    let c = made("c", None);
+    let d = made("d", Some(&c));
+    let p = made("p", None);
+    a.bead(["dep", "add", &p, &d]);
+    let moved = a.run(["update", &c, "--parent", &p, "--json"]);
+    assert_eq!(
+        code(&moved),
+        "CYCLE",
+        "c would wait on its own child d: {}",
+        moved.stderr
+    );
+    let g = made("g", None);
+    let h = made("h", Some(&g));
+    let i = made("i", None);
+    a.bead(["dep", "add", &g, &i]);
+    let looped = a.run(["dep", "add", &i, &h, "--json"]);
+    assert_eq!(
+        code(&looped),
+        "CYCLE",
+        "h inherits i from g: {}",
+        looped.stderr
+    );
+    let p1 = made("p1", None);
+    let k = made("k", Some(&p1));
+    let p2 = made("p2", None);
+    a.bead(["dep", "add", &p2, &p1]);
+    let moved = a.run(["update", &k, "--parent", &p2, "--json"]);
+    assert_eq!(
+        moved.returncode(),
+        0,
+        "k leaves p1 for p2: {}",
+        moved.stderr
+    );
+    let blocked = a.bead(["blocked"]).unwrap();
+    for row in blocked.as_array().unwrap() {
+        let id = json_id(row);
+        let held = row["blocked_by"].as_array().unwrap();
+        assert!(
+            !held.contains(&Json::from(id.as_str())),
+            "{id} waits for itself"
+        );
+    }
+}

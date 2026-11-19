@@ -10,7 +10,7 @@ use beadroll_core::event::{BLOCKS, PARENT_CHILD};
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
-use beadroll_core::query::{Edges, blocking};
+use beadroll_core::query::{Edges, GraphChange, OtherParents, blocking};
 use beadroll_core::state::{Edge, Issue, State, Target};
 use beadroll_core::text::str_of;
 use beadroll_store::view_outline;
@@ -197,6 +197,27 @@ fn tree(st: &State, issue: &Issue) -> (Vec<Line>, Vec<Value>) {
     (lines, nodes)
 }
 
+/// Whether `issue` depending on `target` with a dependency of `kind` would close a loop, judged on
+/// the graph as it will be ([`State::would_wait_for_itself`]): a child inherits its ancestors'
+/// prerequisites, and a loop through them is refused as a cycle is, though `dep cycles` finds none.
+/// A kind that does not wait (`related`) closes none.
+fn closes_a_loop(st: &State, issue: &Issue, target: &Issue, kind: &str) -> bool {
+    if blocking(kind) {
+        st.would_wait_for_itself(GraphChange::Prerequisite {
+            issue: issue.uid(),
+            target: target.uid(),
+        })
+    } else if kind == PARENT_CHILD {
+        st.would_wait_for_itself(GraphChange::Parent {
+            child: issue.uid(),
+            parent: target.uid(),
+            others: OtherParents::Kept,
+        })
+    } else {
+        false
+    }
+}
+
 /// `dep add|remove|rm ISSUE DEPENDS_ON`: one edge added, or the edges to it taken back; a
 /// dependency an import made on a key that is not an issue yet can be taken back by that key.
 fn change(
@@ -240,15 +261,7 @@ fn change(
         let shown = match (action, target) {
             (Action::Add, Some(target)) => {
                 let kind = kind.as_deref().unwrap_or(BLOCKS);
-                // a child inherits its ancestors' prerequisites: a loop through them is refused
-                // as a cycle is, though `dep cycles` finds none
-                let looped = if blocking(kind) {
-                    st.prerequisite_would_loop(issue.uid(), target.uid())
-                } else if kind == PARENT_CHILD {
-                    st.parent_would_loop(issue.uid(), target.uid())
-                } else {
-                    false
-                };
+                let looped = closes_a_loop(st, issue, target, kind);
                 if issue.uid() == target.uid() || looped {
                     return Err(Failure::new(
                         Code::Cycle,

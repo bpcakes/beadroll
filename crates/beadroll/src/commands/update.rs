@@ -11,6 +11,7 @@ use beadroll_core::event::{DONE, PARENT_CHILD, status};
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
+use beadroll_core::query::{GraphChange, OtherParents};
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_store::Label;
@@ -286,7 +287,12 @@ fn check(st: &State, issue: &Issue, change: &Change<'_>) -> Result<(), Failure> 
         ..
     } = *change;
     if let Some(parent) = new_parent
-        && st.parent_would_loop(issue.uid(), parent)
+        && st.would_wait_for_itself(GraphChange::Parent {
+            child: issue.uid(),
+            parent,
+            // `--parent` takes the place of the parents the issue has
+            others: OtherParents::Replaced,
+        })
     {
         return Err(Failure::new(
             Code::Cycle,
