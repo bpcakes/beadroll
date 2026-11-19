@@ -365,9 +365,21 @@ fn execute(
     let Some(mut answer) = finished else {
         return Ok(None);
     };
-    // an answer that is its first line alone: what follows it is said on standard error
+    said_after_the_answer(notes, output_mode, colors, &mut answer);
+    Ok(rendered(answer, output_mode, colors)?.map(Printed::from))
+}
+
+/// Writes to standard error what `answer` says after its first line, when its outcome's `notes`
+/// say that line alone is the answer (`create --silent`) and a human reads it; `--json` is one
+/// document either way.
+fn said_after_the_answer(
+    notes: commands::Notes,
+    output: OutputMode,
+    colors: Colors,
+    answer: &mut Answer,
+) {
     if notes == commands::Notes::OnStderr
-        && output_mode == OutputMode::Human
+        && output == OutputMode::Human
         && let Some(lines) = &mut answer.1
         && lines.len() > 1
     {
@@ -377,7 +389,6 @@ fn execute(
             output::Stream::Stderr,
         );
     }
-    Ok(rendered(answer, output_mode, colors)?.map(Printed::from))
 }
 
 /// A command's answer: the result `--json` prints and the lines a human reads.
