@@ -6,6 +6,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `prime` says which issues you hold provisionally (claimed offline, not exclusive) and how many
+  events are not yet published, as `claims` and every other command say; after an offline claim it
+  said `0 held by you` and nothing more.
+- A reopen's reason shows in `recap`'s summary (`reopen: not a duplicate`), as a close's and a
+  delete's do; it was recorded and never shown.
+
 - An identity whose parts would print another's owner label is `VALIDATION`: an agent holding `:`
   or `@`, a thread holding `@`, a name ending in `@` and a machine id. `BEAD_AGENT=a:b
   BEAD_THREAD=c` and `BEAD_AGENT=a BEAD_THREAD=b:c` were one owner, and `--actor

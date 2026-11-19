@@ -161,8 +161,11 @@ pub enum Op {
     Release(Ending),
     /// The issue closed.
     Close(Ending),
-    /// The issue reopened.
-    Reopen,
+    /// The issue reopened, and why, when its writer said.
+    Reopen {
+        /// Why.
+        reason: Option<String>,
+    },
     /// The issue deleted.
     Delete(Ending),
     /// A comment.
@@ -362,7 +365,7 @@ impl Op {
             Op::Claim(_) => OpName::Claim,
             Op::Release(_) => OpName::Release,
             Op::Close(_) => OpName::Close,
-            Op::Reopen => OpName::Reopen,
+            Op::Reopen { .. } => OpName::Reopen,
             Op::Delete(_) => OpName::Delete,
             Op::Comment { .. } => OpName::Comment,
             Op::DepAdd { .. } => OpName::DepAdd,
@@ -415,7 +418,9 @@ impl Op {
             })),
             OpName::Release => Op::Release(ending(data)),
             OpName::Close => Op::Close(ending(data)),
-            OpName::Reopen => Op::Reopen,
+            OpName::Reopen => Op::Reopen {
+                reason: text(data, "reason"),
+            },
             OpName::Delete => Op::Delete(ending(data)),
             OpName::Comment => Op::Comment {
                 text: text(data, "text").unwrap_or_default(),

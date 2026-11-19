@@ -412,3 +412,25 @@ fn hostile_text_reaches_no_layout_raw_and_json_keeps_it() {
     let answer = parse_json(&json.stdout).unwrap();
     assert_eq!(each(&answer, "title")[0], title);
 }
+
+/// A reopen's reason shows in its summary, as a close's and a delete's do: it was recorded and
+/// never shown.
+#[test]
+fn a_reopen_says_why() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let key = a.bead(["create", "x"]).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    a.bead(["delete", key.as_str(), "-r", "a duplicate"]);
+    a.bead(["reopen", key.as_str(), "-r", "not a duplicate"]);
+    let recap = a.bead(["recap", "--all"]).unwrap();
+    let summaries: Vec<String> = (recap["workspaces"].as_array().unwrap().iter())
+        .flat_map(|tracker| tracker["events"].as_array().unwrap().iter())
+        .filter(|event| event["op"] == json!("reopen"))
+        .map(|event| event["summary"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(summaries, ["reopen: not a duplicate"]);
+}

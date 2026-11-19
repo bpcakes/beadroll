@@ -362,6 +362,7 @@ fn summary(op: &Op, st: &State) -> String {
         Op::Release(ending) | Op::Close(ending) | Op::Delete(ending) => {
             why(op.name(), ending.reason.as_deref())
         }
+        Op::Reopen { reason } => why(op.name(), reason.as_deref()),
         Op::DepAdd { to, kind, .. } => {
             let kind = kind.as_deref().filter(|k| !k.is_empty()).unwrap_or(BLOCKS);
             format!("dep_add {kind} {}", st.key_of(to))

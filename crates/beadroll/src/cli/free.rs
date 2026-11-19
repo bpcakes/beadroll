@@ -4,13 +4,14 @@ use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::code::Code;
-use beadroll_core::json::{Object, Value};
+use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::state::State;
 use beadroll_core::text::{repr, repr_bytes, str_of};
 use beadroll_store::{
     Actor, Label, MetadataRead, Settings, Workspace, replica_id, tracked_config_warning,
     view_outline,
 };
+use beadroll_sync::unpublished_count;
 
 use super::help;
 use super::layout::{self, lay_out, lay_out_lines, paragraph, paragraph_lines};
@@ -142,8 +143,10 @@ fn prime(ws: Option<&Workspace>, actor: &Actor, settings: &Settings) -> Result<O
     })
 }
 
-/// The tracker's line in `prime`: how many issues are ready, which `me` holds, how many of this
-/// machine's attempts await the remote, and the last sync; with the state it was read from.
+/// The tracker's line in `prime`: how many issues are ready, which `me` holds, which it holds
+/// provisionally (claimed offline, not exclusive), how many of this machine's attempts await the
+/// remote, how many events are not yet published, as every other command says, and the last
+/// sync; with the state it was read from.
 fn standing(ws: &Workspace, me: &Label) -> Result<(String, State), Failure> {
     let st = view_outline(ws)?;
     need_tracker(&st)?;
@@ -163,6 +166,17 @@ fn standing(ws: &Workspace, me: &Label) -> Result<(String, State), Failure> {
     if !held.is_empty() {
         line.push_str(&format!(" ({})", held.join(", ")));
     }
+    let provisional: Vec<&str> = (st.issues())
+        .filter(|i| (i.provisional_claims().iter()).any(|p| me.is(&p.owner)))
+        .map(|i| i.key())
+        .collect();
+    if !provisional.is_empty() {
+        line.push_str(&format!(
+            ", {} claimed provisionally by you, offline and not exclusive ({})",
+            provisional.len(),
+            provisional.join(", ")
+        ));
+    }
     if waiting > 0 {
         line.push_str(&format!(
             ", {waiting} attempt(s) of this machine awaiting the remote"
@@ -173,6 +187,15 @@ fn standing(ws: &Workspace, me: &Label) -> Result<(String, State), Failure> {
         .value("last_sync")
         .filter(|v| v.truthy())
         .map_or_else(|| "never".to_owned(), str_of);
+    // what `note_unpublished` tells every other command's reader; a count that fails says nothing
+    if let Ok(Some(behind)) = unpublished_count(ws)
+        && behind > Int::from(0)
+    {
+        let plural = if behind == Int::from(1) { "" } else { "s" };
+        line.push_str(&format!(
+            ", {behind} event{plural} not yet published: bead sync"
+        ));
+    }
     line.push_str(&format!(". Last sync: {synced}."));
     Ok((line, st))
 }

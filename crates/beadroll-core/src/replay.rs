@@ -434,7 +434,7 @@ fn relabels(op: &Op) -> bool {
         | Op::Claim(_)
         | Op::Release(_)
         | Op::Close(_)
-        | Op::Reopen
+        | Op::Reopen { .. }
         | Op::Delete(_)
         | Op::Comment { .. }
         | Op::DepAdd { .. }
@@ -456,7 +456,7 @@ fn rewires(op: &Op) -> bool {
         | Op::Claim(_)
         | Op::Release(_)
         | Op::Close(_)
-        | Op::Reopen
+        | Op::Reopen { .. }
         | Op::Delete(_)
         | Op::Comment { .. }
         | Op::LabelAdd(_)

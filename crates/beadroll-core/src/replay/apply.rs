@@ -120,7 +120,7 @@ pub(super) fn apply_event(
         Op::Release(ending) => claims::release(&c, issue, ending),
         Op::Close(ending) => claims::close(&c, issue, ending, EndingKind::Close),
         Op::Delete(ending) => claims::close(&c, issue, ending, EndingKind::Delete),
-        Op::Reopen => claims::reopen(&c, issue),
+        Op::Reopen { .. } => claims::reopen(&c, issue),
         Op::Comment { text, author } => {
             st.comment_count += 1;
             comment(&c, issue, st.comment_count, text, author.as_deref())

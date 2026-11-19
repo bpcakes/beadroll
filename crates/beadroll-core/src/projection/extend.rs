@@ -214,7 +214,7 @@ impl Projection {
                 Op::Comment { .. } | Op::Delete(_) | Op::DepAdd { .. } | Op::DepRemove { .. } => {
                     (true, true)
                 }
-                Op::Claim(_) | Op::Release(_) | Op::Close(_) | Op::Reopen => (true, false),
+                Op::Claim(_) | Op::Release(_) | Op::Close(_) | Op::Reopen { .. } => (true, false),
                 Op::Create(making) if !self.state.by_key.contains_key(&making.key) => {
                     for uid in self.state.awaiting.waiting(&making.key) {
                         if !self.texts_here(uid, TextAccess::Change) {
