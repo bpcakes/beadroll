@@ -327,6 +327,8 @@ fn a_copy_renamed_for_a_key_two_machines_made_takes_a_key_nothing_waits_for() {
         to: to.into(),
         replica: THERE.into(),
         uid: EventId::parse(&id(6)).unwrap(),
+        // the copy gave way to the first `pr-k.1`, made at 5
+        cause: EventId::parse(&id(5)).unwrap(),
     };
     assert_eq!(state.renames(), [renamed("pr-k.4")]);
     assert_eq!(edges(&state, 3), [edge("pr-k.1", "blocks", stamp(3, &[]))]);
@@ -506,7 +508,18 @@ pub(super) fn rendered(state: &State) -> String {
         }
     }
     for rename in state.renames() {
-        out.push_str(&format!("{rename:?}\n"));
+        // what a rename answers; its cause is how replay judges a later child, which the states'
+        // equality compares, and leaving it out keeps the pinned digests of the answers
+        let crate::state::Rename {
+            from,
+            to,
+            replica,
+            uid,
+            cause: _,
+        } = rename;
+        out.push_str(&format!(
+            "Rename {{ from: {from:?}, to: {to:?}, replica: {replica:?}, uid: {uid:?} }}\n"
+        ));
     }
     out
 }
