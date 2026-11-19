@@ -31,6 +31,11 @@ starts no store and asks no remote. It says:
 
 - how many issues would come in, by status, and how many the tracker already
   has (an import leaves those as they are);
+- the prefix the tracker would start under: the one the records share
+  (`syrup-rail` for `syrup-rail-0u9` and `syrup-rail-audit-x1`), so that issues
+  made after the move are keyed as the imported ones are. Records under
+  prefixes that share nothing are a problem it lists; give `--prefix` to choose
+  one, which the dry run takes too;
 - every record the import would be refused for, not only the first: one bad
   record refuses the whole file, so fix them all before the real run;
 - the `in_progress` issues, which arrive with no owner (below);
@@ -55,7 +60,8 @@ bead init --import .beads/issues.jsonl
 ```
 
 That imports every record — ids, parent-child keys, dependencies, comments,
-labels, statuses, timestamps — and **publishes the tracker at once**: when the
+labels, statuses, timestamps — under the prefix the records share, and
+**publishes the tracker at once**: when the
 command returns, `refs/beads/journal` on origin holds it. The output says how
 many records came in and whether anything is still unpublished (only if the
 remote did not answer; then `bead sync` later).
