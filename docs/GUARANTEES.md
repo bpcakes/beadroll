@@ -268,6 +268,12 @@ none is planned. Should one ever be needed it follows
 until every machine on the tracker has announced, in the manifest it publishes,
 that it reads the new one; then it flips. Nothing ever rewrites existing events.
 
+A create an older library caller wrote with a `parent` member, which no released
+bead ever read, follows that parent once upgraded if its causes name it, as they
+did when the parent was the head it built on: such an issue can take its
+parent's key and its own number at the upgrade, with no merge and no rename in
+any sync's report. Look its key up again after upgrading.
+
 One addition is read differently by an older bead, by the maintainer's choice:
 a child's create names its parent (`parent`), which an older bead ignores.
 Where a merge renumbered that parent, a released bead keys the child from the

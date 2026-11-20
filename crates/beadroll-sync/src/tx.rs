@@ -135,8 +135,7 @@ impl<'a> Tx<'a> {
         // the state is asked of only for a create naming a parent: any other write emits on it as
         // it did, read once
         if names_parent(op, &data) {
-            let emitted = self.emitted.clone();
-            parent_problem(self.state()?, &emitted, op, &data)?;
+            parent_problem(self.state()?, op, &data)?;
         }
         self.emitter().emit(op, issue, data, event_id)
     }
@@ -247,16 +246,12 @@ pub(crate) fn names_parent(op: OpName, data: &Object) -> bool {
     op == OpName::Create && data.contains_key("parent")
 }
 
-/// `VALIDATION` for a create naming as its parent (`parent`) what is no issue of `state` nor a
-/// create among `emitted` (this transaction's events), or minted under another key than the
-/// parent's, followed by a dot and its number: replay would find none to follow, keep the key
-/// minted without a word, or move it under the parent at once.
-pub(crate) fn parent_problem(
-    state: &State,
-    emitted: &[Record],
-    op: OpName,
-    data: &Object,
-) -> Result<(), Error> {
+/// `VALIDATION` for a create naming as its parent (`parent`) what is no issue of `state`, or
+/// minted under another key than the parent's there, followed by a dot and its number: replay
+/// would find none to follow, keep the key minted without a word, or move it under the parent at
+/// once. A lent emitter's state is from before the lend, so that a parent created since has no key
+/// there to be keyed under: its child is emitted through the transaction once the lend is over.
+pub(crate) fn parent_problem(state: &State, op: OpName, data: &Object) -> Result<(), Error> {
     if op != OpName::Create {
         return Ok(());
     }
@@ -264,29 +259,17 @@ pub(crate) fn parent_problem(
         return Ok(());
     };
     let named = parent.as_str().unwrap_or("a value that is no id");
-    let issue = (parent.as_str()).and_then(EventId::parse);
-    let key = issue.and_then(|issue| {
-        (state.issue(issue).map(|held| held.key().to_owned())).or_else(|| {
-            (emitted.iter().rev())
-                .find(|record| record.value.get("id").and_then(Value::as_str) == parent.as_str())
-                .filter(|record| record.value.get("op").and_then(Value::as_str) == Some("create"))
-                .and_then(|record| {
-                    record
-                        .value
-                        .get("data")?
-                        .get("key")?
-                        .as_str()
-                        .map(str::to_owned)
-                })
-        })
-    });
-    let Some(under) = key else {
+    let held = (parent.as_str())
+        .and_then(EventId::parse)
+        .and_then(|issue| state.issue(issue));
+    let Some(held) = held else {
         return Err(Error::Validation(format!(
-            "a create's parent must be an issue of this tracker, not {named}"
+            "a create's parent must be an issue of this tracker as the state stands, not {named}"
         )));
     };
+    let under = held.key();
     let minted = data.get("key").and_then(Value::as_str).unwrap_or_default();
-    let numbered = (minted.strip_prefix(under.as_str()))
+    let numbered = (minted.strip_prefix(under))
         .and_then(|rest| rest.strip_prefix('.'))
         .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
     if !numbered {
@@ -311,7 +294,7 @@ impl Emitter<'_> {
         if let Some(known) = self.known
             && names_parent(op, &data)
         {
-            parent_problem(known, self.emitted, op, &data)?;
+            parent_problem(known, op, &data)?;
         }
         let id = event_id.unwrap_or_else(|| uuid7(&self.ws.settings.clock));
         let deps: Vec<Value> = (self.heads.iter())

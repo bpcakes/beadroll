@@ -260,10 +260,12 @@ fn a_create_whose_parent_is_no_issue_is_refused() {
 }
 
 /// A create under a parent must be keyed the parent's key, a dot and a number: one keyed under
-/// another refused, where replay moved it under the parent at once, with no merge; and a lent
-/// emitter takes a parent it created itself, the child after it (AT100).
+/// another refused, where replay moved it under the parent at once, with no merge. A lent emitter
+/// refuses a child of a parent made since the lend, whose key its state does not hold (a
+/// collision may settle it at another), and the transaction takes it once the lend is over,
+/// under the key the parent settled at (AT100).
 #[test]
-fn a_create_is_keyed_under_its_parent_and_may_follow_one_made_in_the_same_lend() {
+fn a_create_is_keyed_under_its_parent_as_the_state_holds_it() {
     let sandbox = sandbox();
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
@@ -305,10 +307,16 @@ fn a_create_is_keyed_under_its_parent_and_may_follow_one_made_in_the_same_lend()
             matches!(unnumbered, Err(Error::Validation(_))),
             "{unnumbered:?}"
         );
-        let (_, mut emitter) = tx.lend()?;
-        let parent = emitter.emit(OpName::Create, None, create("ex-made", None), None)?;
+        let parent = {
+            let (_, mut emitter) = tx.lend()?;
+            let parent = emitter.emit(OpName::Create, None, create("ex-made", None), None)?;
+            let child = create("ex-made.1", Some(&parent.to_string()));
+            let lent = emitter.emit(OpName::Create, None, child, None);
+            assert!(matches!(lent, Err(Error::Validation(_))), "{lent:?}");
+            parent
+        };
         let child = create("ex-made.1", Some(&parent.to_string()));
-        emitter.emit(OpName::Create, None, child, None)?;
+        tx.emit(OpName::Create, None, child, None)?;
         Ok(())
     })
     .expect("a transaction");

@@ -68,7 +68,8 @@ fn a_child_follows_the_parent_its_create_names() {
     ]);
     let mut imported = creating("pr-base.1.7", vec![]);
     imported.insert("parent".into(), Value::from(id(20)));
-    rest.push(at(40, HERE, &[31], "create", 40, imported));
+    // named among its causes too, so that only its being an import keeps it from following
+    rest.push(at(40, HERE, &[31, 20], "create", 40, imported));
     let (state, _) = every_way(&base(), &rest);
     let keys = [10, 20, 22, 30, 40].map(|n| key(&state, n));
     let expected = [
