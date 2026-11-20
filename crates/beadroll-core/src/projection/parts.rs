@@ -385,10 +385,6 @@ impl Projection {
         for _ in 0..r.count()? {
             let machine = r.text()?;
             let tail = r.id()?;
-            // a machine's last record is kept in the knowledge, its past told from it
-            if !knowledge.events.contains_key(&tail) {
-                return Err(Unreadable("the journals' last records"));
-            }
             tails.insert(machine, tail);
         }
         let superseded = r.ids()?.into_iter().collect();
@@ -414,6 +410,12 @@ impl Projection {
             state,
             index,
         };
+        // each machine's last applicable event, and no other: the event its knowledge places at
+        // that machine's last applicable position, which a write that misses it breaks its chain
+        // at. Told from the knowledge read, every machine with one named once
+        if read.knowledge.predecessors() != tails {
+            return Err(Unreadable("the journals' last applicable events"));
+        }
         Ok(Projection {
             state: read,
             heads,

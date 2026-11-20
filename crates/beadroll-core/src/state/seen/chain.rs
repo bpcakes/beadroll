@@ -35,6 +35,13 @@ impl Knowledge {
             })
     }
 
+    /// Whether replay has not observed the event `id` here: it waits for a cause, pending, and so
+    /// does every event built on it. Told by its clock, without the pending events; no for an
+    /// event this knowledge does not hold.
+    pub(crate) fn waits(&self, id: EventId) -> bool {
+        (self.events.get_index_of(&id)).is_some_and(|at| !self.ancestry.observed(at))
+    }
+
     /// Each machine's last applicable event in its journal, by id: what its next event must build
     /// on. One pass over the events, each compared with its machine's last applicable position.
     pub(crate) fn predecessors(&self) -> HashMap<String, EventId> {

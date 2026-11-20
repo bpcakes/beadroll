@@ -251,10 +251,10 @@ impl Projection {
         let knowledge = &self.state.knowledge;
         let predecessor = (self.tails.get(machine).copied())
             .filter(|tail| !ids.contains(tail) && knowledge.misses_predecessor(machine, &ids));
-        let pending = &self.state.pending;
-        // the frontier is in order: the pending events are looked up in it, once each
-        let waits = (pending.iter()).any(|event| ids.binary_search(event).is_ok());
-        let predecessor_waits = predecessor.is_some_and(|tail| pending.contains(&tail));
+        // told by the clocks the knowledge keeps of the frontier and the last applicable events,
+        // whatever the pending events behind them
+        let waits = ids.iter().any(|head| knowledge.waits(*head));
+        let predecessor_waits = predecessor.is_some_and(|tail| knowledge.waits(tail));
         Causes {
             ids,
             waits,

@@ -118,3 +118,32 @@ fn a_count_of_entries_made_anew_beyond_the_table_is_refused() {
     };
     assert!(Projection::decode(whole).is_ok(), "as written");
 }
+
+/// An index part naming as a machine's last applicable event one that is not, an earlier event
+/// its knowledge holds, is refused: a write would build on it, and replay set the write aside as a
+/// broken chain where the frontier did not reach the last (AT100).
+#[test]
+fn an_index_naming_another_event_last_in_a_journal_is_refused() {
+    let (encoded, _) = project(journal(&three())).unwrap().encode(0);
+    let mut entry = vec![8];
+    entry.extend_from_slice(HERE.as_bytes());
+    entry.extend_from_slice(&uid(6));
+    // the machine's greatest id, then its last applicable event: the second entry is the tail
+    let first = find(&encoded.index, &entry);
+    let tail = first + entry.len() + find(&encoded.index[first + entry.len()..], &entry);
+    let mut index = encoded.index.clone();
+    index[tail + 1 + HERE.len()..tail + entry.len()].copy_from_slice(&uid(4));
+    let whole = |index: Vec<u8>| Encoded {
+        state: encoded.state.clone(),
+        index,
+        texts: Vec::new(),
+    };
+    assert!(
+        Projection::decode(whole(index)).is_err(),
+        "another event last"
+    );
+    assert!(
+        Projection::decode(whole(encoded.index.clone())).is_ok(),
+        "as written"
+    );
+}
