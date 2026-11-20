@@ -196,26 +196,51 @@ fn a_written_state_survives_draining_and_publication_preserves_commitment() {
     }
 }
 
-/// A cause a transaction names must be an issue its state holds: one it does not, an id from
-/// another tracker, is refused before the heads change, where it was written and the event, with
-/// every write after it, waited for a cause that never comes (AT100).
+/// A create's parent is named among that create's causes alone: a child refused (a priority of the
+/// wrong type), the comment after it builds on the heads as they were, where it named the
+/// refused create's parent too (AT100).
 #[test]
-fn a_cause_the_tracker_does_not_hold_is_refused() {
+fn a_refused_create_leaves_its_parent_out_of_the_next_events_causes() {
     let sandbox = sandbox();
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
-    let key = text(&a.bead(["create", "x"]).expect("an issue")["id"]);
+    let parent = text(&a.bead(["create", "p"]).expect("an issue")["id"]);
+    let other = text(&a.bead(["create", "q"]).expect("an issue")["id"]);
     let ws = workspace(&a, sandbox.origin(), &[]);
     let actor = actor(&a);
-    let foreign = EventId::parse("01a0c450-6c14-7000-8000-000000000099").expect("an id");
-    locked(&ws, || -> Result<(), Error> {
-        let mut tx = Tx::new(&ws, &actor)?;
-        let uid = tx.state()?.resolve(&key).expect("the issue").uid();
-        assert!(matches!(tx.add_cause(foreign), Err(Error::Validation(_))));
-        tx.add_cause(uid)?;
-        Ok(())
+    let (parent_id, comment) = writing(&ws, &actor, |tx| -> Result<(EventId, EventId), Error> {
+        let uid = tx.state()?.resolve(&parent).expect("the issue").uid();
+        let commented = tx.state()?.resolve(&other).expect("the issue").uid();
+        let mut fields = Object::new();
+        fields.insert("title".into(), Value::from("child"));
+        fields.insert("priority".into(), Value::from(true));
+        let mut data = Object::new();
+        data.insert("key".into(), Value::from(format!("{parent}.1")));
+        data.insert("fields".into(), Value::from(fields));
+        data.insert("labels".into(), Value::Array(Vec::new()));
+        data.insert("parent".into(), Value::from(uid.to_string()));
+        let refused = tx.emit(OpName::Create, None, data, None);
+        assert!(matches!(refused, Err(Error::Validation(_))), "{refused:?}");
+        let mut said = Object::new();
+        said.insert("text".into(), Value::from("after the refusal"));
+        let comment = tx.emit(OpName::Comment, Some(&commented.to_string()), said, None)?;
+        Ok((uid, comment))
     })
-    .expect("a transaction");
+    .expect("a write");
+    let mut events = Vec::new();
+    for segment in beadroll_store::segment_files(&ws).expect("the segments") {
+        let text = std::fs::read_to_string(segment).expect("a segment");
+        events.extend(
+            text.lines()
+                .map(|line| beadroll_test_support::parse_json(line).unwrap()),
+        );
+    }
+    let written = (events.iter())
+        .find(|event| event["id"] == beadroll_test_support::Json::from(comment.to_string()))
+        .expect("the comment");
+    let deps = written["deps"].as_array().expect("its causes");
+    let named = beadroll_test_support::Json::from(parent_id.to_string());
+    assert!(!deps.contains(&named), "{deps:?}");
 }
 
 /// A create's parent must be an issue the transaction holds, whichever way it is emitted: a
@@ -252,7 +277,6 @@ fn a_create_whose_parent_is_no_issue_is_refused() {
             let lent = emitter.emit(OpName::Create, None, create(&comment.to_string()), None);
             assert!(matches!(lent, Err(Error::Validation(_))), "{lent:?}");
         }
-        tx.add_cause(uid)?;
         tx.emit(OpName::Create, None, create(&uid.to_string()), None)?;
         Ok(())
     })

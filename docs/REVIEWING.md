@@ -193,7 +193,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   newline, a key ending in a dot).
 
 - A child's create names its parent among its causes as well as in its data, unless the parent is
-  a head (`Tx::add_cause`), so that replay, following only a parent the child's writer saw, sees
+  a head (the emitter names it in that create's `deps` alone, and a write refuses a create
+  without it), so that replay, following only a parent the child's writer saw, sees
   it saw it whatever the frontier holds or comes to: a foreign journal's pending cycle can hide a
   parent from every head, and a foreign journal put back as published can take a path away. The
   maintainer chose this on 2026-11-20 over naming the parent only where the heads miss it, which

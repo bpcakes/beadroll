@@ -104,25 +104,6 @@ impl<'a> Tx<'a> {
         self.materialized.state()
     }
 
-    /// Names the create of `issue`, an issue this transaction's state holds, among the causes of
-    /// the next event emitted, beside the heads, unless it is one: an event that refers to the
-    /// issue is then seen to have seen it whatever the frontier holds or comes to (an event a
-    /// foreign journal's pending cycle names is on no head's path, and a foreign journal put back
-    /// as published can take a path away), by the maintainer's choice over naming it only where
-    /// the heads miss it (`docs/REVIEWING.md` §2). `VALIDATION` for an issue the state does not
-    /// hold, whose create no replay could place before the event, which would wait for ever.
-    pub fn add_cause(&mut self, issue: EventId) -> Result<(), Error> {
-        if self.state()?.issue(issue).is_none() {
-            return Err(Error::Validation(format!(
-                "{issue} is no issue this tracker holds, to name as a cause"
-            )));
-        }
-        if !self.heads.contains(&issue) {
-            self.heads.push(issue);
-        }
-        Ok(())
-    }
-
     /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh
     /// id ([`Emitter::emit`]): the id of the event emitted.
     pub fn emit(
@@ -298,18 +279,17 @@ impl Emitter<'_> {
         }
         // a create's parent among its causes, however it is emitted (siblings of one parent each
         // name it, the head before them being the sibling before): replay follows only a parent
-        // named there
-        if names_parent(op, &data)
-            && let Some(parent) = data
-                .get("parent")
-                .and_then(Value::as_str)
-                .and_then(EventId::parse)
-            && !self.heads.contains(&parent)
-        {
-            self.heads.push(parent);
-        }
+        // named there. This event's alone: the heads change only once it is emitted
+        let parent = (names_parent(op, &data))
+            .then(|| {
+                data.get("parent")
+                    .and_then(Value::as_str)
+                    .and_then(EventId::parse)
+            })
+            .flatten()
+            .filter(|parent| !self.heads.contains(parent));
         let id = event_id.unwrap_or_else(|| uuid7(&self.ws.settings.clock));
-        let deps: Vec<Value> = (self.heads.iter())
+        let deps: Vec<Value> = (self.heads.iter().chain(&parent))
             .map(|dep| Value::from(dep.to_string()))
             .collect();
         let mut event = Object::new();

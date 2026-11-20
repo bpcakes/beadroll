@@ -445,8 +445,9 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 
 /// A child's create carried by an older peer follows its parent's id on every upgraded machine:
 /// b, whichever bead `BEAD_UNDER_TEST` names (a released one ignores `parent`), relays a's child of
-/// a renumbered parent and publishes a write of its own after it; a, and a fresh machine c, both
-/// this build, show the child under its parent's key now and its parent edge naming it (AT100).
+/// a renumbered parent and publishes a write of its own after it, and alone to a second remote,
+/// which a fresh machine c of this build syncs from; c, and a, show the child under its parent's
+/// key now and its parent edge naming it (AT100).
 #[test]
 fn a_child_follows_its_parent_after_an_older_peer_relays_it() {
     let sandbox = crate::sandbox();
@@ -465,8 +466,14 @@ fn a_child_follows_its_parent_after_an_older_peer_relays_it() {
     older.bead(["comments", "add", &relayed, "relayed by an older peer"]);
     older.bead(["sync"]);
     b.bead(["sync"]);
+    // c syncs from a remote only the older peer publishes to: what it holds of the child, the
+    // older peer's journal copied a's create into
+    let relay = sandbox.root().join("relay.git");
+    beadroll_test_support::git(["init", "-q", "--bare", relay.to_str().unwrap()], None);
+    let relay = relay.to_str().unwrap();
+    older.bead(["sync", "--remote", relay]);
     let c = crate::rust_only(&sandbox, "c");
-    c.bead(["sync"]);
+    c.bead(["sync", "--remote", relay]);
     // what the older peer published, before a syncs again: the child under its parent, with the
     // comment it wrote on it
     let fresh = keys(&c);

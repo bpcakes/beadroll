@@ -184,13 +184,11 @@ fn write_issue(
     data.insert("key".into(), Value::from(key));
     data.insert("fields".into(), Value::from(fields.values.clone()));
     data.insert("labels".into(), Value::from(labels));
-    // the parent its key was minted under, by id, which it follows when a merge renames it: named
-    // among the create's causes too, as replay follows only a parent its writer saw
+    // the parent its key was minted under, by id, which it follows when a merge renames it: the
+    // transaction names it among the create's causes too, as replay follows only a parent named
+    // there
     if let Some(parent) = &parent_uid {
         data.insert("parent".into(), Value::from(parent.as_str()));
-        if let Some(cause) = EventId::parse(parent) {
-            tx.add_cause(cause)?;
-        }
     }
     tx.emit(OpName::Create, None, data, Some(uid.clone()))?;
     encodable(fields.valid.and(labels_valid))?;
