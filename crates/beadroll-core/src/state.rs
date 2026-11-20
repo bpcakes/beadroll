@@ -284,12 +284,6 @@ impl State {
         self.knowledge.saw(event, other)
     }
 
-    /// Whether an event built on `heads` has `other` in its past: one of them is it or saw it. No
-    /// when the state's knowledge cannot tell, as a compacted one may not.
-    pub fn frontier_saw(&self, heads: &[EventId], other: EventId) -> bool {
-        (heads.iter()).any(|head| *head == other || self.saw(*head, other))
-    }
-
     /// The issue named by a full key or bare suffix.
     pub fn resolve(&self, key: &str) -> Option<&Issue> {
         let uid = (self.by_key.get(key))

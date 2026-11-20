@@ -191,6 +191,15 @@ These were decided deliberately. Report problems *with* them, not their existenc
   merges make was tried first and wrongly refused some (a number's leading zeros, a stem with a
   newline, a key ending in a dot).
 
+- A child's create names its parent among its causes as well as in its data, unless the parent is
+  a head (`Tx::add_cause`), so that replay, following only a parent the child's writer saw, sees
+  it saw it whatever the frontier holds or comes to: a foreign journal's pending cycle can hide a
+  parent from every head, and a foreign journal put back as published can take a path away. The
+  maintainer chose this on 2026-11-20 over naming the parent only where the heads miss it, which
+  spares an older bead (whose projection takes only causes on its frontier or in the batch) a
+  replay of the journal for each such child it receives during a rolling upgrade: that cost lasts
+  until every machine is upgraded, and this build takes the cause as any write.
+
 - A claim makes its owner the issue's assignee; a release and a reopen (`reopen`, `update --status
   open`) give back the assignee it had before its first claim, which a takeover carries on
   (`Claim::assignee_before`, `projection::ENCODING` 12), and a close keeps the owner who did the

@@ -104,17 +104,15 @@ impl<'a> Tx<'a> {
         self.materialized.state()
     }
 
-    /// Names `cause` among the causes of the next event emitted, beside the heads, unless they have
-    /// it in their past already: an event that refers to `cause` is then seen to have seen it,
-    /// whatever the frontier holds (an event a foreign journal's pending cycle names is on no
-    /// head's path), and one whose heads reach it names no more than they, which an older bead's
-    /// projection takes without replaying.
-    pub fn add_cause_unless_seen(&mut self, cause: EventId) -> Result<(), Error> {
-        let heads = self.heads.clone();
-        if !self.state()?.frontier_saw(&heads, cause) {
+    /// Names `cause` among the causes of the next event emitted, beside the heads, unless it is one:
+    /// an event that refers to `cause` is then seen to have seen it whatever the frontier holds or
+    /// comes to (an event a foreign journal's pending cycle names is on no head's path, and a
+    /// foreign journal put back as published can take a path away), by the maintainer's choice
+    /// over naming it only where the heads miss it (`docs/REVIEWING.md` §2).
+    pub fn add_cause(&mut self, cause: EventId) {
+        if !self.heads.contains(&cause) {
             self.heads.push(cause);
         }
-        Ok(())
     }
 
     /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh
