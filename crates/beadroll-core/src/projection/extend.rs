@@ -216,8 +216,11 @@ impl Projection {
                 }
                 Op::Claim(_) | Op::Release(_) | Op::Close(_) | Op::Reopen { .. } => (true, false),
                 Op::Create(making) if !self.state.by_key.contains_key(&making.key) => {
+                    // read in, in case the create takes the key and binds them, and marked to be
+                    // written again only by the create that does (a child that follows its parent
+                    // elsewhere leaves them waiting)
                     for uid in self.state.awaiting.waiting(&making.key) {
-                        if !self.texts_here(uid, TextAccess::Change) {
+                        if !self.texts_here(uid, TextAccess::Read) {
                             return false;
                         }
                     }
@@ -280,9 +283,9 @@ impl Projection {
                 } else if let Some(cause) = events.get_index_of(dep) {
                     *waiting.get_mut(at)? += 1;
                     dependents.get_mut(cause)?.push(at);
-                } else if !self.state.knowledge.applied(*dep) {
-                    // a cause neither new nor applied here, by a record the knowledge keeps of
-                    // it: replay places it, whatever the ids say
+                } else if !self.ids.contains(dep) || !self.state.knowledge.applied(*dep) {
+                    // a cause neither new nor applied here, in the journal and by a record the
+                    // knowledge keeps of it: replay places it
                     return None;
                 }
                 // else a cause applied here, in the past of the frontier, which the event names

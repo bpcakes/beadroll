@@ -73,6 +73,8 @@ pub(super) fn create(
         };
         if let Some(dep) = st.awaiting.take(other, number) {
             bind(k, names, other, &dep, eid);
+            // the edge's metadata is with its texts, read in for this (`Projection::texts_in`)
+            other.texts_changed();
         }
     }
     // Listed after the key's own entries are settled, so that what it names of itself waits.

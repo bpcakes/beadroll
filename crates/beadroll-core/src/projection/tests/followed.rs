@@ -427,3 +427,48 @@ fn an_older_reader_keys_the_child_from_its_minted_key() {
     assert_eq!(key(&upgraded, 22), "pr-base.2.1");
     assert_eq!(key(&older, 22), "pr-base.1.1");
 }
+
+/// An import waiting for the key a child was minted with is not written again when the child
+/// follows its parent elsewhere and leaves it waiting: its texts, read in in case the child takes
+/// that key, are marked to be written again only by a child that binds to it. C, minted
+/// `pr-base.1.1` under B, follows B to `pr-base.2.1`; D waits for `pr-base.1.1` still. (AT100)
+#[test]
+fn an_import_a_followed_child_leaves_waiting_is_not_written_again() {
+    use crate::state::Texts;
+
+    let waiting = creating("pr-imp", vec![on("pr-base.1.1", None, &[])]);
+    let mut held = base();
+    held.push(at(15, HERE, &[2], "create", 15, waiting));
+    held.extend(two_firsts(15));
+    // on both heads, so that the projection takes it, and its parent
+    let child = at(
+        22,
+        HERE,
+        &[11, 21, 20],
+        "create",
+        22,
+        under("pr-base.1.1", 20),
+    );
+    let mut file = super::TextFile::new();
+    let projection = super::super::project(super::hostile::journal(&held)).unwrap();
+    let mut projection = super::read_back(&projection, &mut file, super::WriteBack::Encoded);
+    let about = projection.about(std::slice::from_ref(&child));
+    let import = EventId::parse(&id(15)).unwrap();
+    assert!(
+        about.contains(&import),
+        "read in, in case the child binds to it"
+    );
+    super::read_in(projection.state_mut(), &file, Some(about));
+    let extended = match projection.extend(vec![child]).unwrap() {
+        super::super::Extended::Applied(extended) => extended,
+        super::super::Extended::Replay => panic!("declined"),
+    };
+    assert_eq!(key(extended.state(), 22), "pr-base.2.1");
+    let issue = extended.state().issue(import).unwrap();
+    assert_eq!(issue.dangling().len(), 1, "still waiting");
+    assert!(
+        matches!(issue.texts(), Texts::Read(_)),
+        "not to be written again: {:?}",
+        issue.texts()
+    );
+}

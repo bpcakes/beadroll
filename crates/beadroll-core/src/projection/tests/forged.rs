@@ -183,3 +183,22 @@ fn an_id_the_journal_does_not_hold_is_no_cause_an_extension_applies_after() {
         "the event waits for a cause no journal holds"
     );
 }
+
+/// A projection whose ids lack one its knowledge keeps a record of, as an index read back could,
+/// declines an event naming it beside the frontier: the journal does not hold it, and replay leaves
+/// the event waiting for it (AT100).
+#[test]
+fn a_record_kept_without_its_id_is_no_cause_an_extension_applies_after() {
+    let mut projection = project(journal(&three())).unwrap();
+    let held = EventId::parse(&id(2)).unwrap();
+    assert!(projection.ids.remove(&held), "an issue's create, kept");
+    let mut data = Object::new();
+    data.insert("text".into(), Value::from("on the frontier and a create"));
+    let event = event(7, HERE, &[6, 2], "comment", 2, data);
+    let batch = vec![record(event, HERE, JournalOrder::Sequenced)];
+    let extended = projection.extend(batch).unwrap();
+    assert!(
+        matches!(extended, super::super::Extended::Replay),
+        "the event waits for a cause the journal does not hold"
+    );
+}
