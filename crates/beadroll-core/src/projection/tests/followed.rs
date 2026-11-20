@@ -357,3 +357,20 @@ fn a_parent_regaining_a_key_past_the_bound_is_not_followed() {
     assert_eq!(key(&state, 10), padded);
     assert_eq!(key(&state, 11), "pr-x.1.1");
 }
+
+/// A child's create naming its parent among its causes beside the head, P made before Q, extends a
+/// projection as any write does, one record at a time and in one batch: a cause the projection
+/// holds and has placed is in the frontier's past. A projection declined it, and every child made
+/// so had the journal replayed (AT100).
+#[test]
+fn a_create_naming_a_held_parent_extends_the_projection() {
+    let rest = [
+        at(10, HERE, &[2], "create", 10, written("pr-p")),
+        at(11, HERE, &[10], "create", 11, written("pr-q")),
+        at(12, HERE, &[11, 10], "create", 12, under("pr-p.1", 10)),
+    ];
+    let (state, taken) = every_way(&base(), &rest);
+    assert_eq!(key(&state, 12), "pr-p.1");
+    assert!(taken.in_one_batch, "{taken:?}");
+    assert_eq!(taken.declined, 0, "{taken:?}");
+}

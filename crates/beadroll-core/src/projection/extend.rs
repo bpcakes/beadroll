@@ -263,7 +263,8 @@ impl Projection {
 
     /// The new `events` in the order replay applies them after the projection's, when every one
     /// has the whole frontier in its past: their causal order, ties broken by id. `None` when one
-    /// does not, or names a cause that is neither on the frontier nor new, or never comes.
+    /// does not, or names a cause that is neither on the frontier, nor new, nor held and placed
+    /// (an ancestor of the frontier, which a child's create names beside it), or never comes.
     fn after_all(&self, events: &IndexMap<EventId, Event>) -> Option<Vec<usize>> {
         let words = self.heads.len().div_ceil(64);
         // Which heads each new event has in its past, a bit each.
@@ -276,11 +277,15 @@ impl Projection {
                 if let Ok(head) = self.heads.binary_search(dep) {
                     let word = past.get_mut(at)?.get_mut(head / 64)?;
                     *word |= 1 << (head % 64);
-                } else {
-                    let cause = events.get_index_of(dep)?;
+                } else if let Some(cause) = events.get_index_of(dep) {
                     *waiting.get_mut(at)? += 1;
                     dependents.get_mut(cause)?.push(at);
+                } else if !self.ids.contains(dep) || self.state.pending.contains(dep) {
+                    // a cause neither new nor placed here: replay places it
+                    return None;
                 }
+                // else a cause held and placed, in the past of the frontier, which the event
+                // names beside it (a child's create names its parent): the order is as it was
             }
             if waiting.get(at) == Some(&0) {
                 ready.push(Reverse((*id, at)));
