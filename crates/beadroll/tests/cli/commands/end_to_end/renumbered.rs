@@ -243,7 +243,7 @@ fn a_child_does_not_follow_a_rename_its_writer_saw_made() {
 /// A writer that made two children and a grandchild under the second, before another machine's
 /// child of the same number came first: all three move up (`x.2` and `x.3`), and the grandchild,
 /// minted under `x.2`, follows its parent to `x.3.1`. It kept `x.2.1`, under the first child's key,
-/// when the writer had seen the issue holding `x.2` now (under another key).
+/// when the writer had seen the issue holding `x.2` now (under another key). (AT100)
 #[test]
 fn a_grandchild_follows_its_parent_past_a_key_its_writer_saw_held_otherwise() {
     let sandbox = crate::sandbox();
@@ -259,7 +259,7 @@ fn a_grandchild_follows_its_parent_past_a_key_its_writer_saw_held_otherwise() {
 
 /// A child made under a key a merge gave its parent: b saw B renamed to `x.2` and made G under it;
 /// a third machine's earlier child then moves B to `x.3`, and G follows to `x.3.1`, where it kept
-/// `x.2.1`, under the issue holding `x.2` now.
+/// `x.2.1`, under the issue holding `x.2` now. (AT100)
 #[test]
 fn a_child_follows_a_parent_renamed_twice() {
     let sandbox = crate::sandbox();
@@ -281,7 +281,7 @@ fn a_child_follows_a_parent_renamed_twice() {
 /// A grandchild under a child of an issue a merge renamed, while another subtree was renamed from
 /// the key the writer saw: d's C under H1 (`x.1.1`) and G under C, then b's earlier child moves
 /// H1 to `x.2`; C follows to `x.2.1` and G to `x.2.1.1`, not into the subtree of S1, which another
-/// rename took from `x.1.1`.
+/// rename took from `x.1.1`. (AT100)
 #[test]
 fn a_grandchild_follows_its_own_subtree_among_renames_of_its_key() {
     let sandbox = crate::sandbox();
@@ -308,7 +308,7 @@ fn a_grandchild_follows_its_own_subtree_among_renames_of_its_key() {
 /// them: b's B and its child C, renamed to `x.2` and `x.2.1` by b's first sync, move to `x.3` and
 /// `x.3.1` once a's earlier child arrives, and b's next sync reports both, from the keys they had
 /// before it. It reported the renames past the count it had before, which a rename made again does
-/// not add to.
+/// not add to. (AT101)
 #[test]
 fn a_sync_reports_a_key_renamed_again() {
     let sandbox = crate::sandbox();
@@ -346,7 +346,7 @@ fn a_sync_reports_a_key_renamed_again() {
 
 /// A sync reports a key an issue holds again, its rename gone: the import I, keyed `x.2.1`, gave
 /// way to C, which followed B into `x.2.1`, and holds `x.2.1` again once a's earlier child moves B
-/// to `x.3` and C to `x.3.1`. Reporting the renames that remained, the sync left I out.
+/// to `x.3` and C to `x.3.1`. Reporting the renames that remained, the sync left I out. (AT101)
 #[test]
 fn a_sync_reports_a_key_held_again() {
     let sandbox = crate::sandbox();

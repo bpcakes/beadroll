@@ -41,7 +41,8 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   the key; a create without it, as every released version wrote, and an import keep their keys.
   The key is settled at the create, so an import waiting for a key binds to the issue that holds
   it, and a sibling made meanwhile keeps its own. Projections are rebuilt once (`ENCODING` 16).
-  Upgrading: until every machine runs this bead, an older one keeps such a child's minted key
+  Upgrading: until every machine runs this bead, an older one keys such a child from its minted
+  key, a collision with another copy of it resolved as for any key, not from its parent's
   (*Format and upgrades* in `docs/GUARANTEES.md`). A build of `main` made after #301 and before
   this one followed children whose creates name no parent; once upgraded, such a child is keyed
   again from the key its create gave, under the rule every copy of a key keeps (the issue that

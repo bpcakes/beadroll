@@ -75,7 +75,7 @@ fn bug_foreign_fork_report_must_not_replace_published_journal() {
 /// A sync that puts back the published copy of another machine's journal, whose local copy was
 /// rewritten to give an issue's create another key, reports the key that changed: the issue goes
 /// from the rewritten key back to the published one with no rename on either side, which a
-/// report of the renames alone left out.
+/// report of the renames alone left out. (AT101)
 #[test]
 fn a_sync_that_puts_back_a_foreign_journal_reports_the_key_it_changed() {
     let sandbox = crate::sandbox();

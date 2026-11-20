@@ -127,6 +127,7 @@ fn a_rebuild_after_merging_keeps_the_pulled_count() {
 
 /// The first fault is before the merge, the next after it. A command gets one rebuild across
 /// both boundaries, and a later command can still repair the cache and publish the local edit.
+/// (AT101)
 #[test]
 fn a_second_damaged_round_stops_without_another_rebuild() {
     let sandbox = sandbox();

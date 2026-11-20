@@ -170,8 +170,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   of which followed) keeps its key, and so does an import; an edge never moves a key. A key a
   child follows to passes over one an import waits for, where a key a create gives may be the one
   it waits for. An older bead reads the member and ignores it, so its machine does not follow the
-  parent the create names until it upgrades (a released one keeps the minted key, a build of
-  `main` since #301 follows by its own judgement of the renames: *Format and upgrades* in
+  parent the create names until it upgrades (a released one keys the child from the minted key, a collision resolved as for any copy, a build
+  of `main` since #301 follows by its own judgement of the renames: *Format and upgrades* in
   GUARANTEES): in a mixed fleet the key of such a child differs between an older machine
   and an upgraded one, and a write made by a key learned on the other goes to the issue it names
   there. GUARANTEES' *Format and upgrades* names this exception; gating the member on every

@@ -93,7 +93,7 @@ fn a_retry_reports_only_its_final_confirmations_and_all_incoming_events() {
 /// A merge that renames a copy, then finds `sync.git` damaged reading a later file, still reports
 /// the rename once the rebuilt round succeeds: the keys a sync reports against are kept before
 /// the merge's first write. Kept as that merge ended, they were taken in the next round, after the
-/// rename, which the report then left out.
+/// rename, which the report then left out. (AT101)
 #[test]
 fn a_rebuilt_round_reports_the_rename_its_first_merge_made() {
     let sandbox = sandbox();
@@ -164,7 +164,7 @@ fn a_rebuilt_round_reports_the_rename_its_first_merge_made() {
 /// A round that wrote nothing and was contended keeps the keys it began with: another process's
 /// sync during the backoff renames m2's copy, the retry then writes nothing, and the report says the
 /// copy moved from the key m2 had when its sync began. The keys kept only by a merge that wrote,
-/// the retry kept none and reported nothing.
+/// the retry kept none and reported nothing. (AT101)
 #[test]
 fn a_retried_round_reports_against_the_keys_the_sync_began_with() {
     let sandbox = sandbox();
@@ -216,7 +216,7 @@ fn a_retried_round_reports_against_the_keys_the_sync_began_with() {
 /// A merge that fails before it writes (`sync.git` damaged at the first blob it reads) keeps the
 /// keys the sync began with for the round the rebuild retries: another process's sync before that
 /// round renames m2's copy, the retry then writes nothing, and the report says the copy moved.
-/// Kept only by a write or by a contended round, the keys were none, and the report empty.
+/// Kept only by a write or by a contended round, the keys were none, and the report empty. (AT101)
 #[test]
 fn a_merge_that_fails_before_writing_keeps_the_keys_the_sync_began_with() {
     let sandbox = sandbox();

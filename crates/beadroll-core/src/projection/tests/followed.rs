@@ -56,7 +56,7 @@ fn two_firsts(after: u128) -> Vec<Record> {
 /// A create naming its parent, whose key a merge renamed, takes the parent's key now with its
 /// number: C, minted `pr-base.1.1` under B, is `pr-base.2.1`. A create that names no parent keeps
 /// its key, whatever edge its writer adds next (E), and so does an import, whatever it carries (F).
-/// Every way of making the state agrees.
+/// Every way of making the state agrees. (AT100)
 #[test]
 fn a_child_follows_the_parent_its_create_names() {
     let mut rest = two_firsts(2);
@@ -86,7 +86,7 @@ fn a_child_follows_the_parent_its_create_names() {
 /// A child's key is settled at its create, so nothing binds to the key it was minted under and
 /// leaves: an import waiting for `pr-base.1.1` binds to A's child E, which holds it, not to C,
 /// minted under it and moved to `pr-base.2.1`; E, made between C's create and C's edge, keeps
-/// `pr-base.1.1`.
+/// `pr-base.1.1`. (AT100)
 #[test]
 fn a_childs_key_is_settled_at_its_create() {
     let waiting = creating("pr-imp", vec![on("pr-base.1.1", None, &[])]);
@@ -113,7 +113,7 @@ fn a_childs_key_is_settled_at_its_create() {
 /// A parent-child edge its writer adds next to a create that names no parent moves nothing, on one
 /// machine and with no merge: a create whose own edge a torn append lost, then `dep add` of the
 /// same child under another parent. It took that parent's key, and the key `dep add` printed no
-/// longer resolved.
+/// longer resolved. (AT100)
 #[test]
 fn an_edge_after_a_create_moves_no_key() {
     let rest = [
@@ -128,7 +128,7 @@ fn an_edge_after_a_create_moves_no_key() {
 
 /// A create whose `parent` is no event id is read as naming no parent, as replay applied such a
 /// create before the member was added (`parent: null`, a key): its issue is made, under its key. A
-/// write of one is refused (`event::write_problem`).
+/// write of one is refused (`event::write_problem`). (AT100)
 #[test]
 fn a_parent_that_is_no_id_names_no_parent() {
     let mut rest = two_firsts(2);
@@ -159,7 +159,7 @@ fn a_parent_that_is_no_id_names_no_parent() {
 /// A key a child follows to is passed over when an import waits for it, as an issue's would be:
 /// C, minted `pr-base.1.1` under B, follows B to `pr-base.2`, and the import D waits for
 /// `pr-base.2.1`, so C is `pr-base.2.2` and D keeps waiting. C took `pr-base.2.1`, and D bound to
-/// it.
+/// it. (AT100)
 #[test]
 fn a_followed_key_passes_over_one_an_import_waits_for() {
     let waiting = creating("pr-imp", vec![on("pr-base.2.1", None, &[])]);
@@ -177,7 +177,7 @@ fn a_followed_key_passes_over_one_an_import_waits_for() {
 }
 
 /// A key with no parent part before its number (`.1`, which no issue's key could have been minted
-/// under) keeps its spelling, whatever parent its create names; it took its parent's key.
+/// under) keeps its spelling, whatever parent its create names; it took its parent's key. (AT100)
 #[test]
 fn a_key_with_no_parent_part_keeps_its_spelling() {
     let rest = [at(10, HERE, &[2], "create", 10, under(".1", 2))];
@@ -203,6 +203,7 @@ fn a_child_of_a_parent_with_a_newline_settles_every_way() {
 /// A chain of records each naming the one before as its parent, every one minted short, makes no
 /// key longer than a bounded multiple of its own: each follows while its parent's key is within
 /// that bound, and keeps its own once it is not, where every key had been longer than the last.
+/// (AT100)
 #[test]
 fn a_chain_of_records_stops_growing_the_keys_it_makes() {
     let mut rest = vec![at(10, HERE, &[2], "create", 10, written("pr-x"))];
@@ -224,7 +225,7 @@ fn a_chain_of_records_stops_growing_the_keys_it_makes() {
 
 /// A parent whose key is far longer than the one its children were minted under is followed by
 /// none of them: a record naming it copied the whole key into every child's, so that replay held
-/// the parent's length times the children.
+/// the parent's length times the children. (AT100)
 #[test]
 fn a_parent_far_longer_than_the_childs_key_is_followed_nowhere() {
     let long = format!("pr-{}", "q".repeat(400));
@@ -249,7 +250,7 @@ fn a_parent_far_longer_than_the_childs_key_is_followed_nowhere() {
 /// Renames bead makes are followed at every depth, whatever the key: a copy of a key padded with
 /// zeros counts from the number without them (`pr-a.0…07` gives way as `pr-a.7`), and a stem with a
 /// newline takes a digest (`pr-a\nb` as `pr-a\nbq`), and so does a key ending in a dot, which may
-/// then read as numbered (`pr-e.` as `pr-e.3`), each child and grandchild following.
+/// then read as numbered (`pr-e.` as `pr-e.3`), each child and grandchild following. (AT100)
 #[test]
 fn renames_of_unusual_keys_are_followed_at_every_depth() {
     let padded = format!("pr-a.{}7", "0".repeat(24));
@@ -293,7 +294,7 @@ fn renames_of_unusual_keys_are_followed_at_every_depth() {
 
 /// A parent many levels deep whose every level merges counted up (`.1` to `.1000` at each of 72)
 /// is followed: the bound grows with the levels of the key the child was minted under. Twice the
-/// key's length and 64 bytes, it refused this one.
+/// key's length and 64 bytes, it refused this one. (AT100)
 #[test]
 fn a_parent_renumbered_at_every_level_is_followed() {
     let minted = format!("ex-base{}", ".1".repeat(72));
@@ -315,7 +316,7 @@ fn a_parent_renumbered_at_every_level_is_followed() {
 
 /// Under a stem holding a newline every level is no number's, and a copy there takes a digest's
 /// prefix as the root's does: a parent whose key took 45 bytes at each of three such levels is
-/// followed. Allowed 20 bytes a level and 64 for the root, it was refused.
+/// followed. Allowed 20 bytes a level and 64 for the root, it was refused. (AT100)
 #[test]
 fn a_parent_given_a_digest_at_every_level_is_followed() {
     let digest = "q".repeat(45);
@@ -330,7 +331,7 @@ fn a_parent_given_a_digest_at_every_level_is_followed() {
 
 /// A create naming a parent its writer never saw follows nowhere: an older bead's create may carry
 /// the member, and a concurrent issue named there was one already only because its id sorted
-/// first.
+/// first. (AT100)
 #[test]
 fn a_parent_its_writer_never_saw_is_followed_nowhere() {
     let rest = [
@@ -344,7 +345,7 @@ fn a_parent_its_writer_never_saw_is_followed_nowhere() {
 /// A parent whose key grew past the bound by merges is not followed, the documented exception:
 /// an import keyed with 150 leading zeros, renamed `pr-x.1` in its writer's view, gets its own key
 /// back once a merge removes the collision, and the child minted `pr-x.1.1` keeps that key while
-/// its parent edge names the parent (`docs/REVIEWING.md` §2).
+/// its parent edge names the parent (`docs/REVIEWING.md` §2). (AT100)
 #[test]
 fn a_parent_regaining_a_key_past_the_bound_is_not_followed() {
     let padded = format!("pr-x.{}1", "0".repeat(150));

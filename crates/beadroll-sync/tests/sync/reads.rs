@@ -32,7 +32,7 @@ fn keys_kept(ws: &Workspace) -> u64 {
     ws.settings.failpoints.hits("sync.keys-before")
 }
 
-/// A sync that brings nothing in reads the state once, and reports it as before.
+/// A sync that brings nothing in reads the state once, and reports it as before. (AT101)
 #[test]
 fn a_sync_that_brings_nothing_reads_the_state_once() {
     let sandbox = sandbox();
@@ -53,7 +53,7 @@ fn a_sync_that_brings_nothing_reads_the_state_once() {
 }
 
 /// A sync that brings records in reads the state before it merges, to count the keys renamed
-/// before it, and after: the copy the merge renamed is reported, and only it.
+/// before it, and after: the copy the merge renamed is reported, and only it. (AT101)
 #[test]
 fn a_sync_that_brings_a_rename_reads_the_state_before_and_after_its_merge() {
     let sandbox = sandbox();
