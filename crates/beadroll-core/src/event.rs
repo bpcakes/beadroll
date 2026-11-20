@@ -463,6 +463,18 @@ pub fn write_problem(event: &Value) -> Option<String> {
         if !caused {
             return Some("create event names a 'parent' that is not among its deps".into());
         }
+        // a child is keyed under its parent's key with a number, which replay follows
+        let key = data_of(event)
+            .and_then(|d| d.get("key"))
+            .and_then(Value::as_str);
+        let numbered = key
+            .and_then(|key| key.rsplit_once('.'))
+            .is_some_and(|(under, n)| {
+                !under.is_empty() && !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())
+            });
+        if !numbered {
+            return Some("create event names a 'parent' but has no PARENT.N 'key'".into());
+        }
     }
     let fields = data_of(event)
         .and_then(|d| d.get("fields"))

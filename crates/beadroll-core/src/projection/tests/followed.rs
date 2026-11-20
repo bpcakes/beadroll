@@ -154,6 +154,9 @@ fn a_parent_that_is_no_id_names_no_parent() {
     // a parent that is not among the create's causes is refused too
     let event = super::hostile::event(25, HERE, &[24], "create", 25, under("pr-base.1.1", 20));
     assert!(crate::event::write_problem(&event).is_some_and(|p| p.contains("deps")));
+    // and one keyed with no number after a parent part
+    let event = super::hostile::event(25, HERE, &[24, 20], "create", 25, under("root", 20));
+    assert!(crate::event::write_problem(&event).is_some_and(|p| p.contains("PARENT.N")));
     let mut data = written("pr-base.1.1");
     data.insert("parent".into(), Value::Null);
     let event = super::hostile::event(25, HERE, &[24], "create", 25, data);

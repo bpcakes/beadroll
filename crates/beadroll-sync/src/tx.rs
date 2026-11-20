@@ -12,6 +12,8 @@ mod tests;
 #[cfg(test)]
 pub(crate) use tests::DropProbe;
 
+use std::collections::HashSet;
+
 use beadroll_core::event::{FORMAT, MAX_NESTING, event_problem, payload_problem, write_problem};
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
@@ -51,6 +53,8 @@ pub struct Tx<'a> {
     heads: Vec<EventId>,
     /// Every event emitted so far, as a journal records it.
     emitted: Vec<Record>,
+    /// The creates among `emitted`, by id, which a create's parent may be.
+    created: HashSet<EventId>,
     /// The checkout's branch and commit, recorded on each event.
     pub place: Option<Value>,
     /// The attempt's events emitted, to settle with the remote.
@@ -89,6 +93,7 @@ impl<'a> Tx<'a> {
             heads: projection.heads().to_vec(),
             materialized: Materialized::projected(projection),
             emitted: Vec::new(),
+            created: HashSet::new(),
             place,
             ownership: Vec::new(),
             writable: actor.writable,
@@ -110,7 +115,7 @@ impl<'a> Tx<'a> {
         if self.materialized.state().is_err() {
             self.state()?;
         }
-        parent_problem(self.materialized.state().ok(), &self.emitted, op, data)
+        parent_problem(self.materialized.state().ok(), &self.created, op, data)
     }
 
     /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh
@@ -138,6 +143,7 @@ impl<'a> Tx<'a> {
             replica: &self.replica,
             heads: &mut self.heads,
             emitted: &mut self.emitted,
+            created: &mut self.created,
             place: &self.place,
             ownership: &mut self.ownership,
             route: Route::Journal,
@@ -159,6 +165,7 @@ impl<'a> Tx<'a> {
             materialized,
             heads,
             emitted,
+            created,
             place,
             ownership,
             writable,
@@ -171,6 +178,7 @@ impl<'a> Tx<'a> {
             replica,
             heads,
             emitted,
+            created,
             place,
             ownership,
             route: Route::Journal,
@@ -222,6 +230,7 @@ pub struct Emitter<'t> {
     replica: &'t str,
     heads: &'t mut Vec<EventId>,
     emitted: &'t mut Vec<Record>,
+    created: &'t mut HashSet<EventId>,
     place: &'t Option<Value>,
     ownership: &'t mut Vec<Value>,
     route: Route,
@@ -237,14 +246,14 @@ pub(crate) fn names_parent(op: OpName, data: &Object) -> bool {
 }
 
 /// `VALIDATION` for a create naming as its parent (`parent`) what is neither an issue of `state`
-/// nor a create among `emitted` (this transaction's events), or keyed with no number after a
-/// parent part: replay would find no parent to follow, or no key to give its number. Its key is
-/// the caller's to mint from the parent's current key (`State::mint_key`, as `bead create` does):
-/// judging it would need the parent's settled key, which the state has only once every event
-/// emitted before is applied, a pass over every issue a create (`docs/REVIEWING.md` §2).
+/// nor a create among `created` (this transaction's): replay would find no parent to follow. Its
+/// key is the caller's to mint from the parent's current key (`State::mint_key`, as `bead create`
+/// does), of a shape `write_problem` judges: judging the key itself would need the parent's
+/// settled key, which the state has only once every event emitted before is applied, a pass over
+/// every issue a create (`docs/REVIEWING.md` §2).
 pub(crate) fn parent_problem(
     state: Option<&State>,
-    emitted: &[Record],
+    created: &HashSet<EventId>,
     op: OpName,
     data: &Object,
 ) -> Result<(), Error> {
@@ -254,28 +263,17 @@ pub(crate) fn parent_problem(
     let Some(parent) = data.get("parent") else {
         return Ok(());
     };
-    let named = parent.as_str().unwrap_or("a value that is no id");
     let issue = (parent.as_str()).and_then(EventId::parse);
-    let held = issue.is_some_and(|issue| state.is_some_and(|st| st.issue(issue).is_some()));
-    let made = (emitted.iter()).any(|record| {
-        record.value.get("op").and_then(Value::as_str) == Some("create")
-            && record.value.get("id").and_then(Value::as_str) == parent.as_str()
+    let held = issue.is_some_and(|issue| {
+        state.is_some_and(|st| st.issue(issue).is_some()) || created.contains(&issue)
     });
-    if !held && !made {
-        return Err(Error::Validation(format!(
-            "a create's parent must be an issue of this tracker, not {named}"
-        )));
+    if held {
+        return Ok(());
     }
-    let minted = data.get("key").and_then(Value::as_str).unwrap_or_default();
-    let numbered = (minted.rsplit_once('.')).is_some_and(|(under, n)| {
-        !under.is_empty() && !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())
-    });
-    if !numbered {
-        return Err(Error::Validation(format!(
-            "a create under a parent is keyed PARENT.N, not {minted}"
-        )));
-    }
-    Ok(())
+    let named = parent.as_str().unwrap_or("a value that is no id");
+    Err(Error::Validation(format!(
+        "a create's parent must be an issue of this tracker, not {named}"
+    )))
 }
 
 impl Emitter<'_> {
@@ -292,7 +290,7 @@ impl Emitter<'_> {
         if let Some(known) = self.known
             && names_parent(op, &data)
         {
-            parent_problem(Some(known), self.emitted, op, &data)?;
+            parent_problem(Some(known), self.created, op, &data)?;
         }
         // a create's parent among its causes, however it is emitted (siblings of one parent each
         // name it, the head before them being the sibling before): replay follows only a parent
@@ -357,6 +355,9 @@ impl Emitter<'_> {
             origin: String::new(),
             sequenced,
         });
+        if op == OpName::Create {
+            self.created.insert(emitted);
+        }
         Ok(emitted)
     }
 }
