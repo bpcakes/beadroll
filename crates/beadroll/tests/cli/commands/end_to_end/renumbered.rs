@@ -393,17 +393,18 @@ fn a_sync_reports_a_key_held_again() {
     assert!(reported.contains(&back), "{back:?} not in {reported:?}");
 }
 
-/// A child's create names its parent among its causes as well as in its data: replay follows only
-/// a parent the child's writer saw, and the heads of the store need not reach it (an event a
-/// foreign journal's pending cycle names is on no head's path). Here the parent is no head, Q made
-/// after it (AT100).
+/// A child's create names its parent among its causes only where its heads do not reach it:
+/// replay follows only a parent the child's writer saw, and a store's heads need not reach one (an
+/// event a foreign journal's pending cycle names is on no head's path); where they do, as here, Q
+/// made after P, the create names its heads alone, which an older bead's projection takes without
+/// replaying the journal (AT100).
 #[test]
-fn a_childs_create_names_its_parent_among_its_causes() {
+fn a_childs_create_names_its_parent_among_its_causes_only_where_its_heads_miss_it() {
     let sandbox = crate::sandbox();
     let a = crate::rust_only(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
     let parent = json_id(&a.bead(["create", "P"]).unwrap());
-    a.bead(["create", "Q"]);
+    let q_key = json_id(&a.bead(["create", "Q"]).unwrap());
     a.bead(["create", "C", "--parent", &parent, "--offline"]);
     let mut events = Vec::new();
     for entry in walk(&a.store().join("events")) {
@@ -424,8 +425,12 @@ fn a_childs_create_names_its_parent_among_its_causes() {
     let parent_id = create_of(&parent)["id"].clone();
     let child = create_of(&format!("{parent}.1"));
     assert_eq!(child["data"]["parent"], parent_id);
-    let deps = child["deps"].as_array().unwrap();
-    assert!(deps.contains(&parent_id), "{deps:?}");
+    let q = create_of(&q_key);
+    assert_eq!(
+        child["deps"],
+        Json::Array(vec![q["id"].clone()]),
+        "the heads reach the parent"
+    );
 }
 
 /// Every file under `dir`, at any depth.

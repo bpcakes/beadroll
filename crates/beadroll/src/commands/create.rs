@@ -189,7 +189,7 @@ fn write_issue(
     if let Some(parent) = &parent_uid {
         data.insert("parent".into(), Value::from(parent.as_str()));
         if let Some(cause) = EventId::parse(parent) {
-            tx.add_cause(cause);
+            tx.add_cause_unless_seen(cause)?;
         }
     }
     tx.emit(OpName::Create, None, data, Some(uid.clone()))?;
