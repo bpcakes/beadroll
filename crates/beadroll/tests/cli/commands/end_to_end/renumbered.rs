@@ -442,3 +442,40 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     }
     files
 }
+
+/// A child's create carried by an older peer follows its parent's id on every upgraded machine:
+/// b, whichever bead `BEAD_UNDER_TEST` names (a released one ignores `parent`), relays a's child of
+/// a renumbered parent and publishes a write of its own after it; a, and a fresh machine c, both
+/// this build, show the child under its parent's key now and its parent edge naming it (AT100).
+#[test]
+fn a_child_follows_its_parent_after_an_older_peer_relays_it() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, _) = two_machines(&sandbox);
+    let older = Machine::new(&sandbox, "older");
+    older.bead(["sync"]);
+    // Q, made first, holds `x.1`: a's P, minted `x.1` offline after it, gives way, and its child C
+    // follows it
+    older.bead(["create", "Q", "--parent", &x]);
+    let parent = offline(&a, "P", &x);
+    offline(&a, "C", &parent);
+    a.bead(["sync"]);
+    assert_eq!(keys(&a)["P"], format!("{x}.2"), "P gave way to Q");
+    older.bead(["sync"]);
+    let relayed = keys(&older)["C"].clone();
+    older.bead(["comments", "add", &relayed, "relayed by an older peer"]);
+    older.bead(["sync"]);
+    b.bead(["sync"]);
+    let c = crate::rust_only(&sandbox, "c");
+    c.bead(["sync"]);
+    for machine in [&a, &b, &c] {
+        machine.bead(["sync"]);
+        let now = keys(machine);
+        assert_eq!(now["C"], format!("{}.1", now["P"]), "{now:?}");
+        let shown = machine.show(&now["C"]);
+        assert_eq!(
+            shown["parent"].as_str(),
+            Some(now["P"].as_str()),
+            "{shown:?}"
+        );
+    }
+}

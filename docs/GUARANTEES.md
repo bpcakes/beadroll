@@ -298,14 +298,16 @@ not that replay applied it: a claim's says which issue it was made on, not that
 it took (an offline claim is provisional, and replay can decline or set aside
 one), and `bead show` says who holds the issue. The log shows an event only once
 it is in the settled journal in its causal place, so a write's absence proves
-nothing, a comment's as a claim's. An ordinary write (a comment, an update) is
+nothing, a comment's as a claim's. An ordinary write (a comment, an update that claims nothing) is
 in its store's journal once its command answers, published or not: `bead sync`
-on that store publishes it, and written again it is there twice. An ownership
-command's attempt (a claim, a release) whose push went unanswered is settled by
-`bead sync` on the store that made it, against the same coordination remote and
-ref (`--remote R` again, if the command was given one), which confirms or
-fences it off (`UNRESOLVED` until then); a sync of another remote fences
-nothing there, though it drops the attempt. Either can have landed and still wait for a cause
+on that store publishes it, to the remote and ref it was meant for (`--remote R`
+again, if the command was given one), and written again it is there twice. An
+ownership command's attempt (a claim, a release, and an `update` with `--claim`
+or `--status in_progress`, whose edits go with the claim) whose push went
+unanswered is settled by `bead sync` on the store that made it, against the same
+coordination remote and ref, which confirms or fences it off (`UNRESOLVED` until
+then): fenced off, the edits are gone with the claim, and a sync of another
+remote fences nothing there, though it drops the attempt. Either can have landed and still wait for a cause
 that has not arrived. Repeating an ownership command is
 no check either: one its receipt recognizes as already made does nothing again,
 and its answer can name the issue the key holds now, while one whose first try
