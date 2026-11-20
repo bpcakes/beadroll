@@ -14,6 +14,11 @@ use beadroll_core::state::{Keys, Rename, State};
 #[derive(Debug, Default)]
 pub(crate) struct KeysBefore {
     keys: Keys,
+    /// Whether the state held a rename.
+    renamed: bool,
+    /// Whether a merge since put back another machine's journal as published, which can change a
+    /// key with no rename on either side.
+    replaced: bool,
 }
 
 impl KeysBefore {
@@ -23,8 +28,15 @@ impl KeysBefore {
     /// report is, once the sync has let go of the store.
     pub(crate) fn taken(state: State) -> KeysBefore {
         KeysBefore {
+            renamed: !state.renames().is_empty(),
             keys: state.into_keys(),
+            replaced: false,
         }
+    }
+
+    /// A merge put back another machine's journal as published.
+    pub(crate) fn replaced_a_journal(&mut self) {
+        self.replaced = true;
     }
 }
 
@@ -37,6 +49,11 @@ pub(super) fn renamed_by_merge(state: &State, before: Option<&KeysBefore>) -> Ve
     let Some(before) = before else {
         return Vec::new();
     };
+    // with no rename before or after, and no journal put back, every issue holds its create's key
+    // as it did: nothing to compare
+    if !before.renamed && !before.replaced && state.renames().is_empty() {
+        return Vec::new();
+    }
     // indexed are only the issues whose key moved: an issue the merge left alone holds its key in
     // `before` still, and one new to the sync holds none there
     let moved: HashMap<EventId, &str> = (before.keys.iter())

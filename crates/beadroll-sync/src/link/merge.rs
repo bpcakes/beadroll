@@ -388,6 +388,10 @@ impl<'l, 'w> Merging<'l, 'w> {
             &self.link.ws.settings.failpoints,
         )?;
         self.write_journal(path, &target, &theirs, written)?;
+        // a key can change with no rename either side: the report compares every one
+        if let Some(before) = &mut self.link.keys_before {
+            before.replaced_a_journal();
+        }
         self.facts.forks.push(path.to_owned());
         Ok(0)
     }
