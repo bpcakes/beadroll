@@ -131,11 +131,18 @@ pub(super) fn sync_round(
         _ => false,
     };
     let unwritten = link.unwritten.take();
+    // a round that gives way lets go of the store, which another process may sync meanwhile and
+    // change a key in with no rename: from here the report compares every key
+    if again && let Some(before) = &mut link.keys_before {
+        before.unsettle();
+    }
     if again && report == SyncReport::Collect && link.keys_before.is_none() {
         let began = (discarded.map(|merged| merged.state)).or(unwritten);
         if let Some(began) = began {
             ws.settings.failpoints.hit("sync.keys-before");
-            link.keys_before = Some(KeysBefore::taken(began.into_projection().into_state()));
+            let mut before = KeysBefore::taken(began.into_projection().into_state());
+            before.unsettle();
+            link.keys_before = Some(before);
         }
     } else {
         // the merge the round made, whole, after the store is let go of: its last field, a test's

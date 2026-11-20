@@ -16,9 +16,10 @@ pub(crate) struct KeysBefore {
     keys: Keys,
     /// Whether the state held a rename.
     renamed: bool,
-    /// Whether a merge since put back another machine's journal as published, which can change a
-    /// key with no rename on either side.
-    replaced: bool,
+    /// Whether a key may have changed with no rename on either side: a merge since rewrote a
+    /// journal file the store held (another machine's put back as published, an attempt file),
+    /// or a round gave way, after which another process may have done so.
+    unsettled: bool,
 }
 
 impl KeysBefore {
@@ -30,13 +31,13 @@ impl KeysBefore {
         KeysBefore {
             renamed: !state.renames().is_empty(),
             keys: state.into_keys(),
-            replaced: false,
+            unsettled: false,
         }
     }
 
-    /// A merge put back another machine's journal as published.
-    pub(crate) fn replaced_a_journal(&mut self) {
-        self.replaced = true;
+    /// A key may have changed with no rename either side: the report compares every one.
+    pub(crate) fn unsettle(&mut self) {
+        self.unsettled = true;
     }
 }
 
@@ -49,9 +50,9 @@ pub(super) fn renamed_by_merge(state: &State, before: Option<&KeysBefore>) -> Ve
     let Some(before) = before else {
         return Vec::new();
     };
-    // with no rename before or after, and no journal put back, every issue holds its create's key
-    // as it did: nothing to compare
-    if !before.renamed && !before.replaced && state.renames().is_empty() {
+    // with no rename before or after, and no journal file rewritten nor a round given way since,
+    // every issue holds its create's key as it did: nothing to compare
+    if !before.renamed && !before.unsettled && state.renames().is_empty() {
         return Vec::new();
     }
     // indexed are only the issues whose key moved: an issue the merge left alone holds its key in

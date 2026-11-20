@@ -237,6 +237,13 @@ impl<'l, 'w> Merging<'l, 'w> {
         blob: Option<&str>,
     ) -> Result<(), Error> {
         self.before_writing();
+        // a file the store held, rewritten (a foreign journal put back, an attempt file): a key
+        // can change with no rename either side, and the report compares every one
+        if target.exists()
+            && let Some(before) = &mut self.link.keys_before
+        {
+            before.unsettle();
+        }
         write_atomic(
             target,
             data,
@@ -388,10 +395,6 @@ impl<'l, 'w> Merging<'l, 'w> {
             &self.link.ws.settings.failpoints,
         )?;
         self.write_journal(path, &target, &theirs, written)?;
-        // a key can change with no rename either side: the report compares every one
-        if let Some(before) = &mut self.link.keys_before {
-            before.replaced_a_journal();
-        }
         self.facts.forks.push(path.to_owned());
         Ok(0)
     }
