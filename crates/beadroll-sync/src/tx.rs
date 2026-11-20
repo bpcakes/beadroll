@@ -104,15 +104,23 @@ impl<'a> Tx<'a> {
         self.materialized.state()
     }
 
-    /// Names `cause` among the causes of the next event emitted, beside the heads, unless it is one:
-    /// an event that refers to `cause` is then seen to have seen it whatever the frontier holds or
-    /// comes to (an event a foreign journal's pending cycle names is on no head's path, and a
-    /// foreign journal put back as published can take a path away), by the maintainer's choice
-    /// over naming it only where the heads miss it (`docs/REVIEWING.md` §2).
-    pub fn add_cause(&mut self, cause: EventId) {
-        if !self.heads.contains(&cause) {
-            self.heads.push(cause);
+    /// Names the create of `issue`, an issue this transaction's state holds, among the causes of
+    /// the next event emitted, beside the heads, unless it is one: an event that refers to the
+    /// issue is then seen to have seen it whatever the frontier holds or comes to (an event a
+    /// foreign journal's pending cycle names is on no head's path, and a foreign journal put back
+    /// as published can take a path away), by the maintainer's choice over naming it only where
+    /// the heads miss it (`docs/REVIEWING.md` §2). `VALIDATION` for an issue the state does not
+    /// hold, whose create no replay could place before the event, which would wait for ever.
+    pub fn add_cause(&mut self, issue: EventId) -> Result<(), Error> {
+        if self.state()?.issue(issue).is_none() {
+            return Err(Error::Validation(format!(
+                "{issue} is no issue this tracker holds, to name as a cause"
+            )));
         }
+        if !self.heads.contains(&issue) {
+            self.heads.push(issue);
+        }
+        Ok(())
     }
 
     /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh

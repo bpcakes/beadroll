@@ -307,7 +307,10 @@ meant.
 
 An imported dependency still waiting for a key binds to the issue that holds it
 on each machine, which can differ, so the two can see different blockers, and
-readiness, for the importing issue.
+readiness, for the importing issue; one of type `parent-child` gives them
+different descendants, and `bead close --recursive` on an older machine closes
+the descendants its graph has, by id, for good. Until every machine is upgraded,
+close such a subtree issue by issue, each looked up where it is closed.
 
 ## What else holds
 

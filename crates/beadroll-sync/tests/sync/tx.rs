@@ -195,3 +195,25 @@ fn a_written_state_survives_draining_and_publication_preserves_commitment() {
         assert!(comments(&machine.show(&key)).is_empty());
     }
 }
+
+/// A cause a transaction names must be an issue its state holds: one it does not, an id from
+/// another tracker, is refused before the heads change, where it was written and the event, with
+/// every write after it, waited for a cause that never comes (AT100).
+#[test]
+fn a_cause_the_tracker_does_not_hold_is_refused() {
+    let sandbox = sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let key = text(&a.bead(["create", "x"]).expect("an issue")["id"]);
+    let ws = workspace(&a, sandbox.origin(), &[]);
+    let actor = actor(&a);
+    let foreign = EventId::parse("01a0c450-6c14-7000-8000-000000000099").expect("an id");
+    locked(&ws, || -> Result<(), Error> {
+        let mut tx = Tx::new(&ws, &actor)?;
+        let uid = tx.state()?.resolve(&key).expect("the issue").uid();
+        assert!(matches!(tx.add_cause(foreign), Err(Error::Validation(_))));
+        tx.add_cause(uid)?;
+        Ok(())
+    })
+    .expect("a transaction");
+}
