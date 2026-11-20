@@ -217,3 +217,44 @@ fn a_cause_the_tracker_does_not_hold_is_refused() {
     })
     .expect("a transaction");
 }
+
+/// A create's parent must be an issue the transaction holds, whichever way it is emitted: a
+/// comment's event, though seen, is refused as a parent by `Tx::emit` and by a lent emitter, where
+/// it was written and replay found no parent to follow, keeping the minted key (AT100).
+#[test]
+fn a_create_whose_parent_is_no_issue_is_refused() {
+    let sandbox = sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let key = text(&a.bead(["create", "x"]).expect("an issue")["id"]);
+    let ws = workspace(&a, sandbox.origin(), &[]);
+    let actor = actor(&a);
+    let create = |parent: &str| {
+        let mut fields = Object::new();
+        fields.insert("title".into(), Value::from("child"));
+        let mut data = Object::new();
+        data.insert("key".into(), Value::from(format!("{key}.1")));
+        data.insert("fields".into(), Value::from(fields));
+        data.insert("labels".into(), Value::Array(Vec::new()));
+        data.insert("parent".into(), Value::from(parent));
+        data
+    };
+    locked(&ws, || -> Result<(), Error> {
+        let mut tx = Tx::new(&ws, &actor)?;
+        let uid = tx.state()?.resolve(&key).expect("the issue").uid();
+        let mut said = Object::new();
+        said.insert("text".into(), Value::from("a comment"));
+        let comment = tx.emit(OpName::Comment, Some(&uid.to_string()), said, None)?;
+        let refused = tx.emit(OpName::Create, None, create(&comment.to_string()), None);
+        assert!(matches!(refused, Err(Error::Validation(_))), "{refused:?}");
+        {
+            let (_, mut emitter) = tx.lend()?;
+            let lent = emitter.emit(OpName::Create, None, create(&comment.to_string()), None);
+            assert!(matches!(lent, Err(Error::Validation(_))), "{lent:?}");
+        }
+        tx.add_cause(uid)?;
+        tx.emit(OpName::Create, None, create(&uid.to_string()), None)?;
+        Ok(())
+    })
+    .expect("a transaction");
+}

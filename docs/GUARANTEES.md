@@ -310,7 +310,10 @@ on each machine, which can differ, so the two can see different blockers, and
 readiness, for the importing issue. A Beads export names issues by key (`id`),
 which can differ between them as their keys do, and an import matches records
 by that key: until every machine is upgraded, import none another machine
-exported, or a record can be taken for another issue or made anew. An imported
+exported, or a record can be taken for another issue or made anew; and an export
+written before the upgrade keeps the keys it was written with, which replay may
+have moved since, so export again from an upgraded, synced store before
+importing. An imported
 dependency of type `parent-child` gives them
 different descendants, and `bead close --recursive` on an older machine closes
 the descendants its graph has, by id, for good. Until every machine is upgraded,

@@ -132,6 +132,11 @@ impl<'a> Tx<'a> {
         data: Object,
         event_id: Option<String>,
     ) -> Result<EventId, Error> {
+        // the state is asked of only for a create naming a parent: any other write emits on it as
+        // it did, read once
+        if names_parent(op, &data) {
+            parent_problem(self.state()?, op, &data)?;
+        }
         self.emitter().emit(op, issue, data, event_id)
     }
 
@@ -147,6 +152,7 @@ impl<'a> Tx<'a> {
             ownership: &mut self.ownership,
             route: Route::Journal,
             writable: self.writable,
+            known: None,
         }
     }
 
@@ -179,6 +185,7 @@ impl<'a> Tx<'a> {
             ownership,
             route: Route::Journal,
             writable: *writable,
+            known: Some(state),
         };
         Ok((state, emitter))
     }
@@ -229,6 +236,33 @@ pub struct Emitter<'t> {
     ownership: &'t mut Vec<Value>,
     route: Route,
     writable: bool,
+    /// The state it was lent beside, which a create's parent must be an issue of; none for an
+    /// emitter the transaction makes for one event, whose caller asked its own state first.
+    known: Option<&'t State>,
+}
+
+/// Whether `op` with `data` is a create naming a parent, which [`parent_problem`] judges.
+pub(crate) fn names_parent(op: OpName, data: &Object) -> bool {
+    op == OpName::Create && data.contains_key("parent")
+}
+
+/// `VALIDATION` for a create naming as its parent (`parent`) what is no issue of `state`: replay
+/// would find none to follow, and keep the key minted, without a word.
+pub(crate) fn parent_problem(state: &State, op: OpName, data: &Object) -> Result<(), Error> {
+    if op != OpName::Create {
+        return Ok(());
+    }
+    let Some(parent) = data.get("parent") else {
+        return Ok(());
+    };
+    let issue = (parent.as_str()).and_then(EventId::parse);
+    if issue.is_some_and(|issue| state.issue(issue).is_some()) {
+        return Ok(());
+    }
+    let named = parent.as_str().unwrap_or("a value that is no id");
+    Err(Error::Validation(format!(
+        "a create's parent must be an issue of this tracker, not {named}"
+    )))
 }
 
 impl Emitter<'_> {
@@ -242,6 +276,9 @@ impl Emitter<'_> {
         data: Object,
         event_id: Option<String>,
     ) -> Result<EventId, Error> {
+        if let Some(known) = self.known {
+            parent_problem(known, op, &data)?;
+        }
         let id = event_id.unwrap_or_else(|| uuid7(&self.ws.settings.clock));
         let deps: Vec<Value> = (self.heads.iter())
             .map(|dep| Value::from(dep.to_string()))
