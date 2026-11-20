@@ -185,6 +185,9 @@ pub struct Causes {
     pub predecessor: Option<EventId>,
     /// Whether the predecessor waits for a cause of its own, as `waits` says of the frontier.
     pub predecessor_waits: bool,
+    /// Whether the machine's last applicable event broke its journal chain: replay sets aside each
+    /// later record of the journal, an attempt's events, in no journal's chain, applying still.
+    pub broken: bool,
 }
 
 /// Replays `journal` into a projection. Fails only as [`crate::replay::replay`] does.
@@ -260,6 +263,7 @@ impl Projection {
             waits,
             predecessor,
             predecessor_waits,
+            broken: knowledge.last_broke_chain(machine),
         }
     }
 

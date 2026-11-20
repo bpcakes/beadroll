@@ -147,7 +147,18 @@ fn an_index_naming_another_event_last_in_a_journal_is_refused() {
     assert_eq!(index[tail - 1], 1, "the count, in one byte");
     index[tail - 1] = 0;
     index.drain(tail..tail + entry.len());
-    assert!(Projection::decode(whole(index)).is_err(), "no event last");
+    // the table's place, the part's first eight bytes, moved back past what was taken out
+    let at = u64::from_le_bytes(index[..8].try_into().unwrap()) - entry.len() as u64;
+    index[..8].copy_from_slice(&at.to_le_bytes());
+    let refused = Projection::decode(whole(index))
+        .err()
+        .map(|error| format!("{error:?}"));
+    assert!(
+        refused
+            .as_deref()
+            .is_some_and(|error| error.contains("last applicable")),
+        "no event last: {refused:?}"
+    );
     assert!(
         Projection::decode(whole(encoded.index.clone())).is_ok(),
         "as written"

@@ -54,6 +54,20 @@ impl Knowledge {
         named == tails.len()
     }
 
+    /// Whether `machine`'s last applicable event broke its journal chain itself: its clock does
+    /// not reach its own position, nor does that of any event built on it, and replay sets aside
+    /// every later record of the journal as a broken chain too. A placeholder that broke the chain
+    /// is no predecessor, and the records after it are judged by the event before it.
+    pub(crate) fn last_broke_chain(&self, machine: &str) -> bool {
+        let Some(chain) = (self.replicas.iter()).position(|name| name == machine) else {
+            return false;
+        };
+        let Some(&last) = self.applicable.get(chain).and_then(|at| at.last()) else {
+            return false;
+        };
+        (self.chain_breaks.get(machine)).is_some_and(|breaks| breaks.contains(&(last as usize)))
+    }
+
     /// Whether replay has not observed the event `id` here: it waits for a cause, pending, and so
     /// does every event built on it. Told by its clock, without the pending events; no for an
     /// event this knowledge does not hold.

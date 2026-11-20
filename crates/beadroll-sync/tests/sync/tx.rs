@@ -446,3 +446,40 @@ fn a_create_on_a_broken_chain_is_no_parent_however_the_transaction_is_read() {
         .expect("an attempt");
     }
 }
+
+/// A placeholder that broke this machine's journal chain, malformed and built on nothing, is no
+/// predecessor: a create after it builds on the valid record before it and applies, and is a
+/// parent whether or not the state was read between, where every break was taken for one that
+/// sets aside each record after it (AT100).
+#[test]
+fn a_create_after_a_placeholder_that_broke_the_chain_is_a_parent() {
+    let sandbox = sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    a.bead(["create", "x"]);
+    let replica = a.id();
+    let ws = workspace(&a, sandbox.origin(), &[]);
+    let stray = beadroll_test_support::events::id_at(1_790_000_000_001, 1);
+    let event = beadroll_test_support::json!({
+        "v": 1, "id": (stray.as_str()), "replica": (replica.as_str()), "deps": [],
+        "actor": {"agent": "test", "thread": "a"},
+        "op": 7, "issue": (stray.as_str()), "data": {}
+    });
+    beadroll_store::append_events(&ws, &replica, [&event]).expect("the placeholder");
+    let actor = actor(&a);
+    for read_between in [false, true] {
+        locked(&ws, || -> Result<(), Error> {
+            let mut tx = Tx::new(&ws, &actor)?;
+            assert!(tx.state()?.chain_breaks().contains_key(&replica), "a break");
+            let parent = tx.emit(OpName::Create, None, create_of("ex-p", None), None)?;
+            if read_between {
+                assert!(tx.state()?.issue(parent).is_some(), "applied");
+            }
+            let child = create_of("ex-p.1", Some(parent));
+            let judged = tx.emit(OpName::Create, None, child, None);
+            assert!(judged.is_ok(), "read between: {read_between}: {judged:?}");
+            Ok(())
+        })
+        .expect("a transaction");
+    }
+}
