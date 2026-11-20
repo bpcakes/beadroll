@@ -292,10 +292,13 @@ not that replay applied it: a claim's says which issue it was made on, not that
 it took (an offline claim is provisional, and replay can decline or set aside
 one), and `bead show` says who holds the issue. The log shows an event only once
 it is in the settled journal in its causal place, so a write's absence proves
-nothing, a comment's as a claim's: one whose answer was lost or uncertain is
-settled by `bead sync` on the store that made it (`UNRESOLVED` until then), and
-one that landed can still wait for a cause that has not arrived; written again
-on its absence alone, it may be there twice. Repeating an ownership command is
+nothing, a comment's as a claim's. An ordinary write (a comment, an update) is
+in its store's journal once its command answers, published or not: `bead sync`
+on that store publishes it, and written again it is there twice. An ownership
+command's attempt (a claim, a release) whose push went unanswered is settled by
+`bead sync` on the store that made it, which confirms or fences it off
+(`UNRESOLVED` until then). Either can have landed and still wait for a cause
+that has not arrived. Repeating an ownership command is
 no check either: one its receipt recognizes as already made does nothing again,
 and its answer can name the issue the key holds now, while one whose first try
 never landed acts anew, once that try is fenced off, on the issue the key names
