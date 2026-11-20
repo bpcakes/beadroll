@@ -6,6 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A write beside an event waiting on a cause builds on this machine's latest event: a foreign
+  event pending on another that builds on it (a cycle of causes) kept it off the frontier, and
+  the write, naming only the frontier, broke its machine's journal chain and was set aside,
+  applied by nobody.
 - The split-remote check reads scp syntax as the `ssh://` URL it is, a host in brackets included
   (`git@[fd00::1]:/srv/r`), and a home directory's path as the root's (`ssh://host/~/r` is
   `host:r`), as a forge serves both; both pairs were refused as `CONFIG`.

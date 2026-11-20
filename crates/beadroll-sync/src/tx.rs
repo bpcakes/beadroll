@@ -89,11 +89,14 @@ impl<'a> Tx<'a> {
     fn from(ws: &'a Workspace, actor: &Actor, projection: Projection) -> Result<Tx<'a>, Error> {
         let replica = ensure_replica_id(&ws.settings)?;
         let place = capture_where(ws)?;
+        // this machine's latest event among them while one pending keeps it off the frontier:
+        // replay sets aside a write that does not build on it
+        let heads = projection.causes_for(&replica);
         Ok(Tx {
             ws,
             actor: actor.value.clone(),
             replica,
-            heads: projection.heads().to_vec(),
+            heads,
             materialized: Materialized::projected(projection),
             emitted: Vec::new(),
             created: HashMap::new(),
@@ -113,15 +116,13 @@ impl<'a> Tx<'a> {
     }
 
     /// [`parent_problem`] of a create naming a parent: by the state as it stands and the creates
-    /// emitted since, and, for a parent neither holds, by the state with every event emitted since
-    /// applied (a pending create a cause emitted since makes one), so that only a parent missing
-    /// from both costs a pass over the issues.
+    /// emitted since, the state made only where there is none. No event emitted since makes a
+    /// parent of a pending create, its id [`Minted`] fresh, no cause any event waits for: what
+    /// applying them adds to the issues is the creates among them, which `created` holds.
     fn judge_parent(&mut self, op: OpName, data: &Object) -> Result<(), Error> {
-        let stale = parent_problem(self.made(), &self.created, op, data);
-        if stale.is_ok() {
-            return stale;
+        if self.materialized.state().is_err() {
+            self.state()?;
         }
-        self.state()?;
         parent_problem(self.made(), &self.created, op, data)
     }
 
@@ -248,9 +249,7 @@ impl Spent {
 }
 
 /// What emits into a [`Tx`] while its state is lent ([`Tx::lend`]). It judges a create's parent
-/// by the state lent and the creates emitted, the state borrowed for the lend: a parent a cause
-/// emitted since has made replayable (a pending create) is judged once the lend is over, by
-/// [`Tx::emit`].
+/// by the state lent and the creates emitted since, as [`Tx::emit`] does.
 #[derive(Debug)]
 pub struct Emitter<'t> {
     ws: &'t Workspace,

@@ -215,6 +215,26 @@ impl Projection {
         &self.heads
     }
 
+    /// What a new event of `machine`'s builds on: the frontier, and the machine's latest event
+    /// where it is off the frontier, not pending itself, while an event is pending. An event
+    /// pending on a cause that builds on it keeps it off the frontier with no head having it in
+    /// its past, and replay sets aside an event of a machine's journal that does not build on the
+    /// one before it (a journal chain broken), applied by nobody. With none pending, every event
+    /// off the frontier is in the past of one on it, and the frontier is the causes as it was.
+    pub fn causes_for(&self, machine: &str) -> Vec<EventId> {
+        let mut causes = self.heads.clone();
+        let pending = &self.state.pending;
+        if let Some(last) = self.lasts.get(machine)
+            && !pending.is_empty()
+            && !pending.contains(last)
+            && !causes.contains(last)
+        {
+            causes.push(*last);
+            causes.sort_unstable();
+        }
+        causes
+    }
+
     /// How many events the journal holds: every id, an attempt file's and a stand-in's among them.
     pub fn event_count(&self) -> usize {
         self.ids.len()
