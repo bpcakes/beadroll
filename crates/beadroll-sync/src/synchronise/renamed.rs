@@ -47,6 +47,14 @@ pub(super) fn renamed_by_merge(state: &State, before: Option<&KeysBefore>) -> Ve
         })
         .map(|(key, uid)| (*uid, key.as_str()))
         .collect();
+    // no key the store held moved: only issues new to the sync can have taken another key than
+    // their create gave, the renames whose issue did not hold that key before, in replay order
+    if moved.is_empty() {
+        return (state.renames().iter())
+            .filter(|rename| before.keys.get(&rename.to) != Some(&rename.uid))
+            .map(|rename| Value::from(rename.to_value()))
+            .collect();
+    }
     // the renames are in replay order, at most one an issue, as the issues are: walked alongside
     let mut renames = state.renames().iter().peekable();
     let mut changed = Vec::new();

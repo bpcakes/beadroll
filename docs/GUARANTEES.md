@@ -270,8 +270,10 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
 
 One addition is read differently by an older bead, by the maintainer's choice:
 a child's create names its parent (`parent`), which an older bead ignores.
-Where a merge renumbered that parent, a released bead keeps the child's key the
-one it was minted with, and a build of `main` made after #301 and before the
+Where a merge renumbered that parent, a released bead keys the child from the
+key it was minted with, a collision with another copy of it resolved as for any
+key (the later one taking the next free number), and a build of `main` made
+after #301 and before the
 member was added follows by its own judgement of the renames, which can put the
 child under another sibling; an upgraded machine follows the parent the create
 names. Ids and the edges that name them agree everywhere. Until every machine is
@@ -281,8 +283,10 @@ upgrade, sync the machine that writes first, then look the issue up there
 (`bead search`, `bead show`), rather than writing by a key another machine
 printed. An online claim merges before it reads its key, so a publication made
 meanwhile can still move one. A key looked up after the write may name another
-issue by then; the write's own event does not change: it names its issue by an
-immutable id, which `bead log --json` of the issue shows with the key it has. An imported
+issue by then, and `bead log KEY` lists that issue's events; the unfiltered
+`bead log --json --limit 0` lists every event, the write among them, whose issue
+it names stays the one it was made on, and the `create` event shows that
+issue's key now. An imported
 dependency still waiting for a key binds to the issue that holds it on each
 machine, which can differ, so the two can see different blockers, and readiness,
 for the importing issue.
@@ -746,7 +750,8 @@ it, and the file is committed again.
   the keys of the children made under it before the sync, which follow it
   (`x.1.1` to `x.2.1`), at every depth: the parent its create names by id,
   whatever else was renamed from that key since. A child made by a released
-  version, or imported, keeps its key, and so does a child of a parent whose
+  version, or imported, is keyed from the key its create gave, as any copy is,
+  and so is a child of a parent whose
   key merges made far longer than the one the child was minted under (a long
   padded number given back, `docs/REVIEWING.md` §2). Events refer to issues by an immutable id, so nothing
   is lost, but a key written into a commit message before the sync now names
