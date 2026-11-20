@@ -375,3 +375,41 @@ fn a_supplied_id_repeating_an_emitted_event_is_refused() {
     })
     .expect("a transaction");
 }
+
+/// A supplied event id is no event's the journal already holds: a create given a committed
+/// comment's id is refused, where the journal set both aside and a child of the create had no
+/// parent to follow (AT100).
+#[test]
+fn a_supplied_id_the_journal_holds_is_refused() {
+    let sandbox = sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let key = text(&a.bead(["create", "x"]).expect("an issue")["id"]);
+    a.bead(["comments", "add", &key, "committed"]);
+    let ws = workspace(&a, sandbox.origin(), &[]);
+    let mut comment = None;
+    for segment in beadroll_store::segment_files(&ws).expect("the segments") {
+        let text = std::fs::read_to_string(segment).expect("a segment");
+        for line in text.lines() {
+            let event = beadroll_test_support::parse_json(line).unwrap();
+            if event["op"] == beadroll_test_support::Json::from("comment") {
+                comment = event["id"].as_str().map(str::to_owned);
+            }
+        }
+    }
+    let comment = comment.expect("the comment's event");
+    let actor = actor(&a);
+    locked(&ws, || -> Result<(), Error> {
+        let mut tx = Tx::new(&ws, &actor)?;
+        let mut fields = Object::new();
+        fields.insert("title".into(), Value::from("made"));
+        let mut data = Object::new();
+        data.insert("key".into(), Value::from("ex-made"));
+        data.insert("fields".into(), Value::from(fields));
+        data.insert("labels".into(), Value::Array(Vec::new()));
+        let again = tx.emit(OpName::Create, None, data, Some(comment.clone()));
+        assert!(matches!(again, Err(Error::Validation(_))), "{again:?}");
+        Ok(())
+    })
+    .expect("a transaction");
+}

@@ -152,6 +152,7 @@ impl<'a> Tx<'a> {
             emitted: &mut self.emitted,
             created: &mut self.created,
             ids: &mut self.ids,
+            journal: &self.materialized,
             place: &self.place,
             ownership: &mut self.ownership,
             route: Route::Journal,
@@ -189,6 +190,7 @@ impl<'a> Tx<'a> {
             emitted,
             created,
             ids,
+            journal: materialized,
             place,
             ownership,
             route: Route::Journal,
@@ -245,6 +247,8 @@ pub struct Emitter<'t> {
     emitted: &'t mut Vec<Record>,
     created: &'t mut HashSet<EventId>,
     ids: &'t mut HashSet<EventId>,
+    /// The transaction's state, which says what ids its journal holds.
+    journal: &'t Materialized,
     place: &'t Option<Value>,
     ownership: &'t mut Vec<Value>,
     route: Route,
@@ -320,10 +324,10 @@ impl Emitter<'_> {
         // a supplied id is no event's this transaction emitted: the journal would set both aside,
         // and a create's id would stand for an issue it no longer makes
         if let Some(supplied) = event_id.as_deref().and_then(EventId::parse)
-            && self.ids.contains(&supplied)
+            && (self.ids.contains(&supplied) || self.journal.holds(supplied))
         {
             return Err(Error::Validation(format!(
-                "{supplied} is an event this transaction emitted already"
+                "{supplied} is an event of this tracker already"
             )));
         }
         let id = event_id.unwrap_or_else(|| uuid7(&self.ws.settings.clock));
