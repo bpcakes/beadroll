@@ -53,9 +53,15 @@ pub struct Tx<'a> {
     materialized: Materialized,
     /// The frontier, with the events emitted so far: what a new event builds on.
     heads: Vec<EventId>,
-    /// Whether a cause the transaction's first event built on waits for one of its own: replay
-    /// applies none of the events emitted until it comes, and a create among them is no parent.
+    /// Whether a cause an event emitted built on waits for one of its own: replay applies none of
+    /// the events emitted after it until it comes, and a create among them is no parent.
     waits: bool,
+    /// This machine's last applicable event, where the frontier does not reach it, until the
+    /// transaction's first record of its journal names it
+    /// ([`Causes`](beadroll_core::projection::Causes)).
+    predecessor: Option<EventId>,
+    /// Whether the predecessor waits for a cause of its own.
+    predecessor_waits: bool,
     /// Every event emitted so far, as a journal records it.
     emitted: Vec<Record>,
     /// The creates among `emitted`, by id, with where each is among them: a create's parent while
@@ -92,8 +98,8 @@ impl<'a> Tx<'a> {
     fn from(ws: &'a Workspace, actor: &Actor, projection: Projection) -> Result<Tx<'a>, Error> {
         let replica = ensure_replica_id(&ws.settings)?;
         let place = capture_where(ws)?;
-        // this machine's last record among them where the frontier does not have it in its past:
-        // replay sets aside a write that does not build on it
+        // with this machine's last applicable event where the frontier does not reach it, which its
+        // first record of the journal names: replay sets aside a record that does not build on it
         let causes = projection.causes_for(&replica);
         Ok(Tx {
             ws,
@@ -101,6 +107,8 @@ impl<'a> Tx<'a> {
             replica,
             heads: causes.ids,
             waits: causes.waits,
+            predecessor: causes.predecessor,
+            predecessor_waits: causes.predecessor_waits,
             materialized: Materialized::projected(projection),
             emitted: Vec::new(),
             created: HashMap::new(),
@@ -170,7 +178,9 @@ impl<'a> Tx<'a> {
             heads: &mut self.heads,
             emitted: &mut self.emitted,
             created: &mut self.created,
-            waits: self.waits,
+            waits: &mut self.waits,
+            predecessor: &mut self.predecessor,
+            predecessor_waits: self.predecessor_waits,
             place: &self.place,
             ownership: &mut self.ownership,
             route: Route::Journal,
@@ -194,6 +204,8 @@ impl<'a> Tx<'a> {
             emitted,
             created,
             waits,
+            predecessor,
+            predecessor_waits,
             place,
             ownership,
             writable,
@@ -208,7 +220,9 @@ impl<'a> Tx<'a> {
             heads,
             emitted,
             created,
-            waits: *waits,
+            waits,
+            predecessor,
+            predecessor_waits: *predecessor_waits,
             place,
             ownership,
             route: Route::Journal,
@@ -265,8 +279,12 @@ pub struct Emitter<'t> {
     heads: &'t mut Vec<EventId>,
     emitted: &'t mut Vec<Record>,
     created: &'t mut HashMap<EventId, usize>,
-    /// Whether replay applies nothing emitted until a cause comes ([`Tx`]'s `waits`).
-    waits: bool,
+    /// Whether replay applies nothing emitted from here until a cause comes ([`Tx`]'s `waits`).
+    waits: &'t mut bool,
+    /// The cause the transaction's first record of its journal names beside the frontier.
+    predecessor: &'t mut Option<EventId>,
+    /// Whether it waits for a cause of its own.
+    predecessor_waits: bool,
     place: &'t Option<Value>,
     ownership: &'t mut Vec<Value>,
     route: Route,
@@ -354,8 +372,14 @@ impl Emitter<'_> {
             })
             .flatten()
             .filter(|parent| !self.heads.contains(parent));
+        let sequenced = !OWNERSHIP.contains(&op) && self.route == Route::Journal;
+        // this machine's last applicable event, where the frontier does not reach it, among the
+        // causes of the transaction's first record of the journal: replay sets aside a record that
+        // does not build on it. An attempt's event is in no journal's chain
+        let predecessor =
+            (*self.predecessor).filter(|predecessor| sequenced && parent != Some(*predecessor));
         let id = event_id.map_or_else(|| uuid7(&self.ws.settings.clock), |minted| minted.0);
-        let deps: Vec<Value> = (self.heads.iter().chain(&parent))
+        let deps: Vec<Value> = (self.heads.iter().chain(&predecessor).chain(&parent))
             .map(|dep| Value::from(dep.to_string()))
             .collect();
         let mut event = Object::new();
@@ -392,7 +416,6 @@ impl Emitter<'_> {
             // Invalid UTF-8 actor text cannot be encoded in an event.
             return Err(Error::Validation("text is not valid UTF-8".to_owned()));
         }
-        let sequenced = !OWNERSHIP.contains(&op) && self.route == Route::Journal;
         if !sequenced {
             self.ownership.push(event.clone());
         }
@@ -408,7 +431,10 @@ impl Emitter<'_> {
         });
         // a parent by its record only where replay applies it as it comes: a create built on a
         // cause that waits makes no issue until then, as the state says once it is applied
-        if op == OpName::Create && !self.waits {
+        if sequenced && self.predecessor.take().is_some() {
+            *self.waits |= self.predecessor_waits;
+        }
+        if op == OpName::Create && !*self.waits {
             self.created.insert(emitted, self.emitted.len() - 1);
         }
         Ok(emitted)

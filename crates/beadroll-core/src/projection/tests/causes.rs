@@ -35,6 +35,7 @@ fn a_placeholder_last_in_the_journal_is_not_built_on() {
     let projection = project(journal(&records)).expect("a projection");
     let causes = projection.causes_for(HERE);
     assert_eq!(causes.ids, vec![event_id(3)], "{causes:?}");
+    assert_eq!(causes.predecessor, None, "{causes:?}");
     assert!(!causes.waits, "{causes:?}");
 }
 
@@ -50,8 +51,11 @@ fn a_last_event_a_released_head_names_without_reaching_is_built_on() {
     records.push(at(5, THERE, &[4], "comment", 2, comment("another")));
     let projection = project(journal(&records)).expect("a projection");
     let causes = projection.causes_for(HERE);
-    assert!(causes.ids.contains(&event_id(4)), "{causes:?}");
-    assert!(causes.waits, "{causes:?}");
+    assert_eq!(causes.predecessor, Some(event_id(4)), "{causes:?}");
+    assert!(causes.predecessor_waits, "{causes:?}");
+    // the frontier itself is runnable: an attempt's event, in no journal's chain, applies on it
+    assert!(!causes.ids.contains(&event_id(4)), "{causes:?}");
+    assert!(!causes.waits, "{causes:?}");
 }
 
 /// A write that finds its machine's last event on the frontier, or in the past of an event on it,
@@ -61,6 +65,9 @@ fn a_last_event_the_frontier_reaches_adds_no_cause() {
     let mut records = base();
     records.push(at(4, THERE, &[3], "comment", 2, comment("built on it")));
     let projection = project(journal(&records)).expect("a projection");
-    assert_eq!(projection.causes_for(HERE).ids, vec![event_id(4)]);
-    assert_eq!(projection.causes_for(THERE).ids, vec![event_id(4)]);
+    for machine in [HERE, THERE] {
+        let causes = projection.causes_for(machine);
+        assert_eq!(causes.ids, vec![event_id(4)], "{causes:?}");
+        assert_eq!(causes.predecessor, None, "{causes:?}");
+    }
 }

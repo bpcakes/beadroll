@@ -96,3 +96,63 @@ fn a_write_builds_on_the_last_record_where_the_clock_went_back() {
     plant_cycle(&a, &tail);
     writes_apply(&a);
 }
+
+/// Appends to `machine`'s own journal a comment on `issue` built on its last record and on an
+/// event no journal holds, which waits for it: the id of the comment, its last record now.
+fn append_waiting(machine: &Machine, issue: &str) -> String {
+    let tail = tail_of(machine);
+    let waiting = beadroll_test_support::events::id_at(1_790_000_000_010, 10);
+    let missing = beadroll_test_support::events::id_at(1_790_000_000_011, 11);
+    let event = json!({
+        "v": 1, "id": (waiting.as_str()), "replica": (machine.id().as_str()),
+        "deps": [(tail.as_str()), (missing.as_str())],
+        "actor": {"agent": "test", "thread": "a"},
+        "op": "comment", "issue": issue, "data": {"text": "waits"}
+    });
+    let folder = machine.store().join("events").join(machine.id());
+    let mut segments: Vec<_> = (std::fs::read_dir(&folder).expect("the machine's journal"))
+        .map(|entry| entry.expect("a segment").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "jsonl"))
+        .collect();
+    segments.sort();
+    let last = segments.last().expect("a segment");
+    let mut text = std::fs::read(last).expect("the segment");
+    text.extend(beadroll_store::encode_events([&event]).expect("a journal line"));
+    std::fs::write(last, text).expect("the segment, appended to");
+    waiting
+}
+
+/// An ownership attempt is in no journal's chain, and builds on the frontier alone: a release
+/// beside this machine's last event, which waits for a cause and which a foreign head released
+/// without reaching it names, applies, where one naming that event too waited with it and left
+/// the claim held (AT100).
+#[test]
+fn a_release_beside_a_waiting_last_event_builds_on_the_frontier_alone() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let made = a.bead(["create", "x"]).expect("an issue");
+    let key = made["id"].as_str().expect("a key").to_owned();
+    a.bead(["claim", &key]).expect("a claim");
+    assert!(a.show(&key)["claim"]["owner"].as_str().is_some(), "claimed");
+    // what the planted comments are about matters not: none of them applies
+    let about = tail_of(&a);
+    let waiting = append_waiting(&a, &about);
+    // one id with two contents, each building on the waiting event
+    let head = beadroll_test_support::events::id_at(1_790_000_000_012, 12);
+    let said = |text: &str| -> Json {
+        json!({
+            "v": 1, "id": (head.as_str()), "replica": "0000000f", "deps": [(waiting.as_str())],
+            "actor": {"agent": "test", "thread": "f"},
+            "op": "comment", "issue": (about.as_str()), "data": {"text": text}
+        })
+    };
+    let folder = a.store().join("events").join("0000000f");
+    private_dir(&folder);
+    let lines = [said("one content"), said("another")];
+    let text = beadroll_store::encode_events(&lines).expect("journal lines");
+    std::fs::write(folder.join("000001.jsonl"), text).expect("the foreign journal");
+    a.bead(["release", &key]).expect("a release");
+    let shown = a.show(&key);
+    assert!(shown["claim"]["owner"].as_str().is_none(), "{shown:?}");
+}

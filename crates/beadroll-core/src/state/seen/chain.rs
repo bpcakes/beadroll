@@ -7,14 +7,15 @@ use std::collections::HashMap;
 use crate::id::EventId;
 use crate::order::position;
 
-use super::{Knowledge, Place, reached};
+use super::{Knowledge, Place};
 
 impl Knowledge {
     /// Whether an event of `machine`'s journal, after every one here, with `causes` would not build
-    /// on the last applicable event of that journal: what replay sets aside as a broken chain. Its
-    /// causes' clocks are what it saw, a cause replay did not observe (pending) seeing nothing, a
-    /// released quarantined id that names a cause not observed not seeing it. No where the
-    /// machine has no journal here, or no applicable event in it.
+    /// on the last applicable event of that journal: what replay sets aside as a broken chain. What
+    /// it saw of that chain is the furthest any observed cause's clock saw there, a cause replay did
+    /// not observe (pending) seeing nothing, a released quarantined id that names a cause not
+    /// observed not seeing it; each cause's clock is read for that chain alone, the first reaching
+    /// it enough. No where the machine has no journal here, or no applicable event in it.
     pub(crate) fn misses_predecessor(&self, machine: &str, causes: &[EventId]) -> bool {
         let Some(chain) = (self.replicas.iter()).position(|name| name == machine) else {
             return false;
@@ -22,13 +23,16 @@ impl Knowledge {
         let Some(&predecessor) = self.applicable.get(chain).and_then(|at| at.last()) else {
             return false;
         };
-        let at: Vec<u32> = (causes.iter())
+        let chain = position(chain);
+        let ancestry = &self.ancestry;
+        !(causes.iter())
             .filter_map(|cause| self.events.get_index_of(cause))
-            .map(position)
-            .collect();
-        let (mut clock, mut spare) = (Vec::new(), Vec::new());
-        self.ancestry.gather(&at, &mut clock, &mut spare);
-        reached(&clock, position(chain)).is_none_or(|seen| seen < predecessor)
+            .filter(|at| ancestry.observed(*at))
+            .any(|at| {
+                ancestry
+                    .reached(at, chain)
+                    .is_some_and(|seen| seen >= predecessor)
+            })
     }
 
     /// Each machine's last applicable event in its journal, by id: what its next event must build

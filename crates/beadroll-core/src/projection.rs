@@ -174,11 +174,17 @@ pub struct Projection {
 /// What a new event builds on ([`Projection::causes_for`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Causes {
-    /// Its causes, by id, in order.
+    /// The frontier, by id, in order: every new event's causes.
     pub ids: Vec<EventId>,
     /// Whether one of them waits for a cause of its own: replay applies none of the events built
     /// on them, a create among them making no issue, until it comes.
     pub waits: bool,
+    /// The machine's last applicable event, where the frontier does not reach it: a cause too of
+    /// the machine's next record of its journal, which replay sets aside as a broken chain
+    /// otherwise. An attempt's event is in no journal's chain, and has no need of it.
+    pub predecessor: Option<EventId>,
+    /// Whether the predecessor waits for a cause of its own, as `waits` says of the frontier.
+    pub predecessor_waits: bool,
 }
 
 /// Replays `journal` into a projection. Fails only as [`crate::replay::replay`] does.
@@ -232,26 +238,29 @@ impl Projection {
         &self.heads
     }
 
-    /// What a new event of `machine`'s builds on ([`Causes`]): the frontier, and the machine's last
-    /// applicable event where the frontier's clocks do not reach it, as replay judges. Replay sets
+    /// What a new event of `machine`'s builds on ([`Causes`]): the frontier, and for a record of its
+    /// journal the machine's last applicable event where the frontier's clocks do not reach it, as
+    /// replay judges. Replay sets
     /// aside an event of a machine's journal that does not build on the one before it (a journal
     /// chain broken), applied by nobody; an event building on it that replay does not apply,
     /// pending on a cause or in a cycle of causes, keeps it off the frontier unreached, and a
     /// released quarantined id may name it without reaching it. Most writes find it reached, and
     /// name the frontier alone.
     pub fn causes_for(&self, machine: &str) -> Causes {
-        let mut ids = self.heads.clone();
+        let ids = self.heads.clone();
         let knowledge = &self.state.knowledge;
-        if let Some(tail) = self.tails.get(machine)
-            && !ids.contains(tail)
-            && knowledge.misses_predecessor(machine, &ids)
-        {
-            ids.push(*tail);
-            ids.sort_unstable();
+        let predecessor = (self.tails.get(machine).copied())
+            .filter(|tail| !ids.contains(tail) && knowledge.misses_predecessor(machine, &ids));
+        let pending = &self.state.pending;
+        // the frontier is in order: the pending events are looked up in it, once each
+        let waits = (pending.iter()).any(|event| ids.binary_search(event).is_ok());
+        let predecessor_waits = predecessor.is_some_and(|tail| pending.contains(&tail));
+        Causes {
+            ids,
+            waits,
+            predecessor,
+            predecessor_waits,
         }
-        // the causes are in order: the pending events are looked up among them, once each
-        let waits = (self.state.pending.iter()).any(|event| ids.binary_search(event).is_ok());
-        Causes { ids, waits }
     }
 
     /// How many events the journal holds: every id, an attempt file's and a stand-in's among them.
