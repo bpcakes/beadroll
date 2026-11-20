@@ -282,7 +282,10 @@ write made by that key goes to the issue it names there: during a rolling
 upgrade, sync the machine that writes first, then look the issue up there
 (`bead search`, `bead show`), rather than writing by a key another machine
 printed. An online claim merges before it reads its key, so a publication made
-meanwhile can still move one. A key looked up after the write may name another
+meanwhile can still move one. An ownership command repeated by the same actor
+can be one its receipt recognizes as already made (a `release` whose answer was
+lost): it does nothing again, and its answer can name the issue the key holds
+now; `bead show` of the issue meant says who holds it. A key looked up after the write may name another
 issue by then, and `bead log KEY` lists that issue's events; the unfiltered
 `bead log --json --limit 0` lists every event, the write among them, whose issue
 it names stays the one it was made on, and the `create` event shows that

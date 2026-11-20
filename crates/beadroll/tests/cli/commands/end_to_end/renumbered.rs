@@ -392,3 +392,52 @@ fn a_sync_reports_a_key_held_again() {
     let back = (format!("{x}.2.2"), imported);
     assert!(reported.contains(&back), "{back:?} not in {reported:?}");
 }
+
+/// A child's create names its parent among its causes as well as in its data: replay follows only
+/// a parent the child's writer saw, and the heads of the store need not reach it (an event a
+/// foreign journal's pending cycle names is on no head's path). Here the parent is no head, Q made
+/// after it (AT100).
+#[test]
+fn a_childs_create_names_its_parent_among_its_causes() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let parent = json_id(&a.bead(["create", "P"]).unwrap());
+    a.bead(["create", "Q"]);
+    a.bead(["create", "C", "--parent", &parent, "--offline"]);
+    let mut events = Vec::new();
+    for entry in walk(&a.store().join("events")) {
+        if entry.extension().is_some_and(|ext| ext == "jsonl") {
+            let text = std::fs::read_to_string(&entry).unwrap();
+            events.extend(
+                text.lines()
+                    .map(|line| beadroll_test_support::parse_json(line).unwrap()),
+            );
+        }
+    }
+    let create_of = |key: &str| {
+        (events.iter())
+            .find(|e| e["op"] == Json::from("create") && e["data"]["key"] == Json::from(key))
+            .unwrap_or_else(|| panic!("no create of {key}"))
+            .clone()
+    };
+    let parent_id = create_of(&parent)["id"].clone();
+    let child = create_of(&format!("{parent}.1"));
+    assert_eq!(child["data"]["parent"], parent_id);
+    let deps = child["deps"].as_array().unwrap();
+    assert!(deps.contains(&parent_id), "{deps:?}");
+}
+
+/// Every file under `dir`, at any depth.
+fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            files.extend(walk(&path));
+        } else {
+            files.push(path);
+        }
+    }
+    files
+}

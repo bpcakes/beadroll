@@ -104,6 +104,15 @@ impl<'a> Tx<'a> {
         self.materialized.state()
     }
 
+    /// Names `cause` among the causes of the next event emitted, beside the heads: an event that
+    /// refers to `cause` is then seen to have seen it, whatever the frontier holds (an event a
+    /// foreign journal's pending cycle names is on no head's path).
+    pub fn add_cause(&mut self, cause: EventId) {
+        if !self.heads.contains(&cause) {
+            self.heads.push(cause);
+        }
+    }
+
     /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh
     /// id ([`Emitter::emit`]): the id of the event emitted.
     pub fn emit(
