@@ -4,7 +4,7 @@
 //! the frontier in its past comes after every event the journal held: each of those is in some
 //! head's past. When every new event does, replay applies the old events as before and the new
 //! ones after them, in the order their own causes give, and each new event sees what it saw in a
-//! replay: the projection keeps every event the state names, and the frontier, with its place and
+//! replay: the projection keeps every event the state names, the frontier and each journal's last record, with its place and
 //! what it had seen (and between compactions every event taken in since, which it saw as replay
 //! did: roll-lqjj.43). A local write's events build on the frontier; so do a merge's, when one
 //! writer worked at a time or when the frontier is that of a projection saved before this
@@ -345,6 +345,9 @@ impl Projection {
             if let Some(&latest) = added.iter().max() {
                 let last = self.lasts.entry(machine.clone()).or_insert(latest);
                 *last = (*last).max(latest);
+            }
+            if let Some(&tail) = added.last() {
+                self.tails.insert(machine.clone(), tail);
             }
         }
     }

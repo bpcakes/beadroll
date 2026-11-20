@@ -19,8 +19,8 @@ use crate::state::State;
 /// The machine that writes beside this one in the tests below.
 const THERE: &str = "0000bb02";
 
-/// Whether `decoded`, read back from what `projection` encoded, knows every event the state names
-/// and the frontier, in the journal's order, each with its causes, machine and actor as
+/// Whether `decoded`, read back from what `projection` encoded, knows every event the state names,
+/// the frontier and each journal's last record, in the journal's order, each with its causes, machine and actor as
 /// `projection` has them: those alone when what every event had seen was `compacted`, and every
 /// event `projection` knows otherwise (roll-lqjj.43).
 pub(super) fn knows_alike(
@@ -32,6 +32,7 @@ pub(super) fn knows_alike(
     let held = &projection.state.knowledge.events;
     let mut kept = named(projection.state());
     kept.extend(projection.heads.iter().copied());
+    kept.extend(projection.tails.values().copied());
     let order = held
         .keys()
         .filter(|id| compacted != Compaction::Compact || kept.contains(*id));

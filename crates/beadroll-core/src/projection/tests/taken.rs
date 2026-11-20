@@ -63,6 +63,7 @@ impl Tally {
     fn read_back(&mut self, written: &Projection, read: &Projection, back: WriteBack) {
         let mut kept = named(read.state());
         kept.extend(read.heads.iter().copied());
+        kept.extend(read.tails.values().copied());
         let events = read.state.knowledge.events.keys();
         let unnamed = events.filter(|id| !kept.contains(*id)).count();
         match back {

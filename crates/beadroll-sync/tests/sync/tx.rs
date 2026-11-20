@@ -338,60 +338,55 @@ fn a_create_under_a_parent_is_judged_for_its_structure() {
     .expect("a transaction");
 }
 
-/// A machine's write builds on its own latest event while a foreign event pending on a cause
-/// keeps that event off the frontier: replay applies it, where the write named only the frontier,
-/// its journal chain was broken and it was set aside, applied by nobody, and a create among such
-/// writes was taken for a parent by the transaction that made it (AT100).
+/// The data of a create of `key`, under `parent` where one is given.
+fn create_of(key: &str, parent: Option<EventId>) -> Object {
+    let mut fields = Object::new();
+    fields.insert("title".into(), Value::from(key));
+    let mut data = Object::new();
+    data.insert("key".into(), Value::from(key));
+    data.insert("fields".into(), Value::from(fields));
+    data.insert("labels".into(), Value::Array(Vec::new()));
+    if let Some(parent) = parent {
+        data.insert("parent".into(), Value::from(parent.to_string()));
+    }
+    data
+}
+
+/// A create built on a cause that waits for one of its own makes no issue until it comes, and is
+/// no parent of a create after it in the transaction whether or not the state was read between
+/// them, where the transaction took it for one until a read applied it (AT100).
 #[test]
-fn a_write_beside_a_pending_cycle_builds_on_the_machines_last_event() {
+fn a_create_built_on_a_waiting_cause_is_no_parent_however_the_transaction_is_read() {
     let sandbox = sandbox();
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
-    let key = text(&a.bead(["create", "x"]).expect("an issue")["id"]);
     let ws = workspace(&a, sandbox.origin(), &[]);
-    let mut last: Option<String> = None;
-    for segment in beadroll_store::segment_files(&ws).expect("the segments") {
-        let read = std::fs::read_to_string(segment).expect("a segment");
-        for line in read.lines() {
-            let event = beadroll_test_support::parse_json(line).expect("an event");
-            let id = event["id"].as_str().expect("an id").to_owned();
-            last = last.max(Some(id));
-        }
-    }
-    let last = last.expect("the machine's latest event");
+    // a foreign event waiting for a cause no journal holds: a head no write applies beside
+    let waiting = beadroll_test_support::events::id_at(1_790_000_000_001, 1);
+    let missing = beadroll_test_support::events::id_at(1_790_000_000_002, 2);
+    let event = beadroll_test_support::json!({
+        "v": 1, "id": (waiting.as_str()), "replica": "0000000f", "deps": [(missing.as_str())],
+        "actor": {"agent": "test", "thread": "f"},
+        "op": "comment", "issue": (missing.as_str()), "data": {"text": "waits"}
+    });
+    beadroll_store::append_events(&ws, "0000000f", [&event]).expect("the foreign journal");
     let actor = actor(&a);
-    let uid = locked(&ws, || -> Result<String, Error> {
-        let mut tx = Tx::new(&ws, &actor)?;
-        Ok(tx
-            .state()?
-            .resolve(&key)
-            .expect("the issue")
-            .uid()
-            .to_string())
-    })
-    .expect("a transaction");
-    // two foreign events, each waiting on the other, the first building on a's latest
-    let one = beadroll_test_support::events::id_at(1_790_000_000_001, 1);
-    let two = beadroll_test_support::events::id_at(1_790_000_000_002, 2);
-    let said = |id: &str, deps: &[&str], text: &str| {
-        let deps: Vec<beadroll_test_support::Json> = deps
-            .iter()
-            .map(|dep| beadroll_test_support::Json::from(*dep))
-            .collect();
-        beadroll_test_support::json!({
-            "v": 1, "id": id, "replica": "0000000f", "deps": deps,
-            "actor": {"agent": "test", "thread": "f"},
-            "op": "comment", "issue": (uid.as_str()), "data": {"text": text}
+    for read_between in [false, true] {
+        locked(&ws, || -> Result<(), Error> {
+            let mut tx = Tx::new(&ws, &actor)?;
+            let parent = tx.emit(OpName::Create, None, create_of("ex-p", None), None)?;
+            if read_between {
+                let state = tx.state()?;
+                assert!(state.issue(parent).is_none(), "the parent waits");
+            }
+            let child = create_of("ex-p.1", Some(parent));
+            let judged = tx.emit(OpName::Create, None, child, None);
+            assert!(
+                matches!(judged, Err(Error::Validation(_))),
+                "read between: {read_between}: {judged:?}"
+            );
+            Ok(())
         })
-    };
-    let cycle = [
-        said(&one, &[&last, &two], "one"),
-        said(&two, &[&one], "two"),
-    ];
-    beadroll_store::append_events(&ws, "0000000f", &cycle).expect("the foreign journal");
-    let made = text(&a.bead(["create", "y"]).expect("an issue")["id"]);
-    let shown = a.bead(["show", &made]).expect("the issue made");
-    assert_eq!(text(&shown[0]["title"]), "y", "{shown:?}");
-    let child = a.bead(["create", "z", "--parent", &made]).expect("a child");
-    assert_eq!(text(&child["id"]), format!("{made}.1"), "{child:?}");
+        .expect("a transaction");
+    }
 }

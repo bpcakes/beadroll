@@ -95,7 +95,7 @@ impl Projection {
     /// This pure serializer does not acknowledge storage. Writers use a borrowed
     /// [`super::Writeback`] to acknowledge its own locations after both parts are written.
     /// What every event had seen is compacted when [`Projection::compaction_due`] says so:
-    /// the events the state still names and the frontier are kept, and otherwise every event
+    /// the events the state still names, the frontier and each journal's last record are kept, and otherwise every event
     /// known since the last compaction (roll-lqjj.43). Records unchanged since decoding are
     /// copied from their existing bytes (roll-lqjj.44).
     pub fn encode(&self, texts_at: u64) -> (Encoded, Vec<(EventId, TextPlace)>) {
@@ -175,6 +175,7 @@ impl Projection {
                 let knowledge = if compact == Compaction::Compact {
                     let mut named = named(&self.state);
                     named.extend(self.heads.iter().copied());
+                    named.extend(self.tails.values().copied());
                     cut = self.state.knowledge.kept(&named);
                     &cut
                 } else {
@@ -268,6 +269,13 @@ impl Projection {
         for (machine, last) in lasts {
             w.text(machine);
             w.id(*last);
+        }
+        let mut tails: Vec<(&String, &EventId)> = self.tails.iter().collect();
+        tails.sort();
+        w.count(tails.len());
+        for (machine, tail) in tails {
+            w.text(machine);
+            w.id(*tail);
         }
         let mut superseded: Vec<EventId> = self.superseded.iter().copied().collect();
         superseded.sort_unstable();
@@ -373,6 +381,16 @@ impl Projection {
             let machine = r.text()?;
             lasts.insert(machine, r.id()?);
         }
+        let mut tails = HashMap::new();
+        for _ in 0..r.count()? {
+            let machine = r.text()?;
+            let tail = r.id()?;
+            // a machine's last record is kept in the knowledge, its past told from it
+            if !knowledge.events.contains_key(&tail) {
+                return Err(Unreadable("the journals' last records"));
+            }
+            tails.insert(machine, tail);
+        }
         let superseded = r.ids()?.into_iter().collect();
         let open = r.flag()?;
         r.done()?;
@@ -402,6 +420,7 @@ impl Projection {
             ids: ids.into_iter().collect(),
             lengths,
             lasts,
+            tails,
             superseded,
             open,
             compacted,

@@ -53,6 +53,9 @@ pub struct Tx<'a> {
     materialized: Materialized,
     /// The frontier, with the events emitted so far: what a new event builds on.
     heads: Vec<EventId>,
+    /// Whether a cause the transaction's first event built on waits for one of its own: replay
+    /// applies none of the events emitted until it comes, and a create among them is no parent.
+    waits: bool,
     /// Every event emitted so far, as a journal records it.
     emitted: Vec<Record>,
     /// The creates among `emitted`, by id, with where each is among them: a create's parent while
@@ -89,14 +92,15 @@ impl<'a> Tx<'a> {
     fn from(ws: &'a Workspace, actor: &Actor, projection: Projection) -> Result<Tx<'a>, Error> {
         let replica = ensure_replica_id(&ws.settings)?;
         let place = capture_where(ws)?;
-        // this machine's latest event among them while one pending keeps it off the frontier:
+        // this machine's last record among them where the frontier does not have it in its past:
         // replay sets aside a write that does not build on it
-        let heads = projection.causes_for(&replica);
+        let causes = projection.causes_for(&replica);
         Ok(Tx {
             ws,
             actor: actor.value.clone(),
             replica,
-            heads,
+            heads: causes.ids,
+            waits: causes.waits,
             materialized: Materialized::projected(projection),
             emitted: Vec::new(),
             created: HashMap::new(),
@@ -166,6 +170,7 @@ impl<'a> Tx<'a> {
             heads: &mut self.heads,
             emitted: &mut self.emitted,
             created: &mut self.created,
+            waits: self.waits,
             place: &self.place,
             ownership: &mut self.ownership,
             route: Route::Journal,
@@ -188,6 +193,7 @@ impl<'a> Tx<'a> {
             heads,
             emitted,
             created,
+            waits,
             place,
             ownership,
             writable,
@@ -202,6 +208,7 @@ impl<'a> Tx<'a> {
             heads,
             emitted,
             created,
+            waits: *waits,
             place,
             ownership,
             route: Route::Journal,
@@ -258,6 +265,8 @@ pub struct Emitter<'t> {
     heads: &'t mut Vec<EventId>,
     emitted: &'t mut Vec<Record>,
     created: &'t mut HashMap<EventId, usize>,
+    /// Whether replay applies nothing emitted until a cause comes ([`Tx`]'s `waits`).
+    waits: bool,
     place: &'t Option<Value>,
     ownership: &'t mut Vec<Value>,
     route: Route,
@@ -397,7 +406,9 @@ impl Emitter<'_> {
             origin: String::new(),
             sequenced,
         });
-        if op == OpName::Create {
+        // a parent by its record only where replay applies it as it comes: a create built on a
+        // cause that waits makes no issue until then, as the state says once it is applied
+        if op == OpName::Create && !self.waits {
             self.created.insert(emitted, self.emitted.len() - 1);
         }
         Ok(emitted)

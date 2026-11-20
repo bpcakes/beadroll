@@ -58,11 +58,11 @@ pub use parts::decode_state;
 pub use writeback::Writeback;
 
 /// The version of the bytes [`Projection::encode`] writes. Bytes of another are not read.
-pub const ENCODING: u32 = 16;
+pub const ENCODING: u32 = 17;
 
 /// How many times the events a projection took in of what every event had seen since it was last
 /// compacted go into the events it knew then, at most, before a write-back compacts it again
-/// (roll-lqjj.43): between compactions it knows the events its state named and the frontier when
+/// (roll-lqjj.43): between compactions it knows the events its state named, the frontier and each journal's last record when
 /// it was last compacted and at most an eighth as many again, and a write-back writes it as it is,
 /// without finding what the state names or cutting down what it knows.
 pub const COMPACTED: usize = 8;
@@ -75,7 +75,7 @@ pub struct Encoded {
     /// state's conflicts name and where machines' journals broke (roll-lqjj.35).
     pub state: Vec<u8>,
     /// Every event it knows of what every event had seen, with its causes, machine and actor, and
-    /// what each had seen (those the state named and the frontier when it was last compacted, and
+    /// what each had seen (those the state named, the frontier and each journal's last record when it was last compacted, and
     /// every event taken in since), how many it knew then (roll-lqjj.43), the frontier, every event id, each machine's journal length and latest event, the claims
     /// takeovers superseded, and whether events can be applied after.
     pub index: Vec<u8>,
@@ -135,7 +135,7 @@ pub(crate) fn journal_of(records: impl IntoIterator<Item = Record>) -> Journal {
 /// A journal's state, replayed, with what applying the events that come after it needs.
 #[derive(Clone, Debug)]
 pub struct Projection {
-    /// The state, what every event had seen kept for the events it named and the frontier when last
+    /// The state, what every event had seen kept for the events it named, the frontier and each journal's last record when last
     /// compacted, and every event taken in since ([`Projection::compacted`]).
     pub(crate) state: State,
     /// The frontier: the events nothing builds on, by id.
@@ -149,6 +149,10 @@ pub struct Projection {
     /// Each machine's latest event in its journal, by id: when it last wrote, which a machine's
     /// last record need not say, since ids are minted from a clock that can go back (roll-lqjj.31).
     pub(crate) lasts: HashMap<String, EventId>,
+    /// Each machine's last record in its journal's order, by id: what its next event builds on
+    /// ([`Projection::causes_for`]), which its greatest id need not be. Kept in the knowledge, so
+    /// that whether the frontier has it in its past can be told.
+    pub(crate) tails: HashMap<String, EventId>,
     /// The claims takeovers superseded.
     pub(crate) superseded: HashSet<EventId>,
     /// Whether events can be applied after it: nothing in its journal waits for a cause, and
@@ -167,6 +171,16 @@ pub struct Projection {
     pub(crate) added: Vec<EventId>,
 }
 
+/// What a new event builds on ([`Projection::causes_for`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Causes {
+    /// Its causes, by id, in order.
+    pub ids: Vec<EventId>,
+    /// Whether one of them waits for a cause of its own: replay applies none of the events built
+    /// on them, a create among them making no issue, until it comes.
+    pub waits: bool,
+}
+
 /// Replays `journal` into a projection. Fails only as [`crate::replay::replay`] does.
 pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
     let settled = journal.settled_view();
@@ -178,10 +192,14 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
     let lasts = (settled.order().iter())
         .filter_map(|(machine, ids)| Some((machine.clone(), *ids.iter().max()?)))
         .collect();
+    let tails: HashMap<String, EventId> = (settled.order().iter())
+        .filter_map(|(machine, ids)| Some((machine.clone(), *ids.last()?)))
+        .collect();
     let (mut state, replayed) = replayed(journal)?;
     let open = state.pending.is_empty() && !replayed.unsettled;
     let mut kept = named(&state);
     kept.extend(heads.iter().copied());
+    kept.extend(tails.values().copied());
     state.knowledge = state.knowledge.kept(&kept);
     state.knowledge_scope = crate::state::KnowledgeScope::Retained;
     let compacted = state.knowledge.events.len();
@@ -191,6 +209,7 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
         ids,
         lengths,
         lasts,
+        tails,
         superseded: replayed.superseded,
         open,
         compacted,
@@ -215,24 +234,23 @@ impl Projection {
         &self.heads
     }
 
-    /// What a new event of `machine`'s builds on: the frontier, and the machine's latest event
-    /// where it is off the frontier, not pending itself, while an event is pending. An event
-    /// pending on a cause that builds on it keeps it off the frontier with no head having it in
-    /// its past, and replay sets aside an event of a machine's journal that does not build on the
-    /// one before it (a journal chain broken), applied by nobody. With none pending, every event
-    /// off the frontier is in the past of one on it, and the frontier is the causes as it was.
-    pub fn causes_for(&self, machine: &str) -> Vec<EventId> {
-        let mut causes = self.heads.clone();
-        let pending = &self.state.pending;
-        if let Some(last) = self.lasts.get(machine)
-            && !pending.is_empty()
-            && !pending.contains(last)
-            && !causes.contains(last)
+    /// What a new event of `machine`'s builds on ([`Causes`]): the frontier, and the machine's last
+    /// record where no event on the frontier is it or has it in its past. Replay sets aside an
+    /// event of a machine's journal that does not build on the one before it (a journal chain
+    /// broken), applied by nobody; an event building on it that replay does not apply, pending on
+    /// a cause or in a cycle of causes, keeps it off the frontier with no head having it in its
+    /// past. Most writes find it on the frontier or in its past, and name the frontier alone.
+    pub fn causes_for(&self, machine: &str) -> Causes {
+        let mut ids = self.heads.clone();
+        if let Some(tail) = self.tails.get(machine)
+            && !(ids.iter()).any(|head| head == tail || self.state.saw(*head, *tail))
         {
-            causes.push(*last);
-            causes.sort_unstable();
+            ids.push(*tail);
+            ids.sort_unstable();
         }
-        causes
+        let pending = &self.state.pending;
+        let waits = ids.iter().any(|cause| pending.contains(cause));
+        Causes { ids, waits }
     }
 
     /// How many events the journal holds: every id, an attempt file's and a stand-in's among them.
@@ -251,7 +269,8 @@ impl Projection {
     }
 
     /// How many events it knows of what every event had seen (roll-lqjj.43): the events its state
-    /// names and the frontier, as it was when last compacted, and every event taken in since.
+    /// names, the frontier and each journal's last record, as it was when last compacted, and every
+    /// event taken in since.
     pub fn known(&self) -> usize {
         self.state.knowledge.events.len()
     }
