@@ -109,12 +109,16 @@ impl<'a> Tx<'a> {
         self.materialized.state()
     }
 
-    /// [`parent_problem`] of a create naming a parent: by the state as it stands and the events
-    /// emitted since, the state made only where there is none.
+    /// [`parent_problem`] of a create naming a parent: by the state as it stands and the creates
+    /// emitted since, and, for a parent neither holds, by the state with every event emitted since
+    /// applied (a pending create a cause emitted since makes one), so that only a parent missing
+    /// from both costs a pass over the issues.
     fn judge_parent(&mut self, op: OpName, data: &Object) -> Result<(), Error> {
-        if self.materialized.state().is_err() {
-            self.state()?;
+        let stale = parent_problem(self.materialized.state().ok(), &self.created, op, data);
+        if stale.is_ok() {
+            return stale;
         }
+        self.state()?;
         parent_problem(self.materialized.state().ok(), &self.created, op, data)
     }
 

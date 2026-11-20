@@ -260,7 +260,9 @@ still as format 1; an older bead sets aside the events it cannot apply
 (reported under `integrity`, applied by nobody), carries them through sync
 untouched, and applies them once upgraded. Machines can therefore be upgraded
 in any order; a mixed fleet is safe, but for one addition an older bead reads
-differently (a child's `parent`, below), and shows integrity notes until it is
+differently (a child's `parent`, below), which no integrity note shows: both
+machines can report none while one key names two issues. It shows integrity
+notes for the events an older bead sets aside until it is
 uniform. What an older bead sets aside costs it nothing more: it keeps
 reading its projection and applying new events to it. The format number
 changes only for a change that would make an old reader *misread* events;

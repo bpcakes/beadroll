@@ -202,7 +202,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   parent from every head, and a foreign journal put back as published can take a path away. The
   maintainer chose this on 2026-11-20 over naming the parent only where the heads miss it, which
   spares an older bead (whose projection takes only causes on its frontier or in the batch) a
-  replay of the journal for each such child it receives during a rolling upgrade: that cost lasts
+  replay of the journal for a batch holding such a child whose parent is neither on its frontier
+  nor in the batch, once a batch, during a rolling upgrade: that cost lasts
   until every machine is upgraded, and this build takes the cause as any write.
 
 - A claim makes its owner the issue's assignee; a release and a reopen (`reopen`, `update --status

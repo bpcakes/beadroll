@@ -45,8 +45,9 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   minted key, a collision with another copy of it resolved as for any key, and a build of `main`
   since #301 by its own judgement of the renames, neither from the parent its create names
   (*Format and upgrades* in `docs/GUARANTEES.md`). A child's create names its parent among its
-  causes too, so that an older bead's projection, which takes only causes on its frontier,
-  replays the journal for each such child it receives until it is upgraded. A build of `main`
+  causes too, so that an older bead's projection, which takes only causes on its frontier
+  or in the batch it receives, replays the journal for a batch holding such a child whose parent
+  is neither, once a batch, until it is upgraded. A build of `main`
   made after #301 and before
   this one followed, by its own judgement, every create under a numbered key whose parent part a
   merge renamed, a child or an import alike; once upgraded, such an issue is keyed again from the
