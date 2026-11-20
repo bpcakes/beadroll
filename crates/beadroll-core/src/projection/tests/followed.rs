@@ -148,8 +148,11 @@ fn a_parent_that_is_no_id_names_no_parent() {
         "pr-base.1.1",
         "it followed a parent it does not name"
     );
-    let event = super::hostile::event(25, HERE, &[24], "create", 25, under("pr-base.1.1", 20));
+    let event = super::hostile::event(25, HERE, &[24, 20], "create", 25, under("pr-base.1.1", 20));
     assert_eq!(crate::event::write_problem(&event), None);
+    // a parent that is not among the create's causes is refused too
+    let event = super::hostile::event(25, HERE, &[24], "create", 25, under("pr-base.1.1", 20));
+    assert!(crate::event::write_problem(&event).is_some_and(|p| p.contains("deps")));
     let mut data = written("pr-base.1.1");
     data.insert("parent".into(), Value::Null);
     let event = super::hostile::event(25, HERE, &[24], "create", 25, data);

@@ -449,11 +449,20 @@ pub fn write_problem(event: &Value) -> Option<String> {
     // that is no id as no parent, as a create an older bead wrote with any member there was applied
     if op == Some(OpName::Create)
         && let Some(parent) = data_of(event).and_then(|d| d.get("parent"))
-        && !parent
+    {
+        if !parent
             .as_str()
             .is_some_and(|id| crate::id::EventId::parse(id).is_some())
-    {
-        return Some("create event has a malformed 'parent'".into());
+        {
+            return Some("create event has a malformed 'parent'".into());
+        }
+        // replay follows only a parent the child's writer saw, which naming it among the causes
+        // shows whatever the journal comes to hold (`docs/REVIEWING.md` §2)
+        let caused =
+            (event.get("deps").and_then(Value::as_array)).is_some_and(|deps| deps.contains(parent));
+        if !caused {
+            return Some("create event names a 'parent' that is not among its deps".into());
+        }
     }
     let fields = data_of(event)
         .and_then(|d| d.get("fields"))

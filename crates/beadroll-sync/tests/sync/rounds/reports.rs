@@ -142,16 +142,57 @@ fn a_rebuilt_round_reports_the_rename_its_first_merge_made() {
         ],
         None,
     );
-    // held once fetched, before the merge reads a blob: the damage is to m1's last segment, which
-    // the merge reads after it wrote the segment before it
-    let gate = Gate::new(&sandbox, "fetched");
-    let faults = format!("fetch.fetched={};backoff@always=skip", gate.action());
+    // the import's segment, the one before the last, whose create of `ex-a` renames m2's copy
+    let import = (listed.lines())
+        .filter(|path| path.ends_with(".jsonl") && !path.contains("/claims/") && *path != last)
+        .find(|path| {
+            git(
+                [
+                    "--git-dir",
+                    origin,
+                    "show",
+                    &format!("{}:{path}", tip.trim()),
+                ],
+                None,
+            )
+            .contains("ex-a")
+        })
+        .expect("m1's import segment")
+        .to_owned();
+    // the last segment's blob damaged in m2's sync.git before the sync: the merge writes the
+    // import's segment, then fails reading it
+    let ws = workspace(&m2, sandbox.origin(), &[]);
+    let sync_git = ws.dir.join("sync.git");
+    let fetch = [
+        "--git-dir",
+        sync_git.to_str().unwrap(),
+        "fetch",
+        "-q",
+        origin,
+        "+refs/beads/journal:refs/beads/held",
+    ];
+    git(fetch, None);
+    damage_tip(&sync_git, blob.trim());
+    let retry = Gate::new(&sandbox, "retry");
+    let faults = format!(
+        "fetch.fetched@nth(2)={};backoff@always=skip",
+        retry.action()
+    );
     let ws = workspace(&m2, sandbox.origin(), &[("BEAD_FAILPOINTS", &faults)]);
     let (result, met) = alongside(
         || synchronise(&ws, &Endpoint::at(sandbox.origin())),
-        |done| gate.meet(done, || damage_tip(&ws.dir.join("sync.git"), blob.trim())),
+        // the first merge wrote the import's segment and failed at the last
+        |done| {
+            retry.meet(done, || {
+                (ws.dir.join(&import).exists(), ws.dir.join(&last).exists())
+            })
+        },
     );
-    assert!(met.is_some(), "the sync fetched");
+    assert_eq!(
+        met,
+        Some((true, false)),
+        "the first merge wrote before it failed"
+    );
     let synced = result.expect("the rebuilt round succeeds");
     assert!(
         synced.sync_repo_rebuilt.is_some(),
