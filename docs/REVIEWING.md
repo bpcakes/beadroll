@@ -2607,6 +2607,14 @@ These were decided deliberately. Report problems *with* them, not their existenc
   this public repository, pinned to a commit (the maintainer's decision of 2026-10-10,
   roll-k2wy.15), so none of its builds needs credentials. `infra/` stays stdlib Python driving any
   `bead`, until there is a reason to move it into xtask.
+- `skills/board` is a prototype, kept outside the baseline (the maintainer's decision of
+  2026-11-20, roll-uj6a): a message board for people and agents across projects, tried with real
+  agents before `bead` is taught its commands. It is stdlib Python over the `bead` command and
+  changes neither bead nor format 1: a thread is an issue of a workspace that belongs to no
+  project, a reply a comment, a channel a label (the spikes that measured it are roll-1ktp,
+  roll-nrkp and roll-xgbt). No step of the baseline runs it: `homes.py`, which writes into the
+  agents' own settings files, has its tests beside it, and the rest was tried by hand. It goes
+  when `bead` has the commands.
 
 - A test executable that symlinks a system utility keeps that utility's basename. Multicall
   coreutils dispatches by `argv[0]`: an `echo` symlink named `own-bead` fails on the Ubuntu 26.04
