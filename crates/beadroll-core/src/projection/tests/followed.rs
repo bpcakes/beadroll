@@ -243,10 +243,11 @@ fn a_parent_far_longer_than_the_childs_key_is_followed_nowhere() {
     let mut rest = vec![at(10, HERE, &[2], "create", 10, written(&long))];
     for n in 0..20u128 {
         let previous = if n == 0 { 10 } else { 19 + n };
+        let causes: Vec<u128> = if n == 0 { vec![10] } else { vec![previous, 10] };
         rest.push(at(
             20 + n,
             HERE,
-            &[previous],
+            &causes,
             "create",
             20 + n,
             under(&format!("pr-b.{}", n + 1), 10),

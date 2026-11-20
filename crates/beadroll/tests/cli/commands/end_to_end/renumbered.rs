@@ -467,6 +467,19 @@ fn a_child_follows_its_parent_after_an_older_peer_relays_it() {
     b.bead(["sync"]);
     let c = crate::rust_only(&sandbox, "c");
     c.bead(["sync"]);
+    // what the older peer published, before a syncs again: the child under its parent, with the
+    // comment it wrote on it
+    let fresh = keys(&c);
+    let shown = c.show(&fresh["C"]);
+    assert_eq!(
+        shown["parent"].as_str(),
+        Some(fresh["P"].as_str()),
+        "{shown:?}"
+    );
+    let texts: Vec<&str> = (shown["comments"].as_array().expect("its comments").iter())
+        .filter_map(|comment| comment["text"].as_str())
+        .collect();
+    assert_eq!(texts, ["relayed by an older peer"], "{shown:?}");
     for machine in [&a, &b, &c] {
         machine.bead(["sync"]);
         let now = keys(machine);

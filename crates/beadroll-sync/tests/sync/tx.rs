@@ -263,7 +263,8 @@ fn a_create_whose_parent_is_no_issue_is_refused() {
 /// another refused, where replay moved it under the parent at once, with no merge. A lent emitter
 /// refuses a child of a parent made since the lend, whose key its state does not hold (a
 /// collision may settle it at another), and the transaction takes it once the lend is over,
-/// under the key the parent settled at (AT100).
+/// under the key the parent settled at; and it takes siblings of one parent, each naming it
+/// among its causes (AT100).
 #[test]
 fn a_create_is_keyed_under_its_parent_as_the_state_holds_it() {
     let sandbox = sandbox();
@@ -317,6 +318,13 @@ fn a_create_is_keyed_under_its_parent_as_the_state_holds_it() {
         };
         let child = create("ex-made.1", Some(&parent.to_string()));
         tx.emit(OpName::Create, None, child, None)?;
+        // siblings of one parent through one lent emitter: each names the parent among its
+        // causes, the head before the second being the first
+        let (_, mut emitter) = tx.lend()?;
+        for n in [7, 8] {
+            let sibling = create(&format!("{key}.{n}"), Some(&uid));
+            emitter.emit(OpName::Create, None, sibling, None)?;
+        }
         Ok(())
     })
     .expect("a transaction");

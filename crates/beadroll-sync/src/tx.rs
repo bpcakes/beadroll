@@ -296,6 +296,18 @@ impl Emitter<'_> {
         {
             parent_problem(known, op, &data)?;
         }
+        // a create's parent among its causes, however it is emitted (siblings of one parent each
+        // name it, the head before them being the sibling before): replay follows only a parent
+        // named there
+        if names_parent(op, &data)
+            && let Some(parent) = data
+                .get("parent")
+                .and_then(Value::as_str)
+                .and_then(EventId::parse)
+            && !self.heads.contains(&parent)
+        {
+            self.heads.push(parent);
+        }
         let id = event_id.unwrap_or_else(|| uuid7(&self.ws.settings.clock));
         let deps: Vec<Value> = (self.heads.iter())
             .map(|dep| Value::from(dep.to_string()))
