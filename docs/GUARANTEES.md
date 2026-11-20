@@ -282,25 +282,29 @@ write made by that key goes to the issue it names there: during a rolling
 upgrade, sync the machine that writes first, then look the issue up there
 (`bead search`, `bead show`), rather than writing by a key another machine
 printed. An online claim merges before it reads its key, so a publication made
-meanwhile can still move one. An ownership command repeated by the same actor
-can be one its receipt recognizes as already made (a `release` whose answer was
-lost): it does nothing again, and its answer can name the issue the key holds
-now; `bead show` of the issue meant says who holds it. A key looked up after the write may name another
-issue by then, and `bead log KEY` lists that issue's events; the unfiltered
-`bead log --json --limit 0` lists every event, the write among them, whose issue
-it names stays the one it was made on, and the `create` event shows that
-issue's key now. A row says an event is there, in its causal place, not that
-replay applied it, and a claim's says which issue it was made on, not that it
-took: an offline claim is provisional, and replay can decline or set aside one;
-`bead show` says who holds the issue. The log shows a claim only once it is in
-the settled journal, in its causal place, so its absence proves nothing: a
-claim whose answer was lost or uncertain is settled by `bead sync` on the store
-that made it (`UNRESOLVED` until then), and an accepted one can still wait for a
-cause that has not
-arrived. An imported
-dependency still waiting for a key binds to the issue that holds it on each
-machine, which can differ, so the two can see different blockers, and readiness,
-for the importing issue.
+meanwhile can still move one.
+
+A key looked up after a write may name another issue by then, and `bead log KEY`
+lists that issue's events; the unfiltered `bead log --json --limit 0` lists
+every event, whose issue stays the one it was made on, and the `create` event
+shows that issue's key now. A row says an event is there in its causal place,
+not that replay applied it: a claim's says which issue it was made on, not that
+it took (an offline claim is provisional, and replay can decline or set aside
+one), and `bead show` says who holds the issue. The log shows an event only once
+it is in the settled journal in its causal place, so a write's absence proves
+nothing, a comment's as a claim's: one whose answer was lost or uncertain is
+settled by `bead sync` on the store that made it (`UNRESOLVED` until then), and
+one that landed can still wait for a cause that has not arrived; written again
+on its absence alone, it may be there twice. Repeating an ownership command is
+no check either: one its receipt recognizes as already made does nothing again,
+and its answer can name the issue the key holds now, while one whose first try
+never landed acts anew, once that try is fenced off, on the issue the key names
+now, which an upgrade may have changed. Sync first, and `bead show` the issue
+meant.
+
+An imported dependency still waiting for a key binds to the issue that holds it
+on each machine, which can differ, so the two can see different blockers, and
+readiness, for the importing issue.
 
 ## What else holds
 
