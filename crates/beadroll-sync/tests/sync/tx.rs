@@ -337,3 +337,41 @@ fn a_create_under_a_parent_is_judged_for_its_structure() {
     })
     .expect("a transaction");
 }
+
+/// A supplied event id is no second event's in one transaction: one repeating a create's is
+/// refused, where the journal set both aside and a child of that create was taken for one of an
+/// issue no replay makes (AT100).
+#[test]
+fn a_supplied_id_repeating_an_emitted_event_is_refused() {
+    let sandbox = sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let key = text(&a.bead(["create", "x"]).expect("an issue")["id"]);
+    let ws = workspace(&a, sandbox.origin(), &[]);
+    let actor = actor(&a);
+    locked(&ws, || -> Result<(), Error> {
+        let mut tx = Tx::new(&ws, &actor)?;
+        let uid = tx
+            .state()?
+            .resolve(&key)
+            .expect("the issue")
+            .uid()
+            .to_string();
+        let mut fields = Object::new();
+        fields.insert("title".into(), Value::from("made"));
+        let mut data = Object::new();
+        data.insert("key".into(), Value::from("ex-made"));
+        data.insert("fields".into(), Value::from(fields));
+        data.insert("labels".into(), Value::Array(Vec::new()));
+        let made = tx.emit(OpName::Create, None, data, None)?;
+        let mut said = Object::new();
+        said.insert(
+            "text".into(),
+            Value::from("a second event under the create's id"),
+        );
+        let again = tx.emit(OpName::Comment, Some(&uid), said, Some(made.to_string()));
+        assert!(matches!(again, Err(Error::Validation(_))), "{again:?}");
+        Ok(())
+    })
+    .expect("a transaction");
+}

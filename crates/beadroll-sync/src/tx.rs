@@ -55,6 +55,8 @@ pub struct Tx<'a> {
     emitted: Vec<Record>,
     /// The creates among `emitted`, by id, which a create's parent may be.
     created: HashSet<EventId>,
+    /// Every event among `emitted`, by id: a supplied id is no second event's.
+    ids: HashSet<EventId>,
     /// The checkout's branch and commit, recorded on each event.
     pub place: Option<Value>,
     /// The attempt's events emitted, to settle with the remote.
@@ -94,6 +96,7 @@ impl<'a> Tx<'a> {
             materialized: Materialized::projected(projection),
             emitted: Vec::new(),
             created: HashSet::new(),
+            ids: HashSet::new(),
             place,
             ownership: Vec::new(),
             writable: actor.writable,
@@ -148,6 +151,7 @@ impl<'a> Tx<'a> {
             heads: &mut self.heads,
             emitted: &mut self.emitted,
             created: &mut self.created,
+            ids: &mut self.ids,
             place: &self.place,
             ownership: &mut self.ownership,
             route: Route::Journal,
@@ -170,6 +174,7 @@ impl<'a> Tx<'a> {
             heads,
             emitted,
             created,
+            ids,
             place,
             ownership,
             writable,
@@ -183,6 +188,7 @@ impl<'a> Tx<'a> {
             heads,
             emitted,
             created,
+            ids,
             place,
             ownership,
             route: Route::Journal,
@@ -226,7 +232,10 @@ impl Spent {
     }
 }
 
-/// What emits into a [`Tx`] while its state is lent ([`Tx::lend`]).
+/// What emits into a [`Tx`] while its state is lent ([`Tx::lend`]). It judges a create's parent
+/// by the state lent and the creates emitted, the state borrowed for the lend: a parent a cause
+/// emitted since has made replayable (a pending create) is judged once the lend is over, by
+/// [`Tx::emit`].
 #[derive(Debug)]
 pub struct Emitter<'t> {
     ws: &'t Workspace,
@@ -235,6 +244,7 @@ pub struct Emitter<'t> {
     heads: &'t mut Vec<EventId>,
     emitted: &'t mut Vec<Record>,
     created: &'t mut HashSet<EventId>,
+    ids: &'t mut HashSet<EventId>,
     place: &'t Option<Value>,
     ownership: &'t mut Vec<Value>,
     route: Route,
@@ -307,6 +317,15 @@ impl Emitter<'_> {
             })
             .flatten()
             .filter(|parent| !self.heads.contains(parent));
+        // a supplied id is no event's this transaction emitted: the journal would set both aside,
+        // and a create's id would stand for an issue it no longer makes
+        if let Some(supplied) = event_id.as_deref().and_then(EventId::parse)
+            && self.ids.contains(&supplied)
+        {
+            return Err(Error::Validation(format!(
+                "{supplied} is an event this transaction emitted already"
+            )));
+        }
         let id = event_id.unwrap_or_else(|| uuid7(&self.ws.settings.clock));
         let deps: Vec<Value> = (self.heads.iter().chain(&parent))
             .map(|dep| Value::from(dep.to_string()))
@@ -359,6 +378,7 @@ impl Emitter<'_> {
             origin: String::new(),
             sequenced,
         });
+        self.ids.insert(emitted);
         if op == OpName::Create {
             self.created.insert(emitted);
         }
