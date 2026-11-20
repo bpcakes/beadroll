@@ -120,7 +120,7 @@ fn a_count_of_entries_made_anew_beyond_the_table_is_refused() {
 }
 
 /// An index part naming as a machine's last applicable event one that is not, an earlier event
-/// its knowledge holds, is refused: a write would build on it, and replay set the write aside as a
+/// its knowledge holds, or naming none for a machine whose journal holds one, is refused: a write would build on it, and replay set the write aside as a
 /// broken chain where the frontier did not reach the last (AT100).
 #[test]
 fn an_index_naming_another_event_last_in_a_journal_is_refused() {
@@ -142,6 +142,12 @@ fn an_index_naming_another_event_last_in_a_journal_is_refused() {
         Projection::decode(whole(index)).is_err(),
         "another event last"
     );
+    // no entry for the machine at all: its count, one byte before it, none
+    let mut index = encoded.index.clone();
+    assert_eq!(index[tail - 1], 1, "the count, in one byte");
+    index[tail - 1] = 0;
+    index.drain(tail..tail + entry.len());
+    assert!(Projection::decode(whole(index)).is_err(), "no event last");
     assert!(
         Projection::decode(whole(encoded.index.clone())).is_ok(),
         "as written"

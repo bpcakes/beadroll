@@ -35,6 +35,25 @@ impl Knowledge {
             })
     }
 
+    /// Whether `tails` names, for each machine whose journal holds an applicable event, the event
+    /// this knowledge places at its last applicable position, and nothing for any other: what a
+    /// projection read back must hold, a write building on it. Each machine looked up once.
+    pub(crate) fn places_last(&self, tails: &HashMap<String, EventId>) -> bool {
+        let mut named = 0;
+        for (chain, machine) in self.replicas.iter().enumerate() {
+            let Some(&last) = self.applicable.get(chain).and_then(|at| at.last()) else {
+                continue;
+            };
+            let at = (tails.get(machine)).and_then(|tail| self.events.get_index_of(tail));
+            if at.map(|at| self.ancestry.place(at)) != Some(Place::Sequenced(position(chain), last))
+            {
+                return false;
+            }
+            named += 1;
+        }
+        named == tails.len()
+    }
+
     /// Whether replay has not observed the event `id` here: it waits for a cause, pending, and so
     /// does every event built on it. Told by its clock, without the pending events; no for an
     /// event this knowledge does not hold.

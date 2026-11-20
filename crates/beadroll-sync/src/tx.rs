@@ -54,7 +54,9 @@ pub struct Tx<'a> {
     /// The frontier, with the events emitted so far: what a new event builds on.
     heads: Vec<EventId>,
     /// Whether a cause an event emitted built on waits for one of its own: replay applies none of
-    /// the events emitted after it until it comes, and a create among them is no parent.
+    /// the events emitted after it until it comes, and a create among them is no parent. So too
+    /// where this machine's journal chain is broken already, every record of it set aside by
+    /// replay (which `writing` refuses before its body runs).
     waits: bool,
     /// This machine's last applicable event, where the frontier does not reach it, until the
     /// transaction's first record of its journal names it
@@ -101,12 +103,13 @@ impl<'a> Tx<'a> {
         // with this machine's last applicable event where the frontier does not reach it, which its
         // first record of the journal names: replay sets aside a record that does not build on it
         let causes = projection.causes_for(&replica);
+        let broken = (projection.state().chain_breaks()).contains_key(&replica);
         Ok(Tx {
             ws,
             actor: actor.value.clone(),
             replica,
             heads: causes.ids,
-            waits: causes.waits,
+            waits: causes.waits || broken,
             predecessor: causes.predecessor,
             predecessor_waits: causes.predecessor_waits,
             materialized: Materialized::projected(projection),

@@ -46,7 +46,7 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   the child follows that parent, so every machine judges it alike whatever else was renamed from
   the key; a create without it, as every released version wrote, and an import keep their keys.
   The key is settled at the create, so an import waiting for a key binds to the issue that holds
-  it, and a sibling made meanwhile keeps its own. Projections are rebuilt once (`ENCODING` 16).
+  it, and a sibling made meanwhile keeps its own. Projections are rebuilt once (`ENCODING` 17).
   Upgrading: until every machine runs this bead, a released version keys such a child from its
   minted key, a collision with another copy of it resolved as for any key, and a build of `main`
   since #301 by its own judgement of the renames, neither from the parent its create names

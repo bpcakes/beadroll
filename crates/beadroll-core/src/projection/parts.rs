@@ -412,8 +412,8 @@ impl Projection {
         };
         // each machine's last applicable event, and no other: the event its knowledge places at
         // that machine's last applicable position, which a write that misses it breaks its chain
-        // at. Told from the knowledge read, every machine with one named once
-        if read.knowledge.predecessors() != tails {
+        // at. Every machine whose journal holds one named, each once
+        if !read.knowledge.places_last(&tails) {
             return Err(Unreadable("the journals' last applicable events"));
         }
         Ok(Projection {

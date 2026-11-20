@@ -390,3 +390,43 @@ fn a_create_built_on_a_waiting_cause_is_no_parent_however_the_transaction_is_rea
         .expect("a transaction");
     }
 }
+
+/// A transaction on a journal whose chain is broken already, every record of it set aside by
+/// replay, takes none of its creates for a parent, whether or not the state was read between, as
+/// the state says once read; `writing` refuses such a journal before its body runs (AT100).
+#[test]
+fn a_create_on_a_broken_chain_is_no_parent_however_the_transaction_is_read() {
+    let sandbox = sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    a.bead(["create", "x"]);
+    let replica = a.id();
+    let ws = workspace(&a, sandbox.origin(), &[]);
+    // a record of this machine's built on nothing: it does not build on the one before it
+    let stray = beadroll_test_support::events::id_at(1_790_000_000_001, 1);
+    let event = beadroll_test_support::json!({
+        "v": 1, "id": (stray.as_str()), "replica": (replica.as_str()), "deps": [],
+        "actor": {"agent": "test", "thread": "a"},
+        "op": "comment", "issue": (stray.as_str()), "data": {"text": "stray"}
+    });
+    beadroll_store::append_events(&ws, &replica, [&event]).expect("the stray record");
+    let actor = actor(&a);
+    for read_between in [false, true] {
+        locked(&ws, || -> Result<(), Error> {
+            let mut tx = Tx::new(&ws, &actor)?;
+            assert!(tx.state()?.chain_breaks().contains_key(&replica), "broken");
+            let parent = tx.emit(OpName::Create, None, create_of("ex-p", None), None)?;
+            if read_between {
+                assert!(tx.state()?.issue(parent).is_none(), "set aside");
+            }
+            let child = create_of("ex-p.1", Some(parent));
+            let judged = tx.emit(OpName::Create, None, child, None);
+            assert!(
+                matches!(judged, Err(Error::Validation(_))),
+                "read between: {read_between}: {judged:?}"
+            );
+            Ok(())
+        })
+        .expect("a transaction");
+    }
+}
