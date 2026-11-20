@@ -68,6 +68,12 @@ impl Knowledge {
         (self.chain_breaks.get(machine)).is_some_and(|breaks| breaks.contains(&(last as usize)))
     }
 
+    /// Whether replay observed the event `id` here, by a record this knowledge keeps of it: what an
+    /// event naming it as a cause beside the frontier may be applied after.
+    pub(crate) fn applied(&self, id: EventId) -> bool {
+        (self.events.get_index_of(&id)).is_some_and(|at| self.ancestry.observed(at))
+    }
+
     /// Whether replay has not observed the event `id` here: it waits for a cause, pending, and so
     /// does every event built on it. Told by its clock, without the pending events; no for an
     /// event this knowledge does not hold.

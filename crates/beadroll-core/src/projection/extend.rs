@@ -280,12 +280,15 @@ impl Projection {
                 } else if let Some(cause) = events.get_index_of(dep) {
                     *waiting.get_mut(at)? += 1;
                     dependents.get_mut(cause)?.push(at);
-                } else if !self.ids.contains(dep) || self.state.pending.contains(dep) {
-                    // a cause neither new nor placed here: replay places it
+                } else if !self.state.knowledge.applied(*dep) {
+                    // a cause neither new nor applied here, by a record the knowledge keeps of
+                    // it: replay places it, whatever the ids say
                     return None;
                 }
-                // else a cause held and placed, in the past of the frontier, which the event
-                // names beside it (a child's create names its parent): the order is as it was
+                // else a cause applied here, in the past of the frontier, which the event names
+                // beside it (a child's create names its parent, kept as an issue's create; a
+                // record of the journal names its machine's last applicable event, kept as
+                // that): the order is as it was
             }
             if waiting.get(at) == Some(&0) {
                 ready.push(Reverse((*id, at)));

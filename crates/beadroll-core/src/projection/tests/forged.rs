@@ -164,3 +164,22 @@ fn an_index_naming_another_event_last_in_a_journal_is_refused() {
         "as written"
     );
 }
+
+/// A projection whose ids hold one the journal does not, as an index read back could, declines an
+/// event naming it beside the frontier: replay leaves that event waiting for it, where the
+/// projection, taking the id for a cause applied, applied the event without it (AT100).
+#[test]
+fn an_id_the_journal_does_not_hold_is_no_cause_an_extension_applies_after() {
+    let mut projection = project(journal(&three())).unwrap();
+    let stale = EventId::parse(&id(90)).unwrap();
+    projection.ids.insert(stale);
+    let mut data = Object::new();
+    data.insert("text".into(), Value::from("on the frontier and a stale id"));
+    let event = event(7, HERE, &[6, 90], "comment", 2, data);
+    let batch = vec![record(event, HERE, JournalOrder::Sequenced)];
+    let extended = projection.extend(batch).unwrap();
+    assert!(
+        matches!(extended, super::super::Extended::Replay),
+        "the event waits for a cause no journal holds"
+    );
+}
