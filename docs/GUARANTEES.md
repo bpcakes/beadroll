@@ -320,11 +320,12 @@ An imported dependency still waiting for a key binds to the issue that holds it
 on each machine, which can differ, so the two can see different blockers, and
 readiness, for the importing issue. A Beads export names issues by key (`id`),
 which can differ between them as their keys do, and an import matches records
-by that key: until every machine is upgraded, import none another machine
-exported, or a record can be taken for another issue or made anew; and an export
-written before the upgrade keeps the keys it was written with, which replay may
-have moved since, so export again from an upgraded, synced store before
-importing. An imported
+by that key, making anew a record whose key it does not know, which no sync
+merges with the issue it was exported from. Between copies of one tracker, sync
+rather than export and import; where a round trip is needed, have both stores
+publish what they hold and sync to the same journal, every machine upgraded,
+before exporting, and an export written before the upgrade keeps the keys it
+was written with, which replay may have moved since. An imported
 dependency of type `parent-child` gives them
 different descendants, and `bead close --recursive` on an older machine closes
 the descendants its graph has, by id, for good. Until every machine is upgraded,
