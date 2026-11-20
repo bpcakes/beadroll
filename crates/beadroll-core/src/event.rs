@@ -456,6 +456,11 @@ pub fn write_problem(event: &Value) -> Option<String> {
         {
             return Some("create event has a malformed 'parent'".into());
         }
+        // a create is no parent of itself: its id taken for an issue's, it would put a second
+        // create under that id, and the journal would set both aside
+        if event.get("id") == Some(parent) {
+            return Some("create event names itself as its 'parent'".into());
+        }
         // replay follows only a parent the child's writer saw, which naming it among the causes
         // shows whatever the journal comes to hold (`docs/REVIEWING.md` §2)
         let caused =
