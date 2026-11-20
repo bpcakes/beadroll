@@ -51,10 +51,14 @@ pub(super) fn renamed_by_merge(state: &State, before: Option<&KeysBefore>) -> Ve
     let Some(before) = before else {
         return Vec::new();
     };
-    // the renames as they were, and no journal file rewritten nor a round given way since: an issue
-    // renamed holds the key it did, and every other its create's, as it did; nothing to compare
-    if !before.unsettled && before.renames == state.renames() {
-        return Vec::new();
+    // the renames as they were, more after them perhaps, and no journal file rewritten nor a round
+    // given way since: an issue renamed before holds the key it did, and every one renamed after,
+    // absent then or holding its create's key, is renamed from the key it had; the rest hold their
+    // creates' keys as they did. The renames after are the report
+    if !before.unsettled && state.renames().starts_with(&before.renames) {
+        return (state.renames()[before.renames.len()..].iter())
+            .map(|rename| Value::from(rename.to_value()))
+            .collect();
     }
     // indexed are only the issues whose key moved: an issue the merge left alone holds its key in
     // `before` still, and one new to the sync holds none there

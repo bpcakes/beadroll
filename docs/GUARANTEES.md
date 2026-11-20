@@ -289,10 +289,11 @@ it names stays the one it was made on, and the `create` event shows that
 issue's key now. A row says an event is there, in its causal place, not that
 replay applied it, and a claim's says which issue it was made on, not that it
 took: an offline claim is provisional, and replay can decline or set aside one;
-`bead show` says who holds the issue. The log shows a claim only once it is settled and
-applied, so its absence proves nothing: a claim whose answer was lost or
-uncertain is settled by `bead sync` on the store that made it (`UNRESOLVED`
-until then), and an accepted one can still wait for a cause that has not
+`bead show` says who holds the issue. The log shows a claim only once it is in
+the settled journal, in its causal place, so its absence proves nothing: a
+claim whose answer was lost or uncertain is settled by `bead sync` on the store
+that made it (`UNRESOLVED` until then), and an accepted one can still wait for a
+cause that has not
 arrived. An imported
 dependency still waiting for a key binds to the issue that holds it on each
 machine, which can differ, so the two can see different blockers, and readiness,
