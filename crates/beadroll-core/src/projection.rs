@@ -210,12 +210,6 @@ impl Projection {
         self.state
     }
 
-    /// Whether it took in an event with `id`, among every one of its journal's: a new event under
-    /// that id would be a second, which the journal sets aside with the first.
-    pub fn holds_id(&self, id: EventId) -> bool {
-        self.ids.contains(&id)
-    }
-
     /// The frontier: the events nothing builds on, by id. A new event's causes.
     pub fn heads(&self) -> &[EventId] {
         &self.heads

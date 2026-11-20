@@ -4,6 +4,7 @@
 
 mod attempt;
 mod materialized;
+mod minted;
 mod prepared;
 mod writes;
 
@@ -12,7 +13,7 @@ mod tests;
 #[cfg(test)]
 pub(crate) use tests::DropProbe;
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use beadroll_core::event::{FORMAT, MAX_NESTING, event_problem, payload_problem, write_problem};
 use beadroll_core::id::EventId;
@@ -28,6 +29,7 @@ use crate::error::Error;
 pub use attempt::Attempt;
 use attempt::Route;
 use materialized::Materialized;
+pub use minted::Minted;
 
 pub(crate) use writes::confirm_ownership;
 pub use writes::{drop_pending, locked, writing, writing_spent, writing_state};
@@ -53,10 +55,9 @@ pub struct Tx<'a> {
     heads: Vec<EventId>,
     /// Every event emitted so far, as a journal records it.
     emitted: Vec<Record>,
-    /// The creates among `emitted`, by id, which a create's parent may be.
-    created: HashSet<EventId>,
-    /// Every event among `emitted`, by id: a supplied id is no second event's.
-    ids: HashSet<EventId>,
+    /// The creates among `emitted`, by id, with where each is among them: a create's parent while
+    /// the state is of fewer events than make it.
+    created: HashMap<EventId, usize>,
     /// The checkout's branch and commit, recorded on each event.
     pub place: Option<Value>,
     /// The attempt's events emitted, to settle with the remote.
@@ -95,8 +96,7 @@ impl<'a> Tx<'a> {
             heads: projection.heads().to_vec(),
             materialized: Materialized::projected(projection),
             emitted: Vec::new(),
-            created: HashSet::new(),
-            ids: HashSet::new(),
+            created: HashMap::new(),
             place,
             ownership: Vec::new(),
             writable: actor.writable,
@@ -117,12 +117,26 @@ impl<'a> Tx<'a> {
     /// applied (a pending create a cause emitted since makes one), so that only a parent missing
     /// from both costs a pass over the issues.
     fn judge_parent(&mut self, op: OpName, data: &Object) -> Result<(), Error> {
-        let stale = parent_problem(self.materialized.state().ok(), &self.created, op, data);
+        let stale = parent_problem(self.made(), &self.created, op, data);
         if stale.is_ok() {
             return stale;
         }
         self.state()?;
-        parent_problem(self.materialized.state().ok(), &self.created, op, data)
+        parent_problem(self.made(), &self.created, op, data)
+    }
+
+    /// The state as it stands, with how many of the events emitted it applies: none where there is
+    /// none.
+    fn made(&self) -> Made<'_> {
+        Made {
+            state: self.materialized.state().ok(),
+            applied: self.materialized.applied(),
+        }
+    }
+
+    /// A fresh id for the next event the caller emits ([`Minted`]).
+    pub fn mint(&self) -> Minted {
+        Minted(uuid7(&self.ws.settings.clock))
     }
 
     /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh
@@ -132,7 +146,7 @@ impl<'a> Tx<'a> {
         op: OpName,
         issue: Option<&str>,
         data: Object,
-        event_id: Option<String>,
+        event_id: Option<Minted>,
     ) -> Result<EventId, Error> {
         // the state is asked of only for a create naming a parent: any other write emits on it as
         // it did, read once
@@ -151,8 +165,6 @@ impl<'a> Tx<'a> {
             heads: &mut self.heads,
             emitted: &mut self.emitted,
             created: &mut self.created,
-            ids: &mut self.ids,
-            journal: &self.materialized,
             place: &self.place,
             ownership: &mut self.ownership,
             route: Route::Journal,
@@ -175,13 +187,13 @@ impl<'a> Tx<'a> {
             heads,
             emitted,
             created,
-            ids,
             place,
             ownership,
             writable,
             ..
         } = self;
         let state = materialized.state()?;
+        let applied = materialized.applied();
         let emitter = Emitter {
             ws,
             actor,
@@ -189,13 +201,14 @@ impl<'a> Tx<'a> {
             heads,
             emitted,
             created,
-            ids,
-            journal: materialized,
             place,
             ownership,
             route: Route::Journal,
             writable: *writable,
-            known: Some(state),
+            known: Some(Made {
+                state: Some(state),
+                applied,
+            }),
         };
         Ok((state, emitter))
     }
@@ -245,17 +258,23 @@ pub struct Emitter<'t> {
     replica: &'t str,
     heads: &'t mut Vec<EventId>,
     emitted: &'t mut Vec<Record>,
-    created: &'t mut HashSet<EventId>,
-    ids: &'t mut HashSet<EventId>,
-    /// The transaction's state, which says what ids its journal holds.
-    journal: &'t Materialized,
+    created: &'t mut HashMap<EventId, usize>,
     place: &'t Option<Value>,
     ownership: &'t mut Vec<Value>,
     route: Route,
     writable: bool,
     /// The state it was lent beside, which a create's parent must be an issue of; none for an
     /// emitter the transaction makes for one event, whose caller asked its own state first.
-    known: Option<&'t State>,
+    known: Option<Made<'t>>,
+}
+
+/// A transaction's state, with how many of the events it emitted that state applies: a create
+/// among them is a parent by the state once it is applied, set aside by replay or not, and by
+/// [`Tx`]'s creates until then.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Made<'s> {
+    state: Option<&'s State>,
+    applied: usize,
 }
 
 /// Whether `op` with `data` is a create naming a parent, which [`parent_problem`] judges.
@@ -270,8 +289,8 @@ pub(crate) fn names_parent(op: OpName, data: &Object) -> bool {
 /// settled key, which the state has only once every event emitted before is applied, a pass over
 /// every issue a create (`docs/REVIEWING.md` §2).
 pub(crate) fn parent_problem(
-    state: Option<&State>,
-    created: &HashSet<EventId>,
+    made: Made<'_>,
+    created: &HashMap<EventId, usize>,
     op: OpName,
     data: &Object,
 ) -> Result<(), Error> {
@@ -283,7 +302,8 @@ pub(crate) fn parent_problem(
     };
     let issue = (parent.as_str()).and_then(EventId::parse);
     let held = issue.is_some_and(|issue| {
-        state.is_some_and(|st| st.issue(issue).is_some()) || created.contains(&issue)
+        (made.state).is_some_and(|st| st.issue(issue).is_some())
+            || created.get(&issue).is_some_and(|at| *at >= made.applied)
     });
     if held {
         return Ok(());
@@ -295,6 +315,11 @@ pub(crate) fn parent_problem(
 }
 
 impl Emitter<'_> {
+    /// A fresh id for the next event the caller emits ([`Minted`]).
+    pub fn mint(&self) -> Minted {
+        Minted(uuid7(&self.ws.settings.clock))
+    }
+
     /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh
     /// id: the id of the event emitted. Validate before minting, including the [`MAX_NESTING`] write
     /// limit.
@@ -303,12 +328,12 @@ impl Emitter<'_> {
         op: OpName,
         issue: Option<&str>,
         data: Object,
-        event_id: Option<String>,
+        event_id: Option<Minted>,
     ) -> Result<EventId, Error> {
         if let Some(known) = self.known
             && names_parent(op, &data)
         {
-            parent_problem(Some(known), self.created, op, &data)?;
+            parent_problem(known, self.created, op, &data)?;
         }
         // a create's parent among its causes, however it is emitted (siblings of one parent each
         // name it, the head before them being the sibling before): replay follows only a parent
@@ -321,16 +346,7 @@ impl Emitter<'_> {
             })
             .flatten()
             .filter(|parent| !self.heads.contains(parent));
-        // a supplied id is no event's this transaction emitted: the journal would set both aside,
-        // and a create's id would stand for an issue it no longer makes
-        if let Some(supplied) = event_id.as_deref().and_then(EventId::parse)
-            && (self.ids.contains(&supplied) || self.journal.holds(supplied))
-        {
-            return Err(Error::Validation(format!(
-                "{supplied} is an event of this tracker already"
-            )));
-        }
-        let id = event_id.unwrap_or_else(|| uuid7(&self.ws.settings.clock));
+        let id = event_id.map_or_else(|| uuid7(&self.ws.settings.clock), |minted| minted.0);
         let deps: Vec<Value> = (self.heads.iter().chain(&parent))
             .map(|dep| Value::from(dep.to_string()))
             .collect();
@@ -382,9 +398,8 @@ impl Emitter<'_> {
             origin: String::new(),
             sequenced,
         });
-        self.ids.insert(emitted);
         if op == OpName::Create {
-            self.created.insert(emitted);
+            self.created.insert(emitted, self.emitted.len() - 1);
         }
         Ok(emitted)
     }

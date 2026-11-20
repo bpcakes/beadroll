@@ -10,7 +10,7 @@ use beadroll_core::op::OpName;
 use beadroll_core::query::blocking;
 use beadroll_core::state::{Issue, State};
 
-use beadroll_store::{uuid7, view_outline};
+use beadroll_store::view_outline;
 use beadroll_sync::{NetworkMode, Tx, publish_soon, writing_spent};
 
 use super::{
@@ -114,8 +114,10 @@ fn write_issue(
     args: &CreateArgs,
     fields: &Payload,
 ) -> Result<((String, String, Object), String), Failure> {
-    let clock = tx.ws.settings.clock.clone();
-    let (deps, parent_uid, key, uid) = {
+    // the id first, minted by the transaction, which alone can give it to the create
+    let minted = tx.mint();
+    let uid = minted.as_str().to_owned();
+    let (deps, parent_uid, key) = {
         let st = tx.state()?;
         need_tracker(st)?;
         let parent = match args.fields.parent.as_deref().filter(|p| !p.is_empty()) {
@@ -175,9 +177,8 @@ fn write_issue(
                 }
             }
         }
-        let uid = uuid7(&clock);
         let key = st.mint_key(&uid, parent)?;
-        (deps, parent.map(|p| p.uid().to_string()), key, uid)
+        (deps, parent.map(|p| p.uid().to_string()), key)
     };
     let (labels, labels_valid) = arg_texts(&split_args(&args.labels));
     let mut data = Object::new();
@@ -190,7 +191,7 @@ fn write_issue(
     if let Some(parent) = &parent_uid {
         data.insert("parent".into(), Value::from(parent.as_str()));
     }
-    tx.emit(OpName::Create, None, data, Some(uid.clone()))?;
+    tx.emit(OpName::Create, None, data, Some(minted))?;
     encodable(fields.valid.and(labels_valid))?;
     if let Some(parent) = &parent_uid {
         tx.emit(

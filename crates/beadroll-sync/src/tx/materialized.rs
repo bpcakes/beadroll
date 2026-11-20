@@ -1,7 +1,6 @@
 //! A transaction has one materialized view. Once incremental application cannot reproduce replay,
 //! it stays on replay; a failed read or application leaves it ready to retry from the journal.
 
-use beadroll_core::id::EventId;
 use beadroll_core::journal::JournalOrder;
 use beadroll_core::projection::{Extended, Projection, Record};
 use beadroll_core::replay::replay;
@@ -36,6 +35,14 @@ impl Materialized {
             applied: 0,
             #[cfg(test)]
             drop_probe: None,
+        }
+    }
+
+    /// How many of the transaction's emitted events its state applies: none where there is none.
+    pub(super) fn applied(&self) -> usize {
+        match self {
+            Self::Projected { applied, .. } | Self::Replayed { applied, .. } => *applied,
+            Self::ReplayNeeded => 0,
         }
     }
 
@@ -92,16 +99,6 @@ impl Materialized {
             drop_probe: None,
         };
         Ok(())
-    }
-
-    /// Whether the journal it holds has an event with `id`: by the ids a projection took in, or a
-    /// replayed state's knowledge of every event. No where it cannot tell.
-    pub(super) fn holds(&self, id: EventId) -> bool {
-        match self {
-            Self::Projected { projection, .. } => projection.holds_id(id),
-            Self::Replayed { state, .. } => state.full_knowledge().is_some_and(|k| k.holds(id)),
-            Self::ReplayNeeded => false,
-        }
     }
 
     pub(super) fn state(&self) -> Result<&State, Error> {

@@ -295,3 +295,38 @@ fn attempt_emission_is_scoped_even_after_an_error() {
     })
     .unwrap();
 }
+
+/// A create the transaction emitted is a parent by its record only while the state applies fewer
+/// events than make it: once it does, the state alone says, and a create replay set aside (a
+/// broken chain under a foreign pending cycle) is no parent (AT100).
+#[test]
+fn a_create_the_state_applies_is_a_parent_only_if_replay_made_it() {
+    use std::collections::HashMap;
+
+    use beadroll_core::id::EventId;
+    use beadroll_core::journal::Journal;
+
+    use super::{Made, parent_problem};
+
+    let state = beadroll_core::replay::replay(Journal::new()).expect("an empty state");
+    let made = EventId::parse("0190a8a2-5e9a-7000-8000-000000000001").expect("an id");
+    let created = HashMap::from([(made, 3)]);
+    let mut data = Object::new();
+    data.insert("parent".into(), Value::from(made.to_string()));
+    let judged = |applied| {
+        let made = Made {
+            state: Some(&state),
+            applied,
+        };
+        parent_problem(made, &created, OpName::Create, &data)
+    };
+    // the fourth event emitted, not yet in the state: by the transaction's record
+    assert!(judged(3).is_ok());
+    // applied, and no issue of the state: replay set it aside
+    assert!(matches!(judged(4), Err(Error::Validation(_))));
+    let none = Made {
+        state: None,
+        applied: 0,
+    };
+    assert!(parent_problem(none, &created, OpName::Create, &data).is_ok());
+}
