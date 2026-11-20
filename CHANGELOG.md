@@ -45,12 +45,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   minted key, a collision with another copy of it resolved as for any key, and a build of `main`
   since #301 by its own judgement of the renames, neither from the parent its create names
   (*Format and upgrades* in `docs/GUARANTEES.md`). A build of `main` made after #301 and before
-  this one followed children whose creates name no parent; once upgraded, such a child is keyed
-  again from the key its create gave, under the rule every copy of a key keeps (the issue that
-  sorts first holds it, a later one takes the next free number), so that it, or an issue that held
-  its key since (an import, another child), can move, with no rename in any sync's report. A key such a build printed may
-  name another issue now: find the issue by its title (`bead search --all "TITLE"`) and check it
-  with `bead show NEW_KEY` before writing by a key.
+  this one followed, by its own judgement, every create under a numbered key whose parent part a
+  merge renamed, a child or an import alike; once upgraded, such an issue is keyed again from the
+  key its create gave, under the rule every copy of a key keeps (the issue that sorts first holds
+  it, a later one takes the next free number), so that it, or an issue that held its key since,
+  can move, with no rename in any sync's report. A key such a build printed may name another issue
+  now: find the issue by its title (`bead search --all "TITLE"`) and check it with `bead show
+  NEW_KEY` before writing by a key.
 - `sync` reports every key its merge changed: a key an earlier sync had renamed, moved again, was
   left out, as were renames replay placed before the ones counted and an issue that holds its own
   key again (an import a collision had displaced) or whose key changed with no rename at all (a

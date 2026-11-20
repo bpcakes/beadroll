@@ -287,8 +287,10 @@ issue by then, and `bead log KEY` lists that issue's events; the unfiltered
 `bead log --json --limit 0` lists every event, the write among them, whose issue
 it names stays the one it was made on, and the `create` event shows that
 issue's key now. A claim whose answer was lost or uncertain is in the log only
-once it is settled: run `bead sync` before taking its absence for a write that
-did not land. An imported
+once it is settled, and only the store that made it can settle it: run `bead
+sync` there, against the same coordination remote (its `--remote`, if one was
+given), before taking its absence for a write that did not land; a sync of
+another machine proves nothing of it. An imported
 dependency still waiting for a key binds to the issue that holds it on each
 machine, which can differ, so the two can see different blockers, and readiness,
 for the importing issue.
