@@ -104,6 +104,18 @@ impl<'a> Tx<'a> {
         self.materialized.state()
     }
 
+    /// [`parent_problem`] of a create naming a parent, judged by the state as it stands when that
+    /// holds the parent (an issue's key is settled at its create, so no event emitted since moves
+    /// it), and by the state with every event emitted since otherwise: siblings of one parent are
+    /// judged without applying each in turn, a pass over every issue a time.
+    fn judge_parent(&mut self, op: OpName, data: &Object) -> Result<(), Error> {
+        let held = (self.materialized.state()).is_ok_and(|st| parent_problem(st, op, data).is_ok());
+        if held {
+            return Ok(());
+        }
+        parent_problem(self.state()?, op, data)
+    }
+
     /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh
     /// id ([`Emitter::emit`]): the id of the event emitted.
     pub fn emit(
@@ -116,7 +128,7 @@ impl<'a> Tx<'a> {
         // the state is asked of only for a create naming a parent: any other write emits on it as
         // it did, read once
         if names_parent(op, &data) {
-            parent_problem(self.state()?, op, &data)?;
+            self.judge_parent(op, &data)?;
         }
         self.emitter().emit(op, issue, data, event_id)
     }

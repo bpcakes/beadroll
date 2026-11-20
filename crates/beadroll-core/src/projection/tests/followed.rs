@@ -389,3 +389,35 @@ fn a_create_naming_a_held_parent_extends_the_projection() {
     assert!(taken.in_one_batch, "{taken:?}");
     assert_eq!(taken.declined, 0, "{taken:?}");
 }
+
+/// The one journal, read as this build reads it and as a released reader does, which ignores the
+/// member: the child of a parent that gave way is `pr-base.2.1` here and `pr-base.1.1` there, its
+/// minted key, as *Format and upgrades* in GUARANTEES says. CI runs no released bead, so this
+/// holds the difference a mixed fleet shows (AT100).
+#[test]
+fn an_older_reader_keys_the_child_from_its_minted_key() {
+    let mut rest = two_firsts(2);
+    rest.push(at(
+        22,
+        HERE,
+        &[21, 20],
+        "create",
+        22,
+        under("pr-base.1.1", 20),
+    ));
+    let (upgraded, _) = every_way(&base(), &rest);
+    let released: Vec<Record> = (rest.iter())
+        .map(|record| {
+            let mut record = record.clone();
+            if let Value::Object(event) = &mut record.value
+                && let Some(Value::Object(data)) = event.get_mut("data")
+            {
+                data.shift_remove("parent");
+            }
+            record
+        })
+        .collect();
+    let (older, _) = every_way(&base(), &released);
+    assert_eq!(key(&upgraded, 22), "pr-base.2.1");
+    assert_eq!(key(&older, 22), "pr-base.1.1");
+}
