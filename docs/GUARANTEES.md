@@ -286,9 +286,10 @@ meanwhile can still move one. A key looked up after the write may name another
 issue by then, and `bead log KEY` lists that issue's events; the unfiltered
 `bead log --json --limit 0` lists every event, the write among them, whose issue
 it names stays the one it was made on, and the `create` event shows that
-issue's key now. A claim's row says which issue it was made on, not that it
-took: an offline claim is provisional, and replay can decline one; `bead show`
-says who holds the issue. The log shows a claim only once it is settled and
+issue's key now. A row says an event is there, in its causal place, not that
+replay applied it, and a claim's says which issue it was made on, not that it
+took: an offline claim is provisional, and replay can decline or set aside one;
+`bead show` says who holds the issue. The log shows a claim only once it is settled and
 applied, so its absence proves nothing: a claim whose answer was lost or
 uncertain is settled by `bead sync` on the store that made it (`UNRESOLVED`
 until then), and an accepted one can still wait for a cause that has not

@@ -239,8 +239,8 @@ impl<'l, 'w> Merging<'l, 'w> {
         self.before_writing();
         // a file the store held, rewritten (a foreign journal put back, an attempt file): a key
         // can change with no rename either side, and the report compares every one
-        if target.exists()
-            && let Some(before) = &mut self.link.keys_before
+        if let Some(before) = &mut self.link.keys_before
+            && target.exists()
         {
             before.unsettle();
         }

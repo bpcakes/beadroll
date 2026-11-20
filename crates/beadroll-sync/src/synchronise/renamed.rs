@@ -14,8 +14,8 @@ use beadroll_core::state::{Keys, Rename, State};
 #[derive(Debug, Default)]
 pub(crate) struct KeysBefore {
     keys: Keys,
-    /// Whether the state held a rename.
-    renamed: bool,
+    /// The renames the state held, in replay order.
+    renames: Vec<Rename>,
     /// Whether a key may have changed with no rename on either side: a merge since rewrote a
     /// journal file the store held (another machine's put back as published, an attempt file),
     /// or a round gave way, after which another process may have done so.
@@ -28,9 +28,10 @@ impl KeysBefore {
     /// Kept as the state held them, the index each key's issue is found by made only when the
     /// report is, once the sync has let go of the store.
     pub(crate) fn taken(state: State) -> KeysBefore {
+        let (keys, renames) = state.into_keys();
         KeysBefore {
-            renamed: !state.renames().is_empty(),
-            keys: state.into_keys(),
+            keys,
+            renames,
             unsettled: false,
         }
     }
@@ -50,9 +51,9 @@ pub(super) fn renamed_by_merge(state: &State, before: Option<&KeysBefore>) -> Ve
     let Some(before) = before else {
         return Vec::new();
     };
-    // with no rename before or after, and no journal file rewritten nor a round given way since,
-    // every issue holds its create's key as it did: nothing to compare
-    if !before.renamed && !before.unsettled && state.renames().is_empty() {
+    // the renames as they were, and no journal file rewritten nor a round given way since: an issue
+    // renamed holds the key it did, and every other its create's, as it did; nothing to compare
+    if !before.unsettled && before.renames == state.renames() {
         return Vec::new();
     }
     // indexed are only the issues whose key moved: an issue the merge left alone holds its key in

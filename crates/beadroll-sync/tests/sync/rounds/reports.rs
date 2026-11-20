@@ -303,3 +303,91 @@ fn a_merge_that_fails_before_writing_keeps_the_keys_the_sync_began_with() {
     let from = |r: &Value| r.get("from").and_then(Value::as_str) == Some("ex-a");
     assert!(synced.renamed.iter().any(from), "{:?}", synced.renamed);
 }
+
+/// A key another process restores between a sync's rounds, with no rename on either side, is
+/// reported: b's copy of a's journal gives an issue a rewritten key, b's merge finds the published
+/// copy damaged before it puts it back, and another sync of b's store puts it back before the
+/// rebuilt round, which writes nothing. With no rename before or after, the report compared no key
+/// unless the round that gave way had marked it (AT101).
+#[test]
+fn a_key_restored_between_rounds_without_a_rename_is_reported() {
+    let sandbox = sandbox();
+    let (a, b) = (Machine::new(&sandbox, "a"), Machine::new(&sandbox, "b"));
+    a.bead(["init", "--prefix", "ex"]);
+    let key = text(&a.bead(["create", "the issue"]).unwrap()["id"]);
+    b.bead(["sync"]);
+    let origin = sandbox.origin().to_str().unwrap();
+    let tip = git(
+        ["--git-dir", origin, "rev-parse", "refs/beads/journal"],
+        None,
+    );
+    let listed = git(
+        [
+            "--git-dir",
+            origin,
+            "ls-tree",
+            "-r",
+            "--name-only",
+            tip.trim(),
+        ],
+        None,
+    );
+    let ws = workspace(&b, sandbox.origin(), &[]);
+    // a's segment, as b holds it, with the create's key rewritten
+    let segment = (listed.lines())
+        .filter(|path| path.ends_with(".jsonl") && !path.contains("/claims/"))
+        .find(|path| std::fs::read_to_string(ws.dir.join(path)).is_ok_and(|t| t.contains(&key)))
+        .expect("a's segment")
+        .to_owned();
+    let forged = format!("{key}-forged");
+    let held = std::fs::read_to_string(ws.dir.join(&segment)).unwrap();
+    let rewritten = held.replace(
+        &format!("\"key\":\"{key}\""),
+        &format!("\"key\":\"{forged}\""),
+    );
+    assert_ne!(rewritten, held, "the create names the key");
+    std::fs::write(ws.dir.join(&segment), rewritten).unwrap();
+    assert_eq!(text(&b.show(&forged)["title"]), "the issue");
+    // the published copy, damaged in b's sync.git before the merge reads it
+    let sync_git = ws.dir.join("sync.git");
+    let fetch = [
+        "--git-dir",
+        sync_git.to_str().unwrap(),
+        "fetch",
+        "-q",
+        origin,
+        "+refs/beads/journal:refs/beads/held",
+    ];
+    git(fetch, None);
+    let blob = git(
+        [
+            "--git-dir",
+            origin,
+            "rev-parse",
+            &format!("{}:{segment}", tip.trim()),
+        ],
+        None,
+    );
+    damage_tip(&sync_git, blob.trim());
+    let retry = Gate::new(&sandbox, "retry");
+    let faults = format!(
+        "fetch.fetched@nth(2)={};backoff@always=skip",
+        retry.action()
+    );
+    let ws = workspace(&b, sandbox.origin(), &[("BEAD_FAILPOINTS", &faults)]);
+    let (result, met) = alongside(
+        || synchronise(&ws, &Endpoint::at(sandbox.origin())),
+        |done| retry.meet(done, || b.bead(["sync"])),
+    );
+    assert!(met.is_some(), "the rebuilt round fetched");
+    let synced = result.expect("the rebuilt round succeeds");
+    assert!(
+        synced.sync_repo_rebuilt.is_some(),
+        "the first merge found sync.git damaged"
+    );
+    let back = |r: &Value| {
+        r.get("from").and_then(Value::as_str) == Some(forged.as_str())
+            && r.get("to").and_then(Value::as_str) == Some(key.as_str())
+    };
+    assert!(synced.renamed.iter().any(back), "{:?}", synced.renamed);
+}

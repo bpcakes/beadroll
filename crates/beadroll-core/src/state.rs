@@ -232,10 +232,10 @@ impl State {
         issues
     }
 
-    /// Every key and the issue that has it, taken out of the state, which is dropped: a caller that
-    /// needs the keys alone keeps them without copying one.
-    pub fn into_keys(self) -> Keys {
-        self.by_key
+    /// Every key and the issue that has it, and every rename, taken out of the state, which is
+    /// dropped: a caller that needs them alone keeps them without copying one.
+    pub fn into_keys(self) -> (Keys, Vec<Rename>) {
+        (self.by_key, self.renames)
     }
 
     /// Every key and the issue that has it, in the order they were taken.
