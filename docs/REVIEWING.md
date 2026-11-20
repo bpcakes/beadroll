@@ -186,15 +186,18 @@ These were decided deliberately. Report problems *with* them, not their existenc
   that names such a parent from a damaged one by their keys. Replay reads a `parent` that is no
   event id as none, as it applied such a create before the member was added; a write of one is
   refused (`write_problem`). The parent must be named among the create's own causes, as every writer of the
-  member names it (a write refuses one that does not, or one keyed other than the parent's key, a
-  dot and a number): an older create may carry the member, naming an issue its writer never saw,
+  member names it (a write refuses one that does not, one whose parent is no issue the transaction holds or made,
+  or one keyed with no number after a parent part; the key itself is the caller's to mint from
+  the parent's current key, `State::mint_key`, as `bead create` does: judging it would need the
+  parent's settled key, which a transaction has only once every event before is applied, a pass
+  over every issue a create, by the maintainer's choice of 2026-11-20): an older create may carry the member, naming an issue its writer never saw,
   or saw through other events alone, and keeps its key. Modelling which renames
   merges make was tried first and wrongly refused some (a number's leading zeros, a stem with a
   newline, a key ending in a dot).
 
-- A child's create names its parent among its causes as well as in its data, unless the parent is
-  a head (the emitter names it in that create's `deps` alone, and a write refuses a create
-  without it), so that replay, following only a parent the child's writer saw, sees
+- A child's create names its parent in its data (`parent`) and among its causes (`deps`), the
+  emitter adding it there unless it is a head already, for that create alone, and a write
+  refusing a create without it, so that replay, following only a parent the child's writer saw, sees
   it saw it whatever the frontier holds or comes to: a foreign journal's pending cycle can hide a
   parent from every head, and a foreign journal put back as published can take a path away. The
   maintainer chose this on 2026-11-20 over naming the parent only where the heads miss it, which

@@ -283,14 +283,12 @@ fn a_create_whose_parent_is_no_issue_is_refused() {
     .expect("a transaction");
 }
 
-/// A create under a parent must be keyed the parent's key, a dot and a number: one keyed under
-/// another refused, where replay moved it under the parent at once, with no merge. A lent emitter
-/// refuses a child of a parent made since the lend, whose key its state does not hold (a
-/// collision may settle it at another), and the transaction takes it once the lend is over,
-/// under the key the parent settled at; and it takes siblings of one parent, each naming it
-/// among its causes (AT100).
+/// A create under a parent is judged for its structure, as every path emits it: a key with no
+/// number after a parent part refused, where replay had no key to give its number; a child of a
+/// parent the same lent emitter made just before, and siblings of one parent, taken. Its key is
+/// the caller's to mint from the parent's (AT100).
 #[test]
-fn a_create_is_keyed_under_its_parent_as_the_state_holds_it() {
+fn a_create_under_a_parent_is_judged_for_its_structure() {
     let sandbox = sandbox();
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
@@ -317,11 +315,6 @@ fn a_create_is_keyed_under_its_parent_as_the_state_holds_it() {
             .expect("the issue")
             .uid()
             .to_string();
-        let elsewhere = tx.emit(OpName::Create, None, create("ex-q.1", Some(&uid)), None);
-        assert!(
-            matches!(elsewhere, Err(Error::Validation(_))),
-            "{elsewhere:?}"
-        );
         let unnumbered = tx.emit(
             OpName::Create,
             None,
@@ -332,19 +325,10 @@ fn a_create_is_keyed_under_its_parent_as_the_state_holds_it() {
             matches!(unnumbered, Err(Error::Validation(_))),
             "{unnumbered:?}"
         );
-        let parent = {
-            let (_, mut emitter) = tx.lend()?;
-            let parent = emitter.emit(OpName::Create, None, create("ex-made", None), None)?;
-            let child = create("ex-made.1", Some(&parent.to_string()));
-            let lent = emitter.emit(OpName::Create, None, child, None);
-            assert!(matches!(lent, Err(Error::Validation(_))), "{lent:?}");
-            parent
-        };
-        let child = create("ex-made.1", Some(&parent.to_string()));
-        tx.emit(OpName::Create, None, child, None)?;
-        // siblings of one parent through one lent emitter: each names the parent among its
-        // causes, the head before the second being the first
         let (_, mut emitter) = tx.lend()?;
+        let parent = emitter.emit(OpName::Create, None, create("ex-made", None), None)?;
+        let child = create("ex-made.1", Some(&parent.to_string()));
+        emitter.emit(OpName::Create, None, child, None)?;
         for n in [7, 8] {
             let sibling = create(&format!("{key}.{n}"), Some(&uid));
             emitter.emit(OpName::Create, None, sibling, None)?;

@@ -104,16 +104,13 @@ impl<'a> Tx<'a> {
         self.materialized.state()
     }
 
-    /// [`parent_problem`] of a create naming a parent, judged by the state as it stands when that
-    /// holds the parent (an issue's key is settled at its create, so no event emitted since moves
-    /// it), and by the state with every event emitted since otherwise: siblings of one parent are
-    /// judged without applying each in turn, a pass over every issue a time.
+    /// [`parent_problem`] of a create naming a parent: by the state as it stands and the events
+    /// emitted since, the state made only where there is none.
     fn judge_parent(&mut self, op: OpName, data: &Object) -> Result<(), Error> {
-        let held = (self.materialized.state()).is_ok_and(|st| parent_problem(st, op, data).is_ok());
-        if held {
-            return Ok(());
+        if self.materialized.state().is_err() {
+            self.state()?;
         }
-        parent_problem(self.state()?, op, data)
+        parent_problem(self.materialized.state().ok(), &self.emitted, op, data)
     }
 
     /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh
@@ -239,12 +236,18 @@ pub(crate) fn names_parent(op: OpName, data: &Object) -> bool {
     op == OpName::Create && data.contains_key("parent")
 }
 
-/// `VALIDATION` for a create naming as its parent (`parent`) what is no issue of `state`, or
-/// minted under another key than the parent's there, followed by a dot and its number: replay
-/// would find none to follow, keep the key minted without a word, or move it under the parent at
-/// once. A lent emitter's state is from before the lend, so that a parent created since has no key
-/// there to be keyed under: its child is emitted through the transaction once the lend is over.
-pub(crate) fn parent_problem(state: &State, op: OpName, data: &Object) -> Result<(), Error> {
+/// `VALIDATION` for a create naming as its parent (`parent`) what is neither an issue of `state`
+/// nor a create among `emitted` (this transaction's events), or keyed with no number after a
+/// parent part: replay would find no parent to follow, or no key to give its number. Its key is
+/// the caller's to mint from the parent's current key (`State::mint_key`, as `bead create` does):
+/// judging it would need the parent's settled key, which the state has only once every event
+/// emitted before is applied, a pass over every issue a create (`docs/REVIEWING.md` §2).
+pub(crate) fn parent_problem(
+    state: Option<&State>,
+    emitted: &[Record],
+    op: OpName,
+    data: &Object,
+) -> Result<(), Error> {
     if op != OpName::Create {
         return Ok(());
     }
@@ -252,22 +255,24 @@ pub(crate) fn parent_problem(state: &State, op: OpName, data: &Object) -> Result
         return Ok(());
     };
     let named = parent.as_str().unwrap_or("a value that is no id");
-    let held = (parent.as_str())
-        .and_then(EventId::parse)
-        .and_then(|issue| state.issue(issue));
-    let Some(held) = held else {
+    let issue = (parent.as_str()).and_then(EventId::parse);
+    let held = issue.is_some_and(|issue| state.is_some_and(|st| st.issue(issue).is_some()));
+    let made = (emitted.iter()).any(|record| {
+        record.value.get("op").and_then(Value::as_str) == Some("create")
+            && record.value.get("id").and_then(Value::as_str) == parent.as_str()
+    });
+    if !held && !made {
         return Err(Error::Validation(format!(
-            "a create's parent must be an issue of this tracker as the state stands, not {named}"
+            "a create's parent must be an issue of this tracker, not {named}"
         )));
-    };
-    let under = held.key();
+    }
     let minted = data.get("key").and_then(Value::as_str).unwrap_or_default();
-    let numbered = (minted.strip_prefix(under))
-        .and_then(|rest| rest.strip_prefix('.'))
-        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+    let numbered = (minted.rsplit_once('.')).is_some_and(|(under, n)| {
+        !under.is_empty() && !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())
+    });
     if !numbered {
         return Err(Error::Validation(format!(
-            "a create under {under} must be keyed {under}.N, not {minted}"
+            "a create under a parent is keyed PARENT.N, not {minted}"
         )));
     }
     Ok(())
@@ -287,7 +292,7 @@ impl Emitter<'_> {
         if let Some(known) = self.known
             && names_parent(op, &data)
         {
-            parent_problem(known, op, &data)?;
+            parent_problem(Some(known), self.emitted, op, &data)?;
         }
         // a create's parent among its causes, however it is emitted (siblings of one parent each
         // name it, the head before them being the sibling before): replay follows only a parent
