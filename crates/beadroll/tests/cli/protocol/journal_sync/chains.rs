@@ -75,20 +75,24 @@ fn a_write_beside_a_pending_cycle_builds_on_the_machines_last_record() {
     writes_apply(&a);
 }
 
-/// The last record a write builds on is the last in the journal's order, not the greatest id: a
-/// record written with the clock turned back has a smaller id than the one before it, and a write
-/// building on that one broke the chain at the last (AT100).
+/// The record a write builds on is the last applicable in the journal's order, not the greatest
+/// id: a record written with the clock turned back has a smaller id than the one before it, and a
+/// write building on that one broke the chain at the last (AT100).
 #[test]
 fn a_write_builds_on_the_last_record_where_the_clock_went_back() {
     let sandbox = crate::sandbox();
     let a = crate::rust_only(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
     a.bead(["create", "x"]);
+    let before = tail_of(&a);
     let back = a
         .cmd(["create", "w"])
         .env("BEAD_FAILPOINTS", "clock=offset(-1d)")
         .json();
     assert!(back.is_some(), "a create with the clock turned back");
-    plant_cycle(&a, &tail_of(&a));
+    let tail = tail_of(&a);
+    // the record written last has the smaller id: the greatest is the one before it
+    assert!(tail < before, "{tail} sorts after {before}");
+    plant_cycle(&a, &tail);
     writes_apply(&a);
 }

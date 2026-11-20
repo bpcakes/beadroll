@@ -4,6 +4,7 @@
 //! wait for a key).
 
 pub(crate) mod awaiting;
+mod causes;
 mod compacted;
 mod copied;
 mod edges;

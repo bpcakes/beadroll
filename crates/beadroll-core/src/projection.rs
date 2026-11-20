@@ -149,9 +149,9 @@ pub struct Projection {
     /// Each machine's latest event in its journal, by id: when it last wrote, which a machine's
     /// last record need not say, since ids are minted from a clock that can go back (roll-lqjj.31).
     pub(crate) lasts: HashMap<String, EventId>,
-    /// Each machine's last record in its journal's order, by id: what its next event builds on
-    /// ([`Projection::causes_for`]), which its greatest id need not be. Kept in the knowledge, so
-    /// that whether the frontier has it in its past can be told.
+    /// Each machine's last applicable event in its journal's order, by id: what its next event must
+    /// build on ([`Projection::causes_for`]), which neither its greatest id nor its last record (a
+    /// placeholder) need be. Kept in the knowledge, as what comes after it asks of it.
     pub(crate) tails: HashMap<String, EventId>,
     /// The claims takeovers superseded.
     pub(crate) superseded: HashSet<EventId>,
@@ -192,10 +192,8 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
     let lasts = (settled.order().iter())
         .filter_map(|(machine, ids)| Some((machine.clone(), *ids.iter().max()?)))
         .collect();
-    let tails: HashMap<String, EventId> = (settled.order().iter())
-        .filter_map(|(machine, ids)| Some((machine.clone(), *ids.last()?)))
-        .collect();
     let (mut state, replayed) = replayed(journal)?;
+    let tails = state.knowledge.predecessors();
     let open = state.pending.is_empty() && !replayed.unsettled;
     let mut kept = named(&state);
     kept.extend(heads.iter().copied());
@@ -235,21 +233,24 @@ impl Projection {
     }
 
     /// What a new event of `machine`'s builds on ([`Causes`]): the frontier, and the machine's last
-    /// record where no event on the frontier is it or has it in its past. Replay sets aside an
-    /// event of a machine's journal that does not build on the one before it (a journal chain
-    /// broken), applied by nobody; an event building on it that replay does not apply, pending on
-    /// a cause or in a cycle of causes, keeps it off the frontier with no head having it in its
-    /// past. Most writes find it on the frontier or in its past, and name the frontier alone.
+    /// applicable event where the frontier's clocks do not reach it, as replay judges. Replay sets
+    /// aside an event of a machine's journal that does not build on the one before it (a journal
+    /// chain broken), applied by nobody; an event building on it that replay does not apply,
+    /// pending on a cause or in a cycle of causes, keeps it off the frontier unreached, and a
+    /// released quarantined id may name it without reaching it. Most writes find it reached, and
+    /// name the frontier alone.
     pub fn causes_for(&self, machine: &str) -> Causes {
         let mut ids = self.heads.clone();
+        let knowledge = &self.state.knowledge;
         if let Some(tail) = self.tails.get(machine)
-            && !(ids.iter()).any(|head| head == tail || self.state.saw(*head, *tail))
+            && !ids.contains(tail)
+            && knowledge.misses_predecessor(machine, &ids)
         {
             ids.push(*tail);
             ids.sort_unstable();
         }
-        let pending = &self.state.pending;
-        let waits = ids.iter().any(|cause| pending.contains(cause));
+        // the causes are in order: the pending events are looked up among them, once each
+        let waits = (self.state.pending.iter()).any(|event| ids.binary_search(event).is_ok());
         Causes { ids, waits }
     }
 
