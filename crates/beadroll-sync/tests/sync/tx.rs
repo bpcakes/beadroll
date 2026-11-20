@@ -258,3 +258,58 @@ fn a_create_whose_parent_is_no_issue_is_refused() {
     })
     .expect("a transaction");
 }
+
+/// A create under a parent must be keyed the parent's key, a dot and a number: one keyed under
+/// another refused, where replay moved it under the parent at once, with no merge; and a lent
+/// emitter takes a parent it created itself, the child after it (AT100).
+#[test]
+fn a_create_is_keyed_under_its_parent_and_may_follow_one_made_in_the_same_lend() {
+    let sandbox = sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let key = text(&a.bead(["create", "x"]).expect("an issue")["id"]);
+    let ws = workspace(&a, sandbox.origin(), &[]);
+    let actor = actor(&a);
+    let create = |key: &str, parent: Option<&str>| {
+        let mut fields = Object::new();
+        fields.insert("title".into(), Value::from(key));
+        let mut data = Object::new();
+        data.insert("key".into(), Value::from(key));
+        data.insert("fields".into(), Value::from(fields));
+        data.insert("labels".into(), Value::Array(Vec::new()));
+        if let Some(parent) = parent {
+            data.insert("parent".into(), Value::from(parent));
+        }
+        data
+    };
+    locked(&ws, || -> Result<(), Error> {
+        let mut tx = Tx::new(&ws, &actor)?;
+        let uid = tx
+            .state()?
+            .resolve(&key)
+            .expect("the issue")
+            .uid()
+            .to_string();
+        let elsewhere = tx.emit(OpName::Create, None, create("ex-q.1", Some(&uid)), None);
+        assert!(
+            matches!(elsewhere, Err(Error::Validation(_))),
+            "{elsewhere:?}"
+        );
+        let unnumbered = tx.emit(
+            OpName::Create,
+            None,
+            create(&format!("{key}.x"), Some(&uid)),
+            None,
+        );
+        assert!(
+            matches!(unnumbered, Err(Error::Validation(_))),
+            "{unnumbered:?}"
+        );
+        let (_, mut emitter) = tx.lend()?;
+        let parent = emitter.emit(OpName::Create, None, create("ex-made", None), None)?;
+        let child = create("ex-made.1", Some(&parent.to_string()));
+        emitter.emit(OpName::Create, None, child, None)?;
+        Ok(())
+    })
+    .expect("a transaction");
+}

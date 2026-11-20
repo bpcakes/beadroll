@@ -48,7 +48,7 @@ fn two_firsts(after: u128) -> Vec<Record> {
     vec![
         at(10, THERE, &[2], "create", 10, under("pr-base.1", 2)),
         at(11, THERE, &[10], "dep_add", 10, parent_of(2)),
-        at(20, HERE, &[after], "create", 20, under("pr-base.1", 2)),
+        at(20, HERE, &[after, 2], "create", 20, under("pr-base.1", 2)),
         at(21, HERE, &[20], "dep_add", 20, parent_of(2)),
     ]
 }
@@ -61,7 +61,7 @@ fn two_firsts(after: u128) -> Vec<Record> {
 fn a_child_follows_the_parent_its_create_names() {
     let mut rest = two_firsts(2);
     rest.extend([
-        at(22, HERE, &[21], "create", 22, under("pr-base.1.1", 20)),
+        at(22, HERE, &[21, 20], "create", 22, under("pr-base.1.1", 20)),
         at(23, HERE, &[22], "dep_add", 22, parent_of(20)),
         at(30, HERE, &[23], "create", 30, written("pr-base.1.5")),
         at(31, HERE, &[30], "dep_add", 30, parent_of(20)),
@@ -93,8 +93,8 @@ fn a_childs_key_is_settled_at_its_create() {
     let mut rest = vec![at(15, HERE, &[2], "create", 15, waiting)];
     rest.extend(two_firsts(15));
     rest.extend([
-        at(22, HERE, &[21], "create", 22, under("pr-base.1.1", 20)),
-        at(23, THERE, &[11], "create", 23, under("pr-base.1.1", 10)),
+        at(22, HERE, &[21, 20], "create", 22, under("pr-base.1.1", 20)),
+        at(23, THERE, &[11, 10], "create", 23, under("pr-base.1.1", 10)),
         at(24, HERE, &[22], "dep_add", 22, parent_of(20)),
         at(26, THERE, &[23], "dep_add", 23, parent_of(10)),
     ]);
@@ -168,7 +168,14 @@ fn a_followed_key_passes_over_one_an_import_waits_for() {
     let waiting = creating("pr-imp", vec![on("pr-base.2.1", None, &[])]);
     let mut rest = vec![at(15, HERE, &[2], "create", 15, waiting)];
     rest.extend(two_firsts(15));
-    rest.push(at(22, HERE, &[21], "create", 22, under("pr-base.1.1", 20)));
+    rest.push(at(
+        22,
+        HERE,
+        &[21, 20],
+        "create",
+        22,
+        under("pr-base.1.1", 20),
+    ));
     let (state, _) = every_way(&base(), &rest);
     assert_eq!(key(&state, 22), "pr-base.2.2");
     let imported = state.issue(EventId::parse(&id(15)).unwrap()).unwrap();
@@ -332,17 +339,20 @@ fn a_parent_given_a_digest_at_every_level_is_followed() {
     assert_eq!(key(&state, 11), format!("{now}.1"));
 }
 
-/// A create naming a parent its writer never saw follows nowhere: an older bead's create may carry
-/// the member, and a concurrent issue named there was one already only because its id sorted
-/// first. (AT100)
+/// A create naming a parent it does not name among its own causes follows nowhere, as an older
+/// writer's create carrying the member may: one whose writer never saw the parent (its issue one
+/// only because a concurrent create's id sorted first), and one whose writer saw it through
+/// another event alone. Every writer of the member names it among the causes (AT100).
 #[test]
-fn a_parent_its_writer_never_saw_is_followed_nowhere() {
+fn a_parent_not_among_the_creates_causes_is_followed_nowhere() {
     let rest = [
         at(10, THERE, &[2], "create", 10, written("pr-q")),
-        at(20, HERE, &[2], "create", 20, under("pr-base.1", 10)),
+        at(11, HERE, &[2, 10], "create", 11, written("pr-r")),
+        at(20, HERE, &[11], "create", 20, under("pr-base.1", 10)),
+        at(30, THERE, &[10], "create", 30, under("pr-base.2", 11)),
     ];
     let (state, _) = every_way(&base(), &rest);
-    assert_eq!(key(&state, 20), "pr-base.1");
+    assert_eq!([20, 30].map(|n| key(&state, n)), ["pr-base.1", "pr-base.2"]);
 }
 
 /// A parent whose key grew past the bound by merges is not followed, the documented exception:

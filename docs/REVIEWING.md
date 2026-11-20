@@ -185,9 +185,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   it, and its child keeps `x.1.1` while its parent edge names the parent; nothing tells a record
   that names such a parent from a damaged one by their keys. Replay reads a `parent` that is no
   event id as none, as it applied such a create before the member was added; a write of one is
-  refused (`write_problem`). The parent must be one the child's writer saw, as `bead create
-  --parent`'s always is: an older create may carry the member, naming an issue its writer never
-  saw. Modelling which renames
+  refused (`write_problem`). The parent must be named among the create's own causes, as every writer of the
+  member names it (a write refuses one that does not, or one keyed other than the parent's key, a
+  dot and a number): an older create may carry the member, naming an issue its writer never saw,
+  or saw through other events alone, and keeps its key. Modelling which renames
   merges make was tried first and wrongly refused some (a number's leading zeros, a stem with a
   newline, a key ending in a dot).
 

@@ -50,7 +50,8 @@ impl Attempt<'_, '_> {
         event_id: Option<String>,
     ) -> Result<EventId, Error> {
         if super::names_parent(op, &data) {
-            super::parent_problem(self.tx.state()?, op, &data)?;
+            let emitted = self.tx.emitted.clone();
+            super::parent_problem(self.tx.state()?, &emitted, op, &data)?;
         }
         let mut emitter = self.tx.emitter();
         emitter.route = Route::Attempt;
