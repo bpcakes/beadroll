@@ -302,8 +302,10 @@ nothing, a comment's as a claim's. An ordinary write (a comment, an update) is
 in its store's journal once its command answers, published or not: `bead sync`
 on that store publishes it, and written again it is there twice. An ownership
 command's attempt (a claim, a release) whose push went unanswered is settled by
-`bead sync` on the store that made it, which confirms or fences it off
-(`UNRESOLVED` until then). Either can have landed and still wait for a cause
+`bead sync` on the store that made it, against the same coordination remote and
+ref (`--remote R` again, if the command was given one), which confirms or
+fences it off (`UNRESOLVED` until then); a sync of another remote fences
+nothing there, though it drops the attempt. Either can have landed and still wait for a cause
 that has not arrived. Repeating an ownership command is
 no check either: one its receipt recognizes as already made does nothing again,
 and its answer can name the issue the key holds now, while one whose first try
