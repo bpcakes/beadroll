@@ -392,8 +392,9 @@ fn a_create_built_on_a_waiting_cause_is_no_parent_however_the_transaction_is_rea
 }
 
 /// A transaction on a journal whose chain is broken already, every record of it set aside by
-/// replay, takes none of its creates for a parent, whether or not the state was read between, as
-/// the state says once read; `writing` refuses such a journal before its body runs (AT100).
+/// replay, takes none of the creates it records there for a parent, and takes those of an attempt,
+/// in no journal's chain and applied, whether or not the state was read between, as the state says
+/// once read; `writing` refuses such a journal before its body runs (AT100).
 #[test]
 fn a_create_on_a_broken_chain_is_no_parent_however_the_transaction_is_read() {
     let sandbox = sandbox();
@@ -428,5 +429,20 @@ fn a_create_on_a_broken_chain_is_no_parent_however_the_transaction_is_read() {
             Ok(())
         })
         .expect("a transaction");
+        // an attempt's create is in no journal's chain, and applies: its child is taken
+        locked(&ws, || -> Result<(), Error> {
+            let mut tx = Tx::new(&ws, &actor)?;
+            let parent = tx
+                .attempt()
+                .emit(OpName::Create, None, create_of("ex-q", None), None)?;
+            if read_between {
+                assert!(tx.state()?.issue(parent).is_some(), "applied");
+            }
+            let child = create_of("ex-q.1", Some(parent));
+            let judged = tx.attempt().emit(OpName::Create, None, child, None);
+            assert!(judged.is_ok(), "read between: {read_between}: {judged:?}");
+            Ok(())
+        })
+        .expect("an attempt");
     }
 }

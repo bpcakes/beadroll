@@ -54,10 +54,12 @@ pub struct Tx<'a> {
     /// The frontier, with the events emitted so far: what a new event builds on.
     heads: Vec<EventId>,
     /// Whether a cause an event emitted built on waits for one of its own: replay applies none of
-    /// the events emitted after it until it comes, and a create among them is no parent. So too
-    /// where this machine's journal chain is broken already, every record of it set aside by
-    /// replay (which `writing` refuses before its body runs).
+    /// the events emitted after it until it comes, and a create among them is no parent.
     waits: bool,
+    /// Whether this machine's journal chain is broken already: replay sets aside every record of
+    /// its journal emitted, a create among them no parent, and applies an attempt's events, in no
+    /// journal's chain (`writing` refuses such a journal before its body runs).
+    broken: bool,
     /// This machine's last applicable event, where the frontier does not reach it, until the
     /// transaction's first record of its journal names it
     /// ([`Causes`](beadroll_core::projection::Causes)).
@@ -109,7 +111,8 @@ impl<'a> Tx<'a> {
             actor: actor.value.clone(),
             replica,
             heads: causes.ids,
-            waits: causes.waits || broken,
+            waits: causes.waits,
+            broken,
             predecessor: causes.predecessor,
             predecessor_waits: causes.predecessor_waits,
             materialized: Materialized::projected(projection),
@@ -182,6 +185,7 @@ impl<'a> Tx<'a> {
             emitted: &mut self.emitted,
             created: &mut self.created,
             waits: &mut self.waits,
+            broken: self.broken,
             predecessor: &mut self.predecessor,
             predecessor_waits: self.predecessor_waits,
             place: &self.place,
@@ -209,6 +213,7 @@ impl<'a> Tx<'a> {
             waits,
             predecessor,
             predecessor_waits,
+            broken,
             place,
             ownership,
             writable,
@@ -226,6 +231,7 @@ impl<'a> Tx<'a> {
             waits,
             predecessor,
             predecessor_waits: *predecessor_waits,
+            broken: *broken,
             place,
             ownership,
             route: Route::Journal,
@@ -288,6 +294,8 @@ pub struct Emitter<'t> {
     predecessor: &'t mut Option<EventId>,
     /// Whether it waits for a cause of its own.
     predecessor_waits: bool,
+    /// Whether the machine's journal chain is broken already ([`Tx`]'s `broken`).
+    broken: bool,
     place: &'t Option<Value>,
     ownership: &'t mut Vec<Value>,
     route: Route,
@@ -437,7 +445,7 @@ impl Emitter<'_> {
         if sequenced && self.predecessor.take().is_some() {
             *self.waits |= self.predecessor_waits;
         }
-        if op == OpName::Create && !*self.waits {
+        if op == OpName::Create && !*self.waits && !(self.broken && sequenced) {
             self.created.insert(emitted, self.emitted.len() - 1);
         }
         Ok(emitted)
