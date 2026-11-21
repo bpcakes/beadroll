@@ -160,6 +160,18 @@ These were decided deliberately. Report problems *with* them, not their existenc
   as a boundary: a pairing those checks pass, such as an index from after a create was
   quarantined, is not a finding.
 
+- Every record of the journal a transaction emits comes before its ownership attempt's first
+  event, and one after it is refused (`Tx`, `tx/heads.rs`), whatever it is about. The journal is
+  appended before the attempt is published, which the remote may refuse: a record built on the
+  attempt's events waited for them when it did, and one built beside them, not on them, could
+  replay before the claim, edit or create it relied on (a close naming the attempt's claim, a
+  label's removal after its addition), its effect lost though both landed. An edit after a claim
+  goes through `Tx::attempt`, as `update --claim` sends every edit, and no bead command emits a
+  record of the journal after its attempt. This was chosen in the reviews of #307 on 2026-11-21,
+  by the agent making them rather than the maintainer, over building such records beside the
+  attempt and refusing those that name its events, which a later review found incomplete. Report
+  problems with the rule, not its existence.
+
 - A coordination remote that git fetches from one repository and pushes to another, through a
   `url.<base>.pushInsteadOf` rule when it has no push URL of its own (its own `pushurl` is used
   for both), is `CONFIG` when the link is made (`link::one_repository`), naming both places. bead

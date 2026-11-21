@@ -64,7 +64,7 @@ fn writes_apply(machine: &Machine) {
 
 /// A machine's write builds on its last record while a foreign event in a cycle of causes builds
 /// on it, keeping it off the frontier: replay applies the write, where one naming the frontier
-/// alone broke its journal chain and was set aside, applied by nobody (AT100).
+/// alone broke its journal chain and was set aside, applied by nobody (AT102).
 #[test]
 fn a_write_beside_a_pending_cycle_builds_on_the_machines_last_record() {
     let sandbox = crate::sandbox();
@@ -77,7 +77,7 @@ fn a_write_beside_a_pending_cycle_builds_on_the_machines_last_record() {
 
 /// The record a write builds on is the last applicable in the journal's order, not the greatest
 /// id: a record written with the clock turned back has a smaller id than the one before it, and a
-/// write building on that one broke the chain at the last (AT100).
+/// write building on that one broke the chain at the last (AT102).
 #[test]
 fn a_write_builds_on_the_last_record_where_the_clock_went_back() {
     let sandbox = crate::sandbox();
@@ -125,7 +125,7 @@ fn append_waiting(machine: &Machine, issue: &str) -> String {
 /// An ownership attempt is in no journal's chain, and builds on the frontier alone: a release
 /// beside this machine's last event, which waits for a cause and which a foreign head released
 /// without reaching it names, applies, where one naming that event too waited with it and left
-/// the claim held (AT100).
+/// the claim held (AT102).
 #[test]
 fn a_release_beside_a_waiting_last_event_builds_on_the_frontier_alone() {
     let sandbox = crate::sandbox();

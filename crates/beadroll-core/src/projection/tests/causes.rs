@@ -22,7 +22,7 @@ fn comment(text: &str) -> Object {
 
 /// A machine's last record that is a placeholder (malformed, and waiting on itself) is no event
 /// its next one must build on: replay judges the chain by the last applicable one, which the
-/// frontier holds, and a write naming the placeholder waited for ever (AT100).
+/// frontier holds, and a write naming the placeholder waited for ever (AT102).
 #[test]
 fn a_placeholder_last_in_the_journal_is_not_built_on() {
     let mut records = base();
@@ -42,7 +42,7 @@ fn a_placeholder_last_in_the_journal_is_not_built_on() {
 /// A machine's last applicable event, pending on a cause no journal holds, named by a foreign
 /// head whose id was found with two contents: replay may release that head without the event in
 /// its clock, so that the head names it without reaching it. A write names the event too, and
-/// waits with it, where one taken as building on it through the head broke its chain (AT100).
+/// waits with it, where one taken as building on it through the head broke its chain (AT102).
 #[test]
 fn a_last_event_a_released_head_names_without_reaching_is_built_on() {
     let mut records = base();
