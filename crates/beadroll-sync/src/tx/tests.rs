@@ -335,8 +335,8 @@ fn a_create_the_state_applies_is_a_parent_only_if_replay_made_it() {
 /// journal is appended before the attempt is published, and an attempt the remote refused left a
 /// record naming its event waiting for one no journal holds, with every write built on it. An
 /// attempt's event after the record builds on both. And a create the attempt made is no parent of
-/// a create in the journal, whether or not the state was read between, while it is one of a
-/// create in the attempt (AT100).
+/// a create in the journal, nor the issue of a comment there, whether or not the state was read
+/// between, while it is either in the attempt (AT100).
 #[test]
 fn a_record_of_the_journal_builds_on_no_event_of_the_attempt() {
     let fixture = Fixture::new("");
@@ -391,9 +391,19 @@ fn a_record_of_the_journal_builds_on_no_event_of_the_attempt() {
                 matches!(&judged, Err(Error::Validation(problem)) if problem.contains("attempt")),
                 "read between: {read_between}: {judged:?}"
             );
+            // nor is a record of the journal about it: replay may take it first, an orphan
+            let on = parent.to_string();
+            let judged = tx.emit(OpName::Comment, Some(&on), comment(), None);
+            assert!(
+                matches!(&judged, Err(Error::Validation(problem)) if problem.contains("attempt")),
+                "a comment, read between: {read_between}: {judged:?}"
+            );
         }
         let child = create("ex-q.1", Some(parent));
         tx.attempt().emit(OpName::Create, None, child, None)?;
+        let on = parent.to_string();
+        tx.attempt()
+            .emit(OpName::Comment, Some(&on), comment(), None)?;
         Ok(())
     })
     .unwrap();

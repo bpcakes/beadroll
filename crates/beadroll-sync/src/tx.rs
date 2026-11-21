@@ -412,11 +412,13 @@ impl Emitter<'_> {
                     .and_then(EventId::parse)
             })
             .flatten();
-        // a create the attempt made is no parent of one in the journal, appended before the
-        // attempt is published: refused at the remote, it left the child waiting for it
-        if sequenced && parent.is_some_and(|parent| self.heads.attempted(parent)) {
+        // a record of the journal, appended before the attempt is published, names none of the
+        // attempt's events, which it does not build on: an edit of an issue the attempt made, or a
+        // child of it, goes with the attempt
+        if sequenced && self.heads.names_attempted(issue, &data) {
             return Err(Error::Validation(
-                "a create in the journal cannot be the child of one its ownership attempt makes"
+                "an event about what this command's ownership attempt makes (its issue, a \
+                 create's parent, a dependency) must be emitted through the attempt"
                     .to_owned(),
             ));
         }

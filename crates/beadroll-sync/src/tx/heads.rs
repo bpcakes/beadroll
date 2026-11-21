@@ -7,6 +7,11 @@
 use std::collections::HashSet;
 
 use beadroll_core::id::EventId;
+use beadroll_core::json::{Object, Value};
+
+/// The members of an event's data that name an issue by its id: a create's parent, a dependency's
+/// target.
+const NAMING: [&str; 2] = ["parent", "to"];
 
 use super::attempt::Route;
 
@@ -38,9 +43,18 @@ impl Heads {
         }
     }
 
-    /// Whether `id` is an event of the transaction's attempt.
-    pub(super) fn attempted(&self, id: EventId) -> bool {
-        self.attempted.contains(&id)
+    /// Whether an event about `issue` with `data` names an event of the transaction's attempt:
+    /// as its issue, or in a member of its data that names an issue ([`NAMING`]). A record
+    /// of the journal that does builds on nothing that holds it, and replay of a journal whose
+    /// attempt landed may take it first, an orphan, or one whose attempt was refused never finds it.
+    pub(super) fn names_attempted(&self, issue: Option<&str>, data: &Object) -> bool {
+        if self.attempted.is_empty() {
+            return false;
+        }
+        let named =
+            |text: &str| EventId::parse(text).is_some_and(|id| self.attempted.contains(&id));
+        let member = |key: &str| data.get(key).and_then(Value::as_str);
+        issue.is_some_and(named) || NAMING.iter().any(|key| member(key).is_some_and(named))
     }
 
     /// After `id` is emitted by `route`, built on [`Heads::of`] it. A record of the journal reaches
