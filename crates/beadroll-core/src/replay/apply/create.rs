@@ -6,6 +6,7 @@ use super::{Doing, Names, dangling_type};
 use crate::event::{Field, REGISTERS};
 use crate::id::EventId;
 use crate::json::{Int, Object, Value};
+use crate::key::child_number;
 use crate::op::Create;
 use crate::state::{
     Comment, DepTags, Edge, IdMap, IdSet, Issue, KeySpace, Knowledge, Meta, Origin, Rename, Stamps,
@@ -81,15 +82,6 @@ pub(super) fn create(
     st.awaiting.wait(&issue);
     st.issues.insert(eid, Box::new(issue));
     Ok(())
-}
-
-/// `minted`'s parent part and number (`t-x.15` and `1` of `t-x.15.1`), when its last part is a
-/// number after a parent part: the key of a child minted under its parent's. `.1` is none, as no
-/// issue has the empty key.
-fn child_number(minted: &str) -> Option<(&str, &str)> {
-    let (parent, number) = minted.rsplit_once('.')?;
-    let numbered = !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit());
-    (numbered && !parent.is_empty()).then_some((parent, number))
 }
 
 /// How much longer merges may make each level of a key: a copy counts a number up past those other
