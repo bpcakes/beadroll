@@ -9,7 +9,7 @@
 
 use std::collections::BTreeMap;
 
-use super::super::{Extended, Projection, Record, named, project};
+use super::super::{Extended, Projection, Record, project, retained};
 use super::awaiting::fnv;
 use super::marked::{self, Records};
 use super::{
@@ -61,9 +61,7 @@ impl Tally {
     /// Counts what `read`, read back from `written` written back as `back` says, knows that its
     /// state no longer names.
     fn read_back(&mut self, written: &Projection, read: &Projection, back: WriteBack) {
-        let mut kept = named(read.state());
-        kept.extend(read.heads.iter().copied());
-        kept.extend(read.tails.values().copied());
+        let kept = retained(read.state(), &read.heads, &read.tails);
         let events = read.state.knowledge.events.keys();
         let unnamed = events.filter(|id| !kept.contains(*id)).count();
         match back {

@@ -5,9 +5,10 @@
 //! [`project`] replays a journal and keeps, of what every event had seen, only the events its state
 //! still names: each issue's create, the events behind its registers and its label and dependency
 //! tags, its removals and its claims, and the frontier. Applying an event after all of a journal's
-//! asks about nothing else (`saw_at`, `saw` and `who` in `replay/apply.rs`). [`Projection::prepare_extension`]
-//! applies records appended to that journal when replay would apply them after every event it
-//! holds, and as it would; when it cannot know that, it declines, and the caller replays.
+//! asks about nothing else (`saw_at`, `saw` and `who` in `replay/apply.rs`).
+//! [`Projection::prepare_extension`] applies records appended to that journal when replay would
+//! apply them after every event it holds, and as it would; when it cannot know that, it declines,
+//! and the caller replays.
 //!
 //! What every event had seen is compacted so now and then, not at every write-back (roll-lqjj.43):
 //! a projection extended and written back keeps every event it knew and every event it took in,
@@ -62,9 +63,10 @@ pub const ENCODING: u32 = 17;
 
 /// How many times the events a projection took in of what every event had seen since it was last
 /// compacted go into the events it knew then, at most, before a write-back compacts it again
-/// (roll-lqjj.43): between compactions it knows the events its state named, the frontier and each journal's last record when
-/// it was last compacted and at most an eighth as many again, and a write-back writes it as it is,
-/// without finding what the state names or cutting down what it knows.
+/// (roll-lqjj.43): between compactions it knows the events its state named, the frontier and each
+/// journal's last applicable event when it was last compacted and at most an eighth as many again,
+/// and a write-back writes it as it is, without finding what the state names or cutting down what
+/// it knows.
 pub const COMPACTED: usize = 8;
 
 /// A projection's bytes: its state, which a command that only reads needs alone, its index, what
@@ -75,9 +77,10 @@ pub struct Encoded {
     /// state's conflicts name and where machines' journals broke (roll-lqjj.35).
     pub state: Vec<u8>,
     /// Every event it knows of what every event had seen, with its causes, machine and actor, and
-    /// what each had seen (those the state named, the frontier and each journal's last record when it was last compacted, and
-    /// every event taken in since), how many it knew then (roll-lqjj.43), the frontier, every event id, each machine's journal length and latest event, the claims
-    /// takeovers superseded, and whether events can be applied after.
+    /// what each had seen (those the state named, the frontier and each journal's last applicable
+    /// event when it was last compacted, and every event taken in since), how many it knew then
+    /// (roll-lqjj.43), the frontier, every event id, each machine's journal length and latest
+    /// event, the claims takeovers superseded, and whether events can be applied after.
     pub index: Vec<u8>,
     /// The texts written nowhere yet, each issue's at the place the state gives it: to append to
     /// the text file the state's places are in.
@@ -135,8 +138,9 @@ pub(crate) fn journal_of(records: impl IntoIterator<Item = Record>) -> Journal {
 /// A journal's state, replayed, with what applying the events that come after it needs.
 #[derive(Clone, Debug)]
 pub struct Projection {
-    /// The state, what every event had seen kept for the events it named, the frontier and each journal's last record when last
-    /// compacted, and every event taken in since ([`Projection::compacted`]).
+    /// The state, what every event had seen kept for the events it named, the frontier and each
+    /// journal's last applicable event when last compacted, and every event taken in since
+    /// ([`Projection::compacted`]).
     pub(crate) state: State,
     /// The frontier: the events nothing builds on, by id.
     pub(crate) heads: Vec<EventId>,
@@ -204,10 +208,7 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
     let (mut state, replayed) = replayed(journal)?;
     let tails = state.knowledge.predecessors();
     let open = state.pending.is_empty() && !replayed.unsettled;
-    let mut kept = named(&state);
-    kept.extend(heads.iter().copied());
-    kept.extend(tails.values().copied());
-    state.knowledge = state.knowledge.kept(&kept);
+    state.knowledge = state.knowledge.kept(&retained(&state, &heads, &tails));
     state.knowledge_scope = crate::state::KnowledgeScope::Retained;
     let compacted = state.knowledge.events.len();
     Ok(Projection {
@@ -241,14 +242,13 @@ impl Projection {
         &self.heads
     }
 
-    /// What a new event of `machine`'s builds on ([`Causes`]): the frontier, and for a record of its
-    /// journal the machine's last applicable event where the frontier's clocks do not reach it, as
-    /// replay judges. Replay sets
-    /// aside an event of a machine's journal that does not build on the one before it (a journal
-    /// chain broken), applied by nobody; an event building on it that replay does not apply,
-    /// pending on a cause or in a cycle of causes, keeps it off the frontier unreached, and a
-    /// released quarantined id may name it without reaching it. Most writes find it reached, and
-    /// name the frontier alone.
+    /// What a new event of `machine`'s builds on ([`Causes`]): the frontier, and for a record of
+    /// its journal the machine's last applicable event where the frontier's clocks do not reach it,
+    /// as replay judges. Replay sets aside an event of a machine's journal that does not build on
+    /// the one before it (a journal chain broken), applied by nobody; an event building on it that
+    /// replay does not apply, pending on a cause or in a cycle of causes, keeps it off the frontier
+    /// unreached, and a released quarantined id may name it without reaching it. Most writes find
+    /// it reached, and name the frontier alone.
     pub fn causes_for(&self, machine: &str) -> Causes {
         let ids = self.heads.clone();
         let knowledge = &self.state.knowledge;
@@ -283,8 +283,8 @@ impl Projection {
     }
 
     /// How many events it knows of what every event had seen (roll-lqjj.43): the events its state
-    /// names, the frontier and each journal's last record, as it was when last compacted, and every
-    /// event taken in since.
+    /// names, the frontier and each journal's last applicable event, as it was when last compacted,
+    /// and every event taken in since.
     pub fn known(&self) -> usize {
         self.state.knowledge.events.len()
     }
@@ -309,9 +309,9 @@ impl Projection {
         since.saturating_mul(COMPACTED) > self.compacted
     }
 
-    /// Whether events can be applied after it ([`Projection::prepare_extension`]): nothing in its journal waits
-    /// for a cause, no takeover was refused for naming an id no event has, and every id with
-    /// several contents is placed by all its causes.
+    /// Whether events can be applied after it ([`Projection::prepare_extension`]): nothing in its
+    /// journal waits for a cause, no takeover was refused for naming an id no event has, and every
+    /// id with several contents is placed by all its causes.
     pub fn extendable(&self) -> bool {
         self.open
     }
@@ -400,6 +400,20 @@ impl State {
         }
         read_texts(issue, bytes, place)
     }
+}
+
+/// The events a projection's knowledge keeps when it is made or compacted: every event its state
+/// names, the frontier, and each journal's last applicable event, which that machine's next write
+/// builds on. One set for both, so that what one keeps the other does not cut away.
+fn retained(
+    state: &State,
+    heads: &[EventId],
+    tails: &HashMap<String, EventId>,
+) -> HashSet<EventId> {
+    let mut kept = named(state);
+    kept.extend(heads.iter().copied());
+    kept.extend(tails.values().copied());
+    kept
 }
 
 /// Every event `state` still names, which applying an event after all of them can ask about: each

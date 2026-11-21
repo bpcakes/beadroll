@@ -21,7 +21,7 @@ use std::sync::Arc;
 use super::codec::{Reader, Table, Unreadable, Writer};
 use super::state_codec::{Records, read_state, write_state};
 use super::text_codec::write_texts;
-use super::{Encoded, Projection, named, names, sum};
+use super::{Encoded, Projection, names, retained, sum};
 use crate::id::EventId;
 use crate::order::position;
 use crate::state::{Knowledge, State, TextPlace, Texts};
@@ -91,13 +91,13 @@ pub(super) const TABLE_SLACK: usize = 64;
 const SPARE: usize = 64;
 
 impl Projection {
-    /// The projection as bytes, its new texts placed from `texts_at`, and their locations.
-    /// This pure serializer does not acknowledge storage. Writers use a borrowed
-    /// [`super::Writeback`] to acknowledge its own locations after both parts are written.
-    /// What every event had seen is compacted when [`Projection::compaction_due`] says so:
-    /// the events the state still names, the frontier and each journal's last record are kept, and otherwise every event
-    /// known since the last compaction (roll-lqjj.43). Records unchanged since decoding are
-    /// copied from their existing bytes (roll-lqjj.44).
+    /// The projection as bytes, its new texts placed from `texts_at`, and their locations. This
+    /// pure serializer does not acknowledge storage. Writers use a borrowed [`super::Writeback`] to
+    /// acknowledge its own locations after both parts are written. What every event had seen is
+    /// compacted when [`Projection::compaction_due`] says so: the events the state still names, the
+    /// frontier and each journal's last applicable event are kept, and otherwise every event known
+    /// since the last compaction (roll-lqjj.43). Records unchanged since decoding are copied from
+    /// their existing bytes (roll-lqjj.44).
     pub fn encode(&self, texts_at: u64) -> (Encoded, Vec<(EventId, TextPlace)>) {
         self.encode_with(
             texts_at,
@@ -173,10 +173,8 @@ impl Projection {
             _ => {
                 let cut;
                 let knowledge = if compact == Compaction::Compact {
-                    let mut named = named(&self.state);
-                    named.extend(self.heads.iter().copied());
-                    named.extend(self.tails.values().copied());
-                    cut = self.state.knowledge.kept(&named);
+                    let kept = retained(&self.state, &self.heads, &self.tails);
+                    cut = self.state.knowledge.kept(&kept);
                     &cut
                 } else {
                     &self.state.knowledge

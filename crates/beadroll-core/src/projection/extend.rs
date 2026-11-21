@@ -2,14 +2,15 @@
 //!
 //! Replay applies events in causal order, ties broken by id. A new event that has every event of
 //! the frontier in its past comes after every event the journal held: each of those is in some
-//! head's past. When every new event does, replay applies the old events as before and the new
-//! ones after them, in the order their own causes give, and each new event sees what it saw in a
-//! replay: the projection keeps every event the state names, the frontier and each journal's last record, with its place and
-//! what it had seen (and between compactions every event taken in since, which it saw as replay
-//! did: roll-lqjj.43). A local write's events build on the frontier; so do a merge's, when one
-//! writer worked at a time or when the frontier is that of a projection saved before this
-//! machine's writes that the merged events are concurrent with (roll-lqjj.36): those writes and
-//! the merged events are new together, one batch, and each has the frontier in its past.
+//! head's past. When every new event does, replay applies the old events as before and the new ones
+//! after them, in the order their own causes give, and each new event sees what it saw in a replay:
+//! the projection keeps every event the state names, the frontier and each journal's last
+//! applicable event, with its place and what it had seen (and between compactions every event taken
+//! in since, which it saw as replay did: roll-lqjj.43). A local write's events build on the
+//! frontier; so do a merge's, when one writer worked at a time or when the frontier is that of a
+//! projection saved before this machine's writes that the merged events are concurrent with
+//! (roll-lqjj.36): those writes and the merged events are new together, one batch, and each has the
+//! frontier in its past.
 //!
 //! Anything replay would do otherwise and the projection declines, before it changes anything:
 //! a takeover, which can turn an earlier end of its claim stale; a record that is not new, or not
@@ -19,19 +20,19 @@
 //!
 //! What replay reports does not stop the projection (roll-lqjj.28): a newer bead's operation, a
 //! payload or a record that cannot be used, an unreadable line, an id with two contents, a broken
-//! chain, a refused takeover. Replay sets each aside from what nothing after can change: the records
-//! of its id, its causes and its machine's journal before it, and for a takeover the claim it names;
-//! and it lists them in an order nothing after can change either, those found as the journal was
-//! read first, then the rest in causal order, where every new event comes after them. A batch that
-//! would add one is declined, so the list stays replay's. What a record still to come can change,
-//! the projection declines too. A record of an id an integrity entry names settles anew an id found
-//! only in another machine's journal (an event, or two contents): such a batch is declined. A
-//! takeover refused for naming an id no event has is refused for another reason once an event has
-//! it; and an id with several contents waits only for the causes the journal holds, so one it names
-//! that is still to come, or causes that loop back onto it (it is then released after every other
-//! event), place it after events still to come: a journal holding either is not extended at all
-//! ([`Projection::extendable`]), nor is one with an event waiting for a cause, which replay applies
-//! once the cause comes.
+//! chain, a refused takeover. Replay sets each aside from what nothing after can change: the
+//! records of its id, its causes and its machine's journal before it, and for a takeover the claim
+//! it names; and it lists them in an order nothing after can change either, those found as the
+//! journal was read first, then the rest in causal order, where every new event comes after them. A
+//! batch that would add one is declined, so the list stays replay's. What a record still to come
+//! can change, the projection declines too. A record of an id an integrity entry names settles anew
+//! an id found only in another machine's journal (an event, or two contents): such a batch is
+//! declined. A takeover refused for naming an id no event has is refused for another reason once an
+//! event has it; and an id with several contents waits only for the causes the journal holds, so
+//! one it names that is still to come, or causes that loop back onto it (it is then released after
+//! every other event), place it after events still to come: a journal holding either is not
+//! extended at all ([`Projection::extendable`]), nor is one with an event waiting for a cause,
+//! which replay applies once the cause comes.
 //!
 //! An event that changes an issue's texts (a long field set, a comment, a delete's record, an edge
 //! added or removed, whose additions' metadata is with them, roll-lqjj.39), or may (a claim, a
