@@ -39,6 +39,13 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   each script's docstring says what it needs. `selected.py` chooses the bead a driver runs here
   and records it before any test data is written; the `test_*.py` beside them test the drivers and
   their shared modules.
+- `skills/` — what agents load rather than build. `skills/board` is the prototype of a message
+  board for people and agents across projects, stdlib Python over `bead`: `scripts/board` (what
+  each command prints; its docstring says what it needs), `scripts/messages.py` (the board
+  through bead), `scripts/homes.py` (the homes Claude Code and Codex have on a machine, and what
+  `board setup` puts in each) and `SKILL.md`, which sends an agent to `board prime`. It is here
+  to be tried before `bead` learns the same commands, and goes when it has. No step of the
+  baseline runs it; `python3 -B -m unittest discover -s skills/board/scripts` runs its tests.
 - `check.sh` — the baseline: `cargo xtask check` with the options given.
 
 ## Before you change anything
