@@ -18,8 +18,11 @@ use crate::error::Error;
 use crate::link::Link;
 use crate::tx::locked;
 
+pub(crate) use self::renamed::KeysBefore;
+use self::renamed::renamed_by_merge;
 use self::round::{AfterError, Outcome, Rebuild, sync_round};
 
+mod renamed;
 mod round;
 
 /// Whether a command may reach its coordination remote.
@@ -197,7 +200,7 @@ fn exchange(
                 conflict_detail(&link)
             )));
         };
-        let round = sync_round(ws, &mut link, sync_report);
+        let round = sync_round(ws, &mut link, sync_report, &rebuild);
         pulled += round.pulled;
         match round.outcome {
             Ok(Outcome::Published(published)) => break (attempt, published),
@@ -235,12 +238,7 @@ fn exchange(
         sync_repo_rebuilt: link.rebuilt.clone(),
         repacked: published.repacked,
         issues: state.issues().count(),
-        renamed: state
-            .renames()
-            .iter()
-            .skip(link.renames_before.unwrap_or_default())
-            .map(|r| Value::from(r.to_value()))
-            .collect(),
+        renamed: renamed_by_merge(state, link.keys_before.as_ref()),
         forked_journals: published.merged.facts.forks,
         confirmed: published.merged.facts.confirmed,
         waiting_events: state.pending().len(),

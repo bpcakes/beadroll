@@ -67,10 +67,6 @@ pub struct Rename {
     pub replica: String,
     /// The issue.
     pub uid: EventId,
-    /// Why it was renamed: the issue holding `from` that it gave way to, or, for a child that
-    /// followed its parent's rename, that rename's cause. A writer that saw it saw the rename made
-    /// too.
-    pub cause: EventId,
 }
 
 impl Integrity {
@@ -108,6 +104,9 @@ pub struct KeySpace {
     /// The key whose copy has nowhere to go.
     pub key: String,
 }
+
+/// Every key and the issue that has it, in the order they were taken ([`State::keys`]).
+pub type Keys = IndexMap<String, EventId>;
 
 /// Current state, as any machine holding the same events derives it.
 #[derive(Clone, Debug)]
@@ -231,6 +230,12 @@ impl State {
         let mut issues: Vec<&Issue> = self.issues().collect();
         issues.sort_by(|a, b| a.key().cmp(b.key()));
         issues
+    }
+
+    /// Every key and the issue that has it, and every rename, taken out of the state, which is
+    /// dropped: a caller that needs them alone keeps them without copying one.
+    pub fn into_keys(self) -> (Keys, Vec<Rename>) {
+        (self.by_key, self.renames)
     }
 
     /// Every key and the issue that has it, in the order they were taken.

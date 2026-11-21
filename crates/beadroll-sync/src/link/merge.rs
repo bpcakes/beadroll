@@ -15,7 +15,7 @@ use beadroll_store::{
 use super::Link;
 use crate::error::{Error, OWN_CHAIN};
 use crate::link::write::BlobUse;
-use crate::synchronise::SyncReport;
+use crate::synchronise::{KeysBefore, SyncReport};
 use crate::tx::Spent;
 
 const OWN_FORK: &str = "this machine's journal differs from the published one: the same machine \
@@ -92,6 +92,9 @@ struct Merging<'l, 'w> {
     link: &'l mut Link<'w>,
     facts: MergeFacts,
     wrote: bool,
+    /// The store's projection as a reporting sync's merge read it before merging, which it goes on
+    /// with when it writes nothing and keeps the keys of before its first write.
+    found: Option<Sourced>,
 }
 
 impl Link<'_> {
@@ -140,6 +143,7 @@ impl<'l, 'w> Merging<'l, 'w> {
             link,
             facts: MergeFacts::default(),
             wrote: false,
+            found: None,
         }
     }
 
@@ -152,10 +156,8 @@ impl<'l, 'w> Merging<'l, 'w> {
             repair_tail(self.link.ws, &path)?;
         }
         // the store's projection, with every whole line its segments hold
-        let found = if count == SyncReport::Collect && self.link.renames_before.is_none() {
-            let found = projection_sourced(self.link.ws)?;
-            self.link.renames_before = Some(found.state().renames().len());
-            Some(found)
+        self.found = if count == SyncReport::Collect && self.link.keys_before.is_none() {
+            Some(projection_sourced(self.link.ws)?)
         } else {
             None
         };
@@ -164,6 +166,41 @@ impl<'l, 'w> Merging<'l, 'w> {
             .into_iter()
             .map(|path| (stem(&path), path))
             .collect();
+        // a merge that fails before it writes, `sync.git` damaged, is retried after a rebuild,
+        // which another process may sync the store before: the keys it began with are kept
+        pulled += match self.merge_listing(tip, &pending, own.as_deref()) {
+            Ok(merged) => merged,
+            Err(error) => {
+                // the round takes its keys once unlocked, if a rebuild retries it
+                if matches!(error, Error::SyncRepoDamaged(_)) {
+                    self.link.unwritten = self.found.take();
+                }
+                return Err(error);
+            }
+        };
+        self.link.save_memo();
+        // the store's projection, the records merged applied to it, or the journal replayed
+        let merged = match self.found.take() {
+            Some(found) if !self.wrote => found,
+            _ => projection_sourced(self.link.ws)?,
+        };
+        if let Some(own) = &own
+            && merged.state().chain_breaks().contains_key(own)
+        {
+            return Err(Error::JournalFork(OWN_CHAIN.to_owned()));
+        }
+        Ok((merged, pulled))
+    }
+
+    /// Brings in the journals at `tip`: each published file merged into the store's copy, or every
+    /// one downloaded into a store that has none. How many events came in.
+    fn merge_listing(
+        &mut self,
+        tip: Option<&str>,
+        pending: &HashMap<String, PathBuf>,
+        own: Option<&str>,
+    ) -> Result<i64, Error> {
+        let mut pulled = 0;
         if let Some(tip) = tip {
             let local = self.link.local_blobs(BlobUse::Comparison)?;
             let listing = self.link.listing(tip)?;
@@ -176,29 +213,18 @@ impl<'l, 'w> Merging<'l, 'w> {
                     };
                     self.link.known.listed_blob(path.clone(), sha.clone());
                     if attempt_shaped(&path) {
-                        if self.merge_attempt(tip, &path, &sha, &local, &pending)? {
+                        if self.merge_attempt(tip, &path, &sha, &local, pending)? {
                             pulled += 1;
                         }
                         continue;
                     }
                     if segment_shaped(&path) {
-                        pulled += self.merge_segment(tip, &path, &sha, &local, own.as_deref())?;
+                        pulled += self.merge_segment(tip, &path, &sha, &local, own)?;
                     }
                 }
             }
         }
-        self.link.save_memo();
-        // the store's projection, the records merged applied to it, or the journal replayed
-        let merged = match found {
-            Some(found) if !self.wrote => found,
-            _ => projection_sourced(self.link.ws)?,
-        };
-        if let Some(own) = &own
-            && merged.state().chain_breaks().contains_key(own)
-        {
-            return Err(Error::JournalFork(OWN_CHAIN.to_owned()));
-        }
-        Ok((merged, pulled))
+        Ok(pulled)
     }
 
     /// Writes `data` to the journal file at `target` (`path` under the store) as published: the
@@ -210,6 +236,14 @@ impl<'l, 'w> Merging<'l, 'w> {
         data: &[u8],
         blob: Option<&str>,
     ) -> Result<(), Error> {
+        self.before_writing();
+        // a file the store held, rewritten (a foreign journal put back, an attempt file): a key
+        // can change with no rename either side, and the report compares every one
+        if let Some(before) = &mut self.link.keys_before
+            && target.exists()
+        {
+            before.unsettle();
+        }
         write_atomic(
             target,
             data,
@@ -218,6 +252,23 @@ impl<'l, 'w> Merging<'l, 'w> {
         )?;
         self.wrote(path, target, data, blob);
         Ok(())
+    }
+
+    /// Keeps the keys of the state before the merge's first write to a journal file, which a sync
+    /// reports what changed against: taken before anything is written, so that a merge that fails
+    /// partway and is retried still reports against the keys before it. A merge that writes nothing
+    /// changes no key, and keeps none.
+    fn before_writing(&mut self) {
+        if self.wrote || self.link.keys_before.is_some() {
+            return;
+        }
+        // moved out of the projection the merge began with, which it does not go on with once it
+        // writes (nor once it fails)
+        if let Some(found) = self.found.take() {
+            self.link.ws.settings.failpoints.hit("sync.keys-before");
+            let state = found.into_projection().into_state();
+            self.link.keys_before = Some(KeysBefore::taken(state));
+        }
     }
 
     /// The journal file at `target` (`path` under the store) was written with `data`: the memo
@@ -326,6 +377,7 @@ impl<'l, 'w> Merging<'l, 'w> {
             match theirs.get(ours.len()..).filter(|_| !ours.is_empty()) {
                 // what ours lacks, appended: the segment stays the file it was (roll-lqjj.2)
                 Some(more) => {
+                    self.before_writing();
                     extend_segment(&target, more)?;
                     self.wrote(path, &target, &theirs, written);
                 }

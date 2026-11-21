@@ -54,7 +54,7 @@ fn fixture_git_isolation_keeps_the_selected_binary_without_a_default() {
 
 /// Unpack before emptying the commit, so git cannot fall back to a healthy packed copy. The
 /// remote's object remains intact, and the live reader may finish any read it already started.
-fn damage_tip(sync_git: &Path, tip: &str) {
+pub(crate) fn damage_tip(sync_git: &Path, tip: &str) {
     let packs = sync_git.join("objects/pack");
     let aside = sync_git.join("packs-before-damage");
     std::fs::create_dir(&aside).unwrap();
@@ -127,6 +127,7 @@ fn a_rebuild_after_merging_keeps_the_pulled_count() {
 
 /// The first fault is before the merge, the next after it. A command gets one rebuild across
 /// both boundaries, and a later command can still repair the cache and publish the local edit.
+/// (AT101)
 #[test]
 fn a_second_damaged_round_stops_without_another_rebuild() {
     let sandbox = sandbox();
@@ -145,7 +146,7 @@ fn a_second_damaged_round_stops_without_another_rebuild() {
     let fetched = Gate::new(&sandbox, "fetched");
     let publishing = Gate::new(&sandbox, "publishing");
     let faults = format!(
-        "fetch.fetched={};publish.before={};backoff@always=skip",
+        "fetch.fetched={};publish.before={};backoff@always=skip;sync.keys-before@nth(1000000)=sleep(0)",
         fetched.action(),
         publishing.action()
     );
@@ -167,6 +168,8 @@ fn a_second_damaged_round_stops_without_another_rebuild() {
         matches!(result, Err(Error::SyncRepoDamaged(_))),
         "{result:?}"
     );
+    // no round follows the second damage, so no keys were kept for one to report against
+    assert_eq!(ws.settings.failpoints.hits("sync.keys-before"), 0);
     let copies = std::fs::read_dir(&ws.dir)
         .unwrap()
         .filter(|entry| {

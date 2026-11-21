@@ -10,7 +10,10 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_pending`).
 ## Key entrypoints
 
 - `src/tx/attempt.rs`: `Tx::attempt` lends an `Attempt` writer that routes edits with the claim
-  without changing the ordinary transaction's mode, the one way edits join an attempt. `locked`
+  without changing the ordinary transaction's mode, the one way edits join an attempt. Every
+  record of the journal comes before the attempt's first event (`tx/heads.rs`): one after it is
+  refused, as the journal is appended before the attempt is published and the record would rely
+  on an event the remote may refuse. `locked`
   uses the store's `WorkspaceLock` guard for both the OS lock and cache phase.
 - `src/link/merge.rs`: `Merging` owns incomplete per-round facts; only a successful merge yields
   `Merged` (checked state, incoming count and report facts). Internal callers consume it; public

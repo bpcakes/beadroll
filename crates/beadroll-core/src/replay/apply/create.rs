@@ -23,26 +23,31 @@ pub(super) fn create(
     names: &Names,
 ) -> Result<(), KeySpace> {
     let eid = event.id;
-    let mut key = create.key.clone();
-    // a child minted under its parent's key before a merge renamed that parent follows it
-    if let Some((followed, cause)) = followed(st, k, event, &key) {
-        st.renames.push(Rename {
-            from: std::mem::replace(&mut key, followed.clone()),
-            to: followed,
-            replica: event.trace.replica().to_owned(),
-            uid: eid,
-            cause,
-        });
+    // a child minted under its parent's key follows that parent's key now, and a key another
+    // machine's create took first gives way: settled here, before anything binds to it
+    // the parent named among its own causes, as every create a writer of the member makes names
+    // it: an older create may carry the member, naming any issue, seen or not, or seen through
+    // other events only, and keeps its key
+    let follows = (create.parent)
+        .filter(|parent| !create.imported && event.trace.deps().contains(parent))
+        .and_then(|parent| followed(st, parent, &create.key));
+    // a key the create gives may be the one an import waits for, which it then satisfies; a key it
+    // follows to is no import's, and one an import waits for is passed over as an issue's is
+    let taken = match &follows {
+        Some(key) => st.claims_key(key),
+        None => st.by_key.contains_key(&create.key),
+    };
+    let mut key = follows.unwrap_or_else(|| create.key.clone());
+    if taken {
+        // Two machines minted the same key before they synced, or an import waits for it.
+        key = st.free_key(&key, eid)?;
     }
-    if let Some(&holder) = st.by_key.get(&key) {
-        // Two machines minted the same key before they synced.
-        let free = st.free_key(&key, eid)?;
+    if key != create.key {
         st.renames.push(Rename {
-            from: std::mem::replace(&mut key, free.clone()),
-            to: free,
+            from: create.key.clone(),
+            to: key.clone(),
             replica: event.trace.replica().to_owned(),
             uid: eid,
-            cause: holder,
         });
     }
     let mut issue = new_issue(event, create, key.clone(), who, when);
@@ -68,6 +73,8 @@ pub(super) fn create(
         };
         if let Some(dep) = st.awaiting.take(other, number) {
             bind(k, names, other, &dep, eid);
+            // the edge's metadata is with its texts, read in for this (`Projection::texts_in`)
+            other.texts_changed();
         }
     }
     // Listed after the key's own entries are settled, so that what it names of itself waits.
@@ -76,38 +83,39 @@ pub(super) fn create(
     Ok(())
 }
 
-/// The key a child minted as `minted` has once its parent's rename is followed, with that rename's
-/// cause, which the child's follow inherits: `minted`'s parent
-/// part (`t-x.15` of `t-x.15.1`) was the key of the parent its writer meant, which a merge renamed
-/// (another machine's child of that number came first), so that the child takes its parent's key
-/// now with its own number (`t-x.16.1`), where it would read as a child of the issue that holds
-/// `t-x.15`. Its writer meant the issue that held the key as it saw the tracker: one it saw renamed
-/// from the key, whose rename's cause it had not seen (so that in its view the issue had kept the
-/// key), the first of those in replay order, and not the one that holds the key now; every machine
-/// judges that alike. `None` for a key with no parent part, or when the parent was not renamed as
-/// its writer saw it.
-fn followed(
-    st: &State,
-    k: &Knowledge,
-    event: &Doing<'_>,
-    minted: &str,
-) -> Option<(String, EventId)> {
+/// `minted`'s parent part and number (`t-x.15` and `1` of `t-x.15.1`), when its last part is a
+/// number after a parent part: the key of a child minted under its parent's. `.1` is none, as no
+/// issue has the empty key.
+fn child_number(minted: &str) -> Option<(&str, &str)> {
     let (parent, number) = minted.rsplit_once('.')?;
-    if number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    if (st.by_key.get(parent)).is_some_and(|holder| k.saw_at(event.at, *holder)) {
-        return None;
-    }
-    // a rename whose cause the writer saw was made in its view too: the issue never held the key
-    // there, as a child that followed the same parent, or a copy that gave way to one it saw, did not
-    let renamed = (st.renames.iter()).find(|rename| {
-        rename.from == parent && k.saw_at(event.at, rename.uid) && !k.saw_at(event.at, rename.cause)
-    })?;
-    let now = st.issues.get(&renamed.uid)?.key();
-    // a grandchild made under the child before the sync follows the child as the child followed
-    // its parent: a writer that saw what made the parent give way saw both renames made
-    (now != parent).then(|| (format!("{now}.{number}"), renamed.cause))
+    let numbered = !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit());
+    (numbered && !parent.is_empty()).then_some((parent, number))
+}
+
+/// How much longer merges may make each level of a key: a copy counts a number up past those other
+/// issues hold (as many digits as a tracker's count of issues has), or, at a level that is no
+/// number's (the root, or under a stem holding a newline), takes a prefix of its digest, shorter
+/// than a whole digest's 50 digits.
+const LEVEL_GROWTH: usize = 64;
+
+/// The key a child minted as `minted` under `parent`'s key, as its writer saw the tracker, has
+/// now: `parent`'s key with its own number (`t-x.15.1` under a parent now `t-x.16` is `t-x.16.1`),
+/// where it would read as a child of the issue that holds `t-x.15`. `None` when the parent's key is
+/// the one it was minted under, or `minted` has no number.
+fn followed(st: &State, parent: EventId, minted: &str) -> Option<String> {
+    let (under, number) = child_number(minted)?;
+    let now = st.issues.get(&parent)?.key();
+    // merges make a key a little longer at each of its levels at most (a number counted up past
+    // others, or a digest's prefix where the level is no number's): a parent whose key is longer
+    // than that is no merge's work, and is followed nowhere, so that no record makes a key more
+    // than a bounded multiple of its own (a chain of them would grow every key it makes)
+    let levels = under.bytes().filter(|b| *b == b'.').count() + 1;
+    // saturating, so that a key of more dots than an address counts bounds alike everywhere
+    let bounded = now.len()
+        <= under
+            .len()
+            .saturating_add(levels.saturating_mul(LEVEL_GROWTH));
+    (now != under && bounded).then(|| format!("{now}.{number}"))
 }
 
 /// The issue a create makes, under `key`: a register for each field it carries, the status's

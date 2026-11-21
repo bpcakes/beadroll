@@ -38,6 +38,14 @@ impl Materialized {
         }
     }
 
+    /// How many of the transaction's emitted events its state applies: none where there is none.
+    pub(super) fn applied(&self) -> usize {
+        match self {
+            Self::Projected { applied, .. } | Self::Replayed { applied, .. } => *applied,
+            Self::ReplayNeeded => 0,
+        }
+    }
+
     pub(super) fn ensure(
         &mut self,
         ws: &Workspace,

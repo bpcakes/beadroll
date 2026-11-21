@@ -4,7 +4,7 @@ use beadroll_core::json::Object;
 use beadroll_git::PushOutcome;
 use beadroll_store::{Workspace, load_pending, segment_files};
 
-use super::{SyncReport, nothing_published, refused};
+use super::{KeysBefore, SyncReport, nothing_published, refused};
 use crate::PublishMode;
 use crate::error::Error;
 use crate::link::{Link, Merged};
@@ -58,7 +58,12 @@ impl Rebuild {
 /// Fetch before locking, and fetch again under the lock when pending attempts need the current
 /// head. All merge, fence, retirement, maintenance and publication counting stays under that
 /// same lock.
-pub(super) fn sync_round(ws: &Workspace, link: &mut Link<'_>, report: SyncReport) -> Round {
+pub(super) fn sync_round(
+    ws: &Workspace,
+    link: &mut Link<'_>,
+    report: SyncReport,
+    rebuild: &Rebuild,
+) -> Round {
     let mut pulled = 0;
     let mut discarded = None;
     let outcome = (|| {
@@ -116,5 +121,34 @@ pub(super) fn sync_round(ws: &Workspace, link: &mut Link<'_>, report: SyncReport
             }
         })
     })();
+    // a round that wrote nothing keeps the keys it began with before another round, which another
+    // process may run a merge before, as the sync reports against the keys of its start: a
+    // rejected push, or a damaged `sync.git` a rebuild retries. Taken once the store is let go of,
+    // from the state the round began with; an error that ends the sync keeps none
+    let again = match &outcome {
+        Ok(Outcome::Contended) => true,
+        Err(Error::SyncRepoDamaged(_)) => matches!(rebuild, Rebuild::Available),
+        _ => false,
+    };
+    let unwritten = link.unwritten.take();
+    // a round that gives way lets go of the store, which another process may sync meanwhile and
+    // change a key in with no rename: from here the report compares every key
+    if again && let Some(before) = &mut link.keys_before {
+        before.unsettle();
+    }
+    if again && report == SyncReport::Collect && link.keys_before.is_none() {
+        let began = (discarded.map(|merged| merged.state)).or(unwritten);
+        if let Some(began) = began {
+            ws.settings.failpoints.hit("sync.keys-before");
+            let mut before = KeysBefore::taken(began.into_projection().into_state());
+            before.unsettle();
+            link.keys_before = Some(before);
+        }
+    } else {
+        // the merge the round made, whole, after the store is let go of: its last field, a test's
+        // probe, goes after its projection
+        drop(discarded);
+        drop(unwritten);
+    }
     Round { pulled, outcome }
 }

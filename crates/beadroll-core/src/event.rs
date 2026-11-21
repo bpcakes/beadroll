@@ -445,6 +445,42 @@ pub fn write_problem(event: &Value) -> Option<String> {
     if !matches!(op, Some(OpName::Create | OpName::Set)) {
         return None;
     }
+    // added to format 1 (#307): the parent a child was made under, by its id. Replay reads a value
+    // that is no id as no parent, as a create an older bead wrote with any member there was applied
+    if op == Some(OpName::Create)
+        && let Some(parent) = data_of(event).and_then(|d| d.get("parent"))
+    {
+        if !parent
+            .as_str()
+            .is_some_and(|id| crate::id::EventId::parse(id).is_some())
+        {
+            return Some("create event has a malformed 'parent'".into());
+        }
+        // a create is no parent of itself: its id taken for an issue's, it would put a second
+        // create under that id, and the journal would set both aside
+        if event.get("id") == Some(parent) {
+            return Some("create event names itself as its 'parent'".into());
+        }
+        // replay follows only a parent the child's writer saw, which naming it among the causes
+        // shows whatever the journal comes to hold (`docs/REVIEWING.md` §2)
+        let caused =
+            (event.get("deps").and_then(Value::as_array)).is_some_and(|deps| deps.contains(parent));
+        if !caused {
+            return Some("create event names a 'parent' that is not among its deps".into());
+        }
+        // a child is keyed under its parent's key with a number, which replay follows
+        let key = data_of(event)
+            .and_then(|d| d.get("key"))
+            .and_then(Value::as_str);
+        let numbered = key
+            .and_then(|key| key.rsplit_once('.'))
+            .is_some_and(|(under, n)| {
+                !under.is_empty() && !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())
+            });
+        if !numbered {
+            return Some("create event names a 'parent' but has no PARENT.N 'key'".into());
+        }
+    }
     let fields = data_of(event)
         .and_then(|d| d.get("fields"))
         .and_then(Value::as_object)?;

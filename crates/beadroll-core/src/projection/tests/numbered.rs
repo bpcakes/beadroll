@@ -20,14 +20,14 @@ const MOST: &str = "170141183460469231731687303715884105727";
 const BELOW: &str = "170141183460469231731687303715884105726";
 
 /// Every rename, as the key both minted and the key the copy has.
-fn renames(state: &State) -> Vec<(String, String)> {
+pub(super) fn renames(state: &State) -> Vec<(String, String)> {
     (state.renames().iter())
         .map(|Rename { from, to, .. }| (from.clone(), to.clone()))
         .collect()
 }
 
 /// `(from, to)` pairs, as [`renames`] gives them.
-fn pairs(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+pub(super) fn pairs(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
     (pairs.iter())
         .map(|(from, to)| ((*from).to_owned(), (*to).to_owned()))
         .collect()
@@ -103,9 +103,9 @@ fn a_copy_counts_past_the_numbers_taken_and_a_later_one_can_take_a_lower_gap() {
 
 #[test]
 fn stems_count_apart_and_a_copy_counts_from_its_number_without_leading_zeros() {
-    // `pr-k.1.1` counts under the stem `pr-k.1`, which is itself a key under `pr-k`; a copy minted
-    // under a parent the merge renamed follows it (`pr-k.1.1` under `pr-k.1`, now `pr-k.2`). A copy of
-    // `pr-k.08` counts from 8, and `pr-k.08` does not hold `pr-k.8`; `pr-k.000` counts from 0.
+    // `pr-k.1.1` counts under the stem `pr-k.1`, which is itself a key under `pr-k`; these creates
+    // name no parent, so a copy keeps counting under its own stem (`pr-k.1.2`), where a child whose
+    // create names a renamed parent follows it (`followed`). A copy of `pr-k.08` counts from 8, and `pr-k.08` does not hold `pr-k.8`; `pr-k.000` counts from 0.
     // A key whose stem has a newline has no number, and its copy takes a prefix of its digest.
     let mine = [
         "pr-k.1",
@@ -143,7 +143,7 @@ fn stems_count_apart_and_a_copy_counts_from_its_number_without_leading_zeros() {
         pairs(&[
             ("pr-k.1", "pr-k.2"),
             // its parent, this machine's `pr-k.1`, became `pr-k.2`: the child follows it
-            ("pr-k.1.1", "pr-k.2.1"),
+            ("pr-k.1.1", "pr-k.1.2"),
             ("pr-k.08", "pr-k.8"),
             ("pr-k.000", "pr-k.0"),
             ("pr-k.007", "pr-k.7"),

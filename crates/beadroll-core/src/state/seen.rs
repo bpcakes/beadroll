@@ -432,6 +432,7 @@ impl Knowledge {
     }
 }
 
+mod chain;
 mod codec;
 mod compact;
 

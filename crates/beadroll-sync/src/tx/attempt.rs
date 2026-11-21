@@ -6,7 +6,7 @@ use beadroll_core::json::Object;
 use beadroll_core::op::OpName;
 use beadroll_core::state::State;
 
-use super::{Emitter, Tx};
+use super::{Emitter, Minted, Tx};
 use crate::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,14 +41,22 @@ impl Attempt<'_, '_> {
         Ok((state, emitter))
     }
 
+    /// A fresh id for the next event the caller emits ([`Minted`]).
+    pub fn mint(&self) -> Minted {
+        self.tx.mint()
+    }
+
     /// Emits into the ownership attempt, including ordinary edits such as `set` and `label_add`.
     pub fn emit(
         &mut self,
         op: OpName,
         issue: Option<&str>,
         data: Object,
-        event_id: Option<String>,
+        event_id: Option<Minted>,
     ) -> Result<EventId, Error> {
+        if super::names_parent(op, &data) {
+            self.tx.judge_parent(op, &data)?;
+        }
         let mut emitter = self.tx.emitter();
         emitter.route = Route::Attempt;
         emitter.emit(op, issue, data, event_id)

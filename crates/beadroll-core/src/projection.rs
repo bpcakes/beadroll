@@ -58,11 +58,11 @@ pub use parts::decode_state;
 pub use writeback::Writeback;
 
 /// The version of the bytes [`Projection::encode`] writes. Bytes of another are not read.
-pub const ENCODING: u32 = 13;
+pub const ENCODING: u32 = 17;
 
 /// How many times the events a projection took in of what every event had seen since it was last
 /// compacted go into the events it knew then, at most, before a write-back compacts it again
-/// (roll-lqjj.43): between compactions it knows the events its state named and the frontier when
+/// (roll-lqjj.43): between compactions it knows the events its state named, the frontier and each journal's last record when
 /// it was last compacted and at most an eighth as many again, and a write-back writes it as it is,
 /// without finding what the state names or cutting down what it knows.
 pub const COMPACTED: usize = 8;
@@ -75,7 +75,7 @@ pub struct Encoded {
     /// state's conflicts name and where machines' journals broke (roll-lqjj.35).
     pub state: Vec<u8>,
     /// Every event it knows of what every event had seen, with its causes, machine and actor, and
-    /// what each had seen (those the state named and the frontier when it was last compacted, and
+    /// what each had seen (those the state named, the frontier and each journal's last record when it was last compacted, and
     /// every event taken in since), how many it knew then (roll-lqjj.43), the frontier, every event id, each machine's journal length and latest event, the claims
     /// takeovers superseded, and whether events can be applied after.
     pub index: Vec<u8>,
@@ -135,7 +135,7 @@ pub(crate) fn journal_of(records: impl IntoIterator<Item = Record>) -> Journal {
 /// A journal's state, replayed, with what applying the events that come after it needs.
 #[derive(Clone, Debug)]
 pub struct Projection {
-    /// The state, what every event had seen kept for the events it named and the frontier when last
+    /// The state, what every event had seen kept for the events it named, the frontier and each journal's last record when last
     /// compacted, and every event taken in since ([`Projection::compacted`]).
     pub(crate) state: State,
     /// The frontier: the events nothing builds on, by id.
@@ -149,6 +149,10 @@ pub struct Projection {
     /// Each machine's latest event in its journal, by id: when it last wrote, which a machine's
     /// last record need not say, since ids are minted from a clock that can go back (roll-lqjj.31).
     pub(crate) lasts: HashMap<String, EventId>,
+    /// Each machine's last applicable event in its journal's order, by id: what its next event must
+    /// build on ([`Projection::causes_for`]), which neither its greatest id nor its last record (a
+    /// placeholder) need be. Kept in the knowledge, as what comes after it asks of it.
+    pub(crate) tails: HashMap<String, EventId>,
     /// The claims takeovers superseded.
     pub(crate) superseded: HashSet<EventId>,
     /// Whether events can be applied after it: nothing in its journal waits for a cause, and
@@ -167,6 +171,25 @@ pub struct Projection {
     pub(crate) added: Vec<EventId>,
 }
 
+/// What a new event builds on ([`Projection::causes_for`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Causes {
+    /// The frontier, by id, in order: every new event's causes.
+    pub ids: Vec<EventId>,
+    /// Whether one of them waits for a cause of its own: replay applies none of the events built
+    /// on them, a create among them making no issue, until it comes.
+    pub waits: bool,
+    /// The machine's last applicable event, where the frontier does not reach it: a cause too of
+    /// the machine's next record of its journal, which replay sets aside as a broken chain
+    /// otherwise. An attempt's event is in no journal's chain, and has no need of it.
+    pub predecessor: Option<EventId>,
+    /// Whether the predecessor waits for a cause of its own, as `waits` says of the frontier.
+    pub predecessor_waits: bool,
+    /// Whether the machine's last applicable event broke its journal chain: replay sets aside each
+    /// later record of the journal, an attempt's events, in no journal's chain, applying still.
+    pub broken: bool,
+}
+
 /// Replays `journal` into a projection. Fails only as [`crate::replay::replay`] does.
 pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
     let settled = journal.settled_view();
@@ -179,9 +202,11 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
         .filter_map(|(machine, ids)| Some((machine.clone(), *ids.iter().max()?)))
         .collect();
     let (mut state, replayed) = replayed(journal)?;
+    let tails = state.knowledge.predecessors();
     let open = state.pending.is_empty() && !replayed.unsettled;
     let mut kept = named(&state);
     kept.extend(heads.iter().copied());
+    kept.extend(tails.values().copied());
     state.knowledge = state.knowledge.kept(&kept);
     state.knowledge_scope = crate::state::KnowledgeScope::Retained;
     let compacted = state.knowledge.events.len();
@@ -191,6 +216,7 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
         ids,
         lengths,
         lasts,
+        tails,
         superseded: replayed.superseded,
         open,
         compacted,
@@ -215,6 +241,32 @@ impl Projection {
         &self.heads
     }
 
+    /// What a new event of `machine`'s builds on ([`Causes`]): the frontier, and for a record of its
+    /// journal the machine's last applicable event where the frontier's clocks do not reach it, as
+    /// replay judges. Replay sets
+    /// aside an event of a machine's journal that does not build on the one before it (a journal
+    /// chain broken), applied by nobody; an event building on it that replay does not apply,
+    /// pending on a cause or in a cycle of causes, keeps it off the frontier unreached, and a
+    /// released quarantined id may name it without reaching it. Most writes find it reached, and
+    /// name the frontier alone.
+    pub fn causes_for(&self, machine: &str) -> Causes {
+        let ids = self.heads.clone();
+        let knowledge = &self.state.knowledge;
+        let predecessor = (self.tails.get(machine).copied())
+            .filter(|tail| !ids.contains(tail) && knowledge.misses_predecessor(machine, &ids));
+        // told by the clocks the knowledge keeps of the frontier and the last applicable events,
+        // whatever the pending events behind them
+        let waits = ids.iter().any(|head| knowledge.waits(*head));
+        let predecessor_waits = predecessor.is_some_and(|tail| knowledge.waits(tail));
+        Causes {
+            ids,
+            waits,
+            predecessor,
+            predecessor_waits,
+            broken: knowledge.last_broke_chain(machine),
+        }
+    }
+
     /// How many events the journal holds: every id, an attempt file's and a stand-in's among them.
     pub fn event_count(&self) -> usize {
         self.ids.len()
@@ -231,7 +283,8 @@ impl Projection {
     }
 
     /// How many events it knows of what every event had seen (roll-lqjj.43): the events its state
-    /// names and the frontier, as it was when last compacted, and every event taken in since.
+    /// names, the frontier and each journal's last record, as it was when last compacted, and every
+    /// event taken in since.
     pub fn known(&self) -> usize {
         self.state.knowledge.events.len()
     }
@@ -353,28 +406,46 @@ impl State {
 /// issue's create, the events behind its registers and its label and dependency tags, its removals,
 /// and its claim and offline claims.
 fn named(state: &State) -> HashSet<EventId> {
-    let mut out = HashSet::new();
-    for issue in state.issues.values() {
-        out.insert(issue.uid);
-        for tags in issue.reg.values() {
-            out.extend(tags.iter().map(|(id, _)| *id));
-        }
-        if let Texts::There(stored) = &issue.texts {
-            out.extend(stored.tags.iter().flat_map(|(_, ids)| ids.iter().copied()));
-        }
-        for tags in issue.label_tags.values() {
-            out.extend(tags.iter().copied());
-        }
-        for tags in issue.dep_tags.values() {
-            out.extend(tags.iter().map(|(id, _)| *id));
-        }
-        for removals in issue.retracted.values() {
-            out.extend(removals.iter().copied());
-        }
-        out.extend(issue.claim.as_ref().map(|claim| claim.id));
-        out.extend(issue.provisional_claims.iter().map(|offline| offline.id));
-    }
-    out
+    names(state).collect()
+}
+
+/// The events `state` names ([`named`]), each as often as it names it, collected into nothing.
+fn names(state: &State) -> impl Iterator<Item = EventId> + '_ {
+    state.issues.values().flat_map(|issue| {
+        let texts = match &issue.texts {
+            Texts::There(stored) => Some(stored),
+            _ => None,
+        };
+        let texts = (texts.into_iter()).flat_map(|stored| stored.tags.iter());
+        std::iter::once(issue.uid)
+            .chain(
+                issue
+                    .reg
+                    .values()
+                    .flat_map(|tags| tags.iter().map(|(id, _)| *id)),
+            )
+            .chain(texts.flat_map(|(_, ids)| ids.iter().copied()))
+            .chain(
+                issue
+                    .label_tags
+                    .values()
+                    .flat_map(|tags| tags.iter().copied()),
+            )
+            .chain(
+                issue
+                    .dep_tags
+                    .values()
+                    .flat_map(|tags| tags.iter().map(|(id, _)| *id)),
+            )
+            .chain(
+                issue
+                    .retracted
+                    .values()
+                    .flat_map(|removals| removals.iter().copied()),
+            )
+            .chain(issue.claim.as_ref().map(|claim| claim.id))
+            .chain(issue.provisional_claims.iter().map(|offline| offline.id))
+    })
 }
 
 /// The events a state read alone asks who wrote: those behind each issue's registers with several

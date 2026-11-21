@@ -6,6 +6,7 @@ use std::cmp::Ordering;
 use std::fmt;
 
 use crate::event::Field;
+use crate::id::EventId;
 use crate::json::{Int, Object, Value};
 
 /// An integer field read from a format-1 event, retaining a legacy boolean representation.
@@ -101,6 +102,11 @@ pub struct Create {
     pub dangling: Vec<Value>,
     /// Whether it came from an import.
     pub imported: bool,
+    /// The parent `bead create --parent` made it under, by id: the issue whose key its own was
+    /// minted under, as its writer saw the tracker, which it follows when a merge renames that
+    /// issue. Absent from what released versions wrote, and from an import's; a value that is no
+    /// event id is read as absent, as replay applied such a create before the member was added.
+    pub parent: Option<EventId>,
 }
 
 /// The `mode` of a provisional claim: one made offline, standing until it is published.
@@ -408,6 +414,7 @@ impl Op {
                     .collect(),
                 dangling: items(data, "dangling"),
                 imported: data.get("imported").is_some_and(Value::truthy),
+                parent: text(data, "parent").as_deref().and_then(EventId::parse),
             })),
             OpName::Set => Op::Set(fields(data)),
             OpName::Claim => Op::Claim(Box::new(Claiming {

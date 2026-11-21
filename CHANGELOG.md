@@ -6,20 +6,17 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
-- A grandchild made offline under a child that follows its renamed parent follows it in turn
-  (`x.1.1.1` to `x.2.1.1`), at every depth: #305 gave a follow the parent as its cause, which every
-  writer of a grandchild had seen, so the grandchild kept its key.
+- A write builds on this machine's last applicable record, in its journal's order, where the
+  frontier's clocks do not reach it, as replay judges a journal chain: a foreign event that replay
+  does not apply (pending on a cause, or in a cycle of causes) and that builds on it kept it off the
+  frontier, and the write, naming only the frontier, broke its machine's journal chain and was set
+  aside, applied by nobody. Most writes find it reached, and name the frontier alone, as before;
+  a claim or a release, in no journal's chain, names the frontier alone whatever it finds.
 - The split-remote check reads scp syntax as the `ssh://` URL it is, a host in brackets included
   (`git@[fd00::1]:/srv/r`), and a home directory's path as the root's (`ssh://host/~/r` is
   `host:r`), as a forge serves both; both pairs were refused as `CONFIG`.
 - A Beads `config.yaml` whose `issue_prefix` is a YAML block, tag, anchor or flow collection is
   reported as YAML bead does not read; its first characters (`|`) were taken for the prefix.
-
-- A child follows the parent whose key its writer saw, among renames of that key: a rename the
-  writer saw made (another child following the same parent, or a copy giving way to one the writer
-  saw) is no key its issue held for it. The first rename in replay order (#303) picked another
-  child's follow, a subtree the child's parent edge did not name. Each rename records its cause, so
-  projections are rebuilt once (`ENCODING` 13).
 
 - `init --import` of an export it refuses writes nothing: the export is read before a remote or a
   workspace is chosen, where a refused one left a `.beadroll.json` with a new id behind, or a
@@ -29,8 +26,6 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 - The reading of Beads' `config.yaml` takes a key after a byte order mark and with spaces
   before its colon (`issue-prefix : br`).
 
-- A child whose writer saw two renames of its parent's key follows the parent it meant, the first
-  of them in replay order; it followed the last, a sibling.
 - `create` under two parents refuses a loop through what one passes down to the other, as `dep add`
   refuses the same second parent; it made the issue.
 - `init --import` reads bd's spelling of the prefix key, `issue-prefix`, and ends a value at a `#`
@@ -43,9 +38,35 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   Nothing beside standard input is read for its prefix (a `config.yaml` where the command runs is no
   Beads configuration of it).
 
-- A child made under a parent that a merge renames follows it: `x.1.1`, made under its machine's
-  own `x.1`, which became `x.2`, is `x.2.1`, and sync reports the rename. It kept `x.1.1`, which read
-  as a child of the other machine's `x.1`, whose next child then skipped a number.
+- A child made offline under a parent that a merge renumbers follows it: `x.1.1`, made under its
+  machine's own `x.1`, which became `x.2`, is `x.2.1`, at every depth (a grandchild `x.1.1.1` is
+  `x.2.1.1`), and sync reports the rename. It kept `x.1.1`, which read as a child of the issue
+  holding `x.1` now, whose next child then skipped a number. `create --parent` names the parent
+  by id in the create (`parent`, added to format 1's create data; an older bead ignores it), and
+  the child follows that parent, so every machine judges it alike whatever else was renamed from
+  the key; a create without it, as every released version wrote, and an import keep their keys.
+  The key is settled at the create, so an import waiting for a key binds to the issue that holds
+  it, and a sibling made meanwhile keeps its own. Projections are rebuilt once (`ENCODING` 17).
+  Upgrading: until every machine runs this bead, a released version keys such a child from its
+  minted key, a collision with another copy of it resolved as for any key, and a build of `main`
+  since #301 by its own judgement of the renames, neither from the parent its create names
+  (*Format and upgrades* in `docs/GUARANTEES.md`). A child's create names its parent among its
+  causes too, so that an older bead's projection, which takes only causes on its frontier
+  or in the batch it receives, replays the journal for a batch holding such a child whose parent
+  is neither, once a batch, until it is upgraded. A build of `main`
+  made after #301 and before
+  this one followed, by its own judgement, every create under a numbered key whose parent part a
+  merge renamed, a child or an import alike; once upgraded, such an issue is keyed again from the
+  key its create gave, under the rule every copy of a key keeps (the issue that sorts first holds
+  it, a later one takes the next free number), so that it, or an issue that held its key since,
+  can move, with no rename in any sync's report. A key such a build printed may name another issue
+  now: find the issue by its title (`bead search --all "TITLE"`) and check it with `bead show
+  NEW_KEY` before writing by a key.
+- `sync` reports every key its merge changed: a key an earlier sync had renamed, moved again, was
+  left out, as were renames replay placed before the ones counted and an issue that holds its own
+  key again (an import a collision had displaced) or whose key changed with no rename at all (a
+  foreign journal put back as published). Each is reported from the key the issue had before the
+  sync, in replay order; a sync whose merge writes nothing keeps no keys to compare.
 
 - `init --import` reads the prefix Beads keyed the records under: `.beads/config.yaml`'s
   `issue_prefix`, else the repository directory's name, before what the ids share. A lone

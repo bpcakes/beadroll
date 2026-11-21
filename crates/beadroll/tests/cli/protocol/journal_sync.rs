@@ -5,6 +5,7 @@
 //! command's retries are `rust_only`: they stop the Rust `bead` at its `append.mid` failpoint, and
 //! skip its waits between rounds at `backoff`.
 
+mod chains;
 mod forks;
 mod lost_acks;
 mod remote_ref;

@@ -83,7 +83,7 @@ fn leave_pending(ws: &Workspace, actor: &Value, issue: &str, publish: PendingSet
         data.insert("mode".into(), Value::from("online"));
         data.insert("generation".into(), Value::from(1));
         tx.emit(OpName::Claim, Some(issue), data, None)?;
-        let first = tx.ownership[0]["id"].as_str().unwrap().to_owned();
+        let first = tx.ownership()[0]["id"].as_str().unwrap().to_owned();
         let folder = ws.dir.join("pending");
         let receipt = format!(
             "{{\"actor\": {}, \"args\": {{\"command\": \"claim\"}}, \"request\": null}}",
@@ -95,12 +95,12 @@ fn leave_pending(ws: &Workspace, actor: &Value, issue: &str, publish: PendingSet
             FileMode::Private,
             &ws.settings.failpoints,
         )?;
-        write_attempt_file(ws, &folder.join(format!("{first}.json")), &tx.ownership)?;
+        write_attempt_file(ws, &folder.join(format!("{first}.json")), tx.ownership())?;
         if publish == PendingSetup::Published {
             let outcome = link.publish(
                 tip.as_deref(),
                 "claim",
-                &tx.ownership,
+                tx.ownership(),
                 PublishMode::IfChanged,
             )?;
             assert_eq!(outcome, PushOutcome::Ok);

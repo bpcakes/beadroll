@@ -99,7 +99,7 @@ reads, and the published tree is also read by `br`/`bv` through `bead export` an
 | `aliases.json`, `moved.json` | `indent=1`, ASCII-escaped, no trailing newline | Unknown or invalid entries are ignored on read |
 | `<ws>/lock` | Empty, 0600, `flock(2)` exclusive | |
 | `<ws>/meta.json` | `indent=1`, ASCII-escaped; keys `remote` (the remote as it was chosen: a configured remote's name, or a URL), `name`, `last_sync`, `published`, and (added after 0.2.0) `published_to`, the place `published` was published to, read as the URL-derived id reads origin (a relative path from the top of the checkout, normalised), so that every clone and worktree of the store names it alike | origin is never stored as `remote`; a version without `published_to` leaves it as it was, so that a count read after its sync may err high, never low |
-| `<ws>/events/<machine>/NNNNNN.jsonl` | One event per line: `,`/`:` separators, raw UTF-8, keys in the order `v, id, replica, deps, actor, op, issue, data[, where]`; appended with `O_APPEND` and fsynced; a new segment starts at `BEAD_ROTATE_BYTES` | A torn tail is repaired before the next write and kept as `*.torn-<ns>` |
+| `<ws>/events/<machine>/NNNNNN.jsonl` | One event per line: `,`/`:` separators, raw UTF-8, keys in the order `v, id, replica, deps, actor, op, issue, data[, where]`; appended with `O_APPEND` and fsynced; a new segment starts at `BEAD_ROTATE_BYTES` | A torn tail is repaired before the next write and kept as `*.torn-<ns>`. Added after 0.2.0: a create's `data` may hold `parent`, the id of the issue it was made under (§2) |
 | `<ws>/events/<machine>/claims/<event-id>.json` | The attempt's events, compact lines, written atomically | Immutable; on a mismatch the local copy is kept as `*.fork-<ns>` |
 | `<ws>/pending/<id>.json`, `<id>.command` | The pending attempt and its receipt | The receipt's signature is below |
 | `<ws>/projection`, `<ws>/projection-texts` | A cache of one build of bead (§2) | No part of format 1: another build never reads them, and deleting them is always safe |
@@ -145,12 +145,20 @@ agents and tests match parts of them; `bead prime` lists the codes.
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
-- A child made under a parent that a merge renames follows it (the maintainer's decision of
-  2026-11-19): replay gives it its parent's key now with its own number (`x.1.1` to `x.2.1`),
-  recorded and reported as a rename, when its writer had seen the renamed parent's create and not
-  the create of the issue that holds the old key (`replay::apply::create::followed`), which every
-  machine judges alike. It kept the key it was minted with, which read as a child of the other
-  issue, and that issue's next child skipped a number.
+- A projection's parts are trusted as far as the header's sums vouch for them: one that holds a
+  state part and an index part from different moments, with sums made for that pair, is outside
+  what bead guards against. Both parts are of one file, under one header with a 128-bit sum of
+  each, read through one open handle, and the file is replaced whole, so neither bead's own writes
+  nor a crash can pair them (a damaged file, every truncation and flipped byte, is no projection:
+  `projection::tests::a_damaged_projection_is_never_trusted`). Bytes forged with their sums can pair them however they like, and a
+  stamp binding the parts would be forged with them; so can a build whose copying write-back is
+  wrong, which the differential tests read back on every history. The maintainer chose this on
+  2026-11-21, after reviews of #307 found a stale index under a newer state in three ways (an
+  issue's create missing from it, pending in it, then quarantined in it). Decode still refuses,
+  cheaply, what it can tell no bead writes (an event the state names that the index does not keep
+  applied, one the index names that its ids lack, `projection/tests/forged.rs`), as hardening, not
+  as a boundary: a pairing those checks pass, such as an index from after a create was
+  quarantined, is not a finding.
 
 - A coordination remote that git fetches from one repository and pushes to another, through a
   `url.<base>.pushInsteadOf` rule when it has no push URL of its own (its own `pushurl` is used
@@ -165,6 +173,53 @@ These were decided deliberately. Report problems *with* them, not their existenc
   and `https://forge/o/r` are one repository. On a plain ssh server `host:r` (the home
   directory's `r`) and `ssh://host/r` (the root's) are two, which the check passes: it cannot
   tell a forge from a server, and refusing the forge's everyday pair costs more.
+
+- A child made under its parent's key (`P.n`) follows that parent when a merge renumbers it: its
+  create names the parent by id (`parent`, a member of a create's data added to format 1 after
+  0.2.0, which `bead create --parent` writes), and replay gives the child the parent's key now with
+  its own number, settled at the create, before anything binds to it. The maintainer chose this on
+  2026-11-19, over judging from renames and what the writer had seen which issue held the key in
+  its view (four such rules each failed a case review found), and then over finding the create's
+  own parent-child edge among the events after it, which a torn append could make a later `dep add`
+  of the same writer stand in for. A create without the member (all a released version wrote, none
+  of which followed) keeps its key, and so does an import; an edge never moves a key. A key a
+  child follows to passes over one an import waits for, where a key a create gives may be the one
+  it waits for. An older bead reads the member and ignores it, so its machine does not follow the
+  parent the create names until it upgrades (a released one keys the child from the minted key, a collision resolved as for any copy, a build
+  of `main` since #301 follows by its own judgement of the renames: *Format and upgrades* in
+  GUARANTEES): in a mixed fleet the key of such a child differs between an older machine
+  and an upgraded one, and a write made by a key learned on the other goes to the issue it names
+  there. GUARANTEES' *Format and upgrades* names this exception; gating the member on every
+  reader's support (*writers lag readers*, announced in the manifest) is not built. A parent whose
+  key is longer than the one the child was minted under by more than 64 bytes a level of it is no
+  merge's work (a rename counts a number up past others, or gives a level that is no number's, the
+  root or one under a stem holding a newline, a digest's prefix) and is followed nowhere, so that
+  no record makes a key more than a bounded multiple of its own. The bound can refuse a merge's
+  work, the known exception: a parent with a long padded key (`x.0…01`), renamed `x.1` by a
+  collision in its child's writer's view and given its own key back by a later merge, grows past
+  it, and its child keeps `x.1.1` while its parent edge names the parent; nothing tells a record
+  that names such a parent from a damaged one by their keys. Replay reads a `parent` that is no
+  event id as none, as it applied such a create before the member was added; a write of one is
+  refused (`write_problem`). The parent must be named among the create's own causes, as every writer of the
+  member names it (a write refuses one that does not, one whose parent is no issue the transaction holds or made,
+  or one keyed with no number after a parent part; the key itself is the caller's to mint from
+  the parent's current key, `State::mint_key`, as `bead create` does: judging it would need the
+  parent's settled key, which a transaction has only once every event before is applied, a pass
+  over every issue a create, by the maintainer's choice of 2026-11-20): an older create may carry the member, naming an issue its writer never saw,
+  or saw through other events alone, and keeps its key. Modelling which renames
+  merges make was tried first and wrongly refused some (a number's leading zeros, a stem with a
+  newline, a key ending in a dot).
+
+- A child's create names its parent in its data (`parent`) and among its causes (`deps`), the
+  emitter adding it there unless it is a head already, for that create alone, and a write
+  refusing a create without it, so that replay, following only a parent the child's writer saw, sees
+  it saw it whatever the frontier holds or comes to: a foreign journal's pending cycle can hide a
+  parent from every head, and a foreign journal put back as published can take a path away. The
+  maintainer chose this on 2026-11-20 over naming the parent only where the heads miss it, which
+  spares an older bead (whose projection takes only causes on its frontier or in the batch) a
+  replay of the journal for a batch holding such a child whose parent is neither on its frontier
+  nor in the batch, once a batch, during a rolling upgrade: that cost lasts
+  until every machine is upgraded, and this build takes the cause as any write.
 
 - A claim makes its owner the issue's assignee; a release and a reopen (`reopen`, `update --status
   open`) give back the assignee it had before its first claim, which a takeover carries on

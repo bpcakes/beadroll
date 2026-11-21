@@ -4,7 +4,7 @@
 use beadroll_core::json::{Format, Style, write};
 use beadroll_test_support::{Json, Machine, Run, Sandbox, code, copy_tree, json_line, parse_json};
 
-use super::{own_segment, remote_blob, setup, two};
+use super::{own_segment, remote_blob, setup, setup_with, two, two_with};
 
 /// Compact, ASCII-escaped JSON with members in insertion order.
 const DUMPS_COMPACT: Format = Format {
@@ -70,6 +70,55 @@ fn bug_foreign_fork_report_must_not_replace_published_journal() {
         "sync reported a foreign fork but then replaced the good remote copy with its local fork"
     );
     assert_eq!(a.run(["sync", "--json"]).returncode(), 0);
+}
+
+/// A sync that puts back the published copy of another machine's journal, whose local copy was
+/// rewritten to give an issue's create another key, reports the key that changed: the issue goes
+/// from the rewritten key back to the published one with no rename on either side, which a
+/// report of the renames alone left out. (AT101)
+#[test]
+fn a_sync_that_puts_back_a_foreign_journal_reports_the_key_it_changed() {
+    let sandbox = crate::sandbox();
+    // the report is this build's contract, which an older bead does not keep
+    let (a, key) = setup_with(&sandbox, crate::rust_only);
+    let b = two_with(&sandbox, &a, crate::rust_only);
+    let segment = own_segment(&a);
+    let path = segment.strip_prefix(a.store()).unwrap();
+    let path = path.to_str().unwrap().to_owned();
+    let foreign = b.store().join(&path);
+    let text = std::fs::read_to_string(&foreign).unwrap();
+    let mut rows: Vec<Json> = text.lines().map(|row| parse_json(row).unwrap()).collect();
+    let forged = format!("{key}-forged");
+    let create = (rows.iter_mut())
+        .find(|row| {
+            row["op"] == Json::from("create") && row["data"]["key"] == Json::from(key.as_str())
+        })
+        .expect("the issue's create");
+    if let Json::Object(row) = create
+        && let Some(Json::Object(data)) = row.get_mut("data")
+    {
+        data.insert("key".into(), Json::from(forged.as_str()));
+    }
+    let rows: Vec<String> = (rows.iter())
+        .map(|row| write(row, DUMPS_COMPACT).unwrap() + "\n")
+        .collect();
+    std::fs::write(&foreign, rows.concat()).unwrap();
+    assert_eq!(
+        b.show(&forged)["title"],
+        a.show(&key)["title"],
+        "b reads the rewritten key"
+    );
+    // another machine's journal rewritten here is put back as published (GUARANTEES)
+    let result = b.run(["sync", "--json"]);
+    assert_eq!(result.returncode(), 0, "{}", result.stderr);
+    let report = parse_json(&result.stdout).unwrap();
+    let back =
+        |r: &Json| r["from"] == Json::from(forged.as_str()) && r["to"] == Json::from(key.as_str());
+    let renamed = report["renamed"].as_array().unwrap();
+    assert!(
+        renamed.iter().any(back),
+        "{forged} -> {key} not in {renamed:?}"
+    );
 }
 
 /// Assigns `row.data.fields.title`; missing members fail the test.

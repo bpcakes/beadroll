@@ -302,26 +302,26 @@ impl Issue {
     /// Adds a claim that ended to its ownership history.
     pub(crate) fn ended(&mut self, ended: EndedClaim) {
         self.claim_history.push(ended);
-        self.history_changed();
+        self.texts_changed();
     }
 
     /// Adds a claim that lost to its ownership history.
     pub(crate) fn lost(&mut self, lost: LostClaim) {
         self.lost_claims.push(lost);
-        self.history_changed();
+        self.texts_changed();
     }
 
     /// Adds an end that came too late, ignored, to its ownership history.
     pub(crate) fn ignored(&mut self, stale: Stale) {
         self.stale.push(stale);
-        self.history_changed();
+        self.texts_changed();
     }
 
-    /// Its ownership history changed, which its texts hold: texts read in are then to be written
-    /// again, as texts changed are. A projection applies an event that can add to the history only
-    /// to an issue whose texts are in it (`Projection::extend`), so they are never only in a text
-    /// file here.
-    fn history_changed(&mut self) {
+    /// What its texts hold changed: its ownership history, or the metadata of an edge an import
+    /// waiting for a key became. Texts read in are then to be written again, as texts changed are.
+    /// A projection applies an event that can change them only to an issue whose texts are in it
+    /// (`Projection::extend`), so they are never only in a text file here.
+    pub(crate) fn texts_changed(&mut self) {
         if let Texts::Read(_) = self.texts {
             self.texts = Texts::Here;
         }
@@ -330,6 +330,11 @@ impl Issue {
     /// This machine's ownership attempts the remote has not confirmed (the store fills these).
     pub fn unconfirmed(&self) -> &[Value] {
         &self.unconfirmed
+    }
+
+    /// The machine whose create made it, as its event names it.
+    pub fn origin_machine(&self) -> &str {
+        &self.origin.machine
     }
 
     /// Where it was created: the machine, the members of the create's actor, and the checkout.

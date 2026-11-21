@@ -15,15 +15,24 @@ use beadroll_test_support::{Machine, Sandbox, json, json_line};
 
 use crate::support::{Gate, actor, alongside, claim_command, sandbox, text, workspace};
 
-/// A spec that never fires and counts every read.
-const COUNTED: (&str, &str) = ("BEAD_FAILPOINTS", "projection.read@nth(1000000)=sleep(0)");
+/// Specs that never fire and count every read, and every keeping of the keys a sync reports
+/// against.
+const COUNTED: (&str, &str) = (
+    "BEAD_FAILPOINTS",
+    "projection.read@nth(1000000)=sleep(0);sync.keys-before@nth(1000000)=sleep(0)",
+);
 
 /// How often `ws` has read its store's state.
 fn reads(ws: &Workspace) -> u64 {
     ws.settings.failpoints.hits("projection.read")
 }
 
-/// A sync that brings nothing in reads the state once, and reports it as before.
+/// How often a sync on `ws` kept every key of the state before its merge wrote.
+fn keys_kept(ws: &Workspace) -> u64 {
+    ws.settings.failpoints.hits("sync.keys-before")
+}
+
+/// A sync that brings nothing in reads the state once, and reports it as before. (AT101)
 #[test]
 fn a_sync_that_brings_nothing_reads_the_state_once() {
     let sandbox = sandbox();
@@ -36,13 +45,15 @@ fn a_sync_that_brings_nothing_reads_the_state_once() {
     assert_eq!(reads(&ws), 1);
     assert_eq!((synced.pulled, synced.pushed, synced.issues), (0, 1, 2));
     assert!(synced.renamed.is_empty(), "{:?}", synced.renamed);
+    // a merge that writes nothing changes no key, and keeps none of them to compare
+    assert_eq!(keys_kept(&ws), 0);
     let again = synchronise(&ws, &Endpoint::at(sandbox.origin())).expect("a sync");
     assert_eq!(reads(&ws), 2);
     assert_eq!((again.pulled, again.pushed, again.issues), (0, 0, 2));
 }
 
 /// A sync that brings records in reads the state before it merges, to count the keys renamed
-/// before it, and after: the copy the merge renamed is reported, and only it.
+/// before it, and after: the copy the merge renamed is reported, and only it. (AT101)
 #[test]
 fn a_sync_that_brings_a_rename_reads_the_state_before_and_after_its_merge() {
     let sandbox = sandbox();
@@ -72,10 +83,12 @@ fn a_sync_that_brings_a_rename_reads_the_state_before_and_after_its_merge() {
     assert_eq!(synced.renamed.len(), 1, "{:?}", synced.renamed);
     let renamed = &synced.renamed[0];
     assert_eq!(renamed.get("from").and_then(Value::as_str), Some("ex-a"));
+    assert_eq!(keys_kept(&ws), 1);
     // the next sync brings nothing: nothing more is renamed since it began
     let again = synchronise(&ws, &Endpoint::at(sandbox.origin())).expect("a sync");
     assert!(again.renamed.is_empty(), "{:?}", again.renamed);
     assert_eq!(reads(&ws), 3);
+    assert_eq!(keys_kept(&ws), 1);
 }
 
 /// A write published at once reads the state for its transaction, then once for the merge of the

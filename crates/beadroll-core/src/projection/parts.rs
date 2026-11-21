@@ -14,14 +14,14 @@
 //! table is made anew once it holds more than an eighth more entries, plus `TABLE_SLACK`, than when
 //! it last was.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::sync::Arc;
 
 use super::codec::{Reader, Table, Unreadable, Writer};
 use super::state_codec::{Records, read_state, write_state};
 use super::text_codec::write_texts;
-use super::{Encoded, Projection, named, sum};
+use super::{Encoded, Projection, named, names, sum};
 use crate::id::EventId;
 use crate::order::position;
 use crate::state::{Knowledge, State, TextPlace, Texts};
@@ -95,7 +95,7 @@ impl Projection {
     /// This pure serializer does not acknowledge storage. Writers use a borrowed
     /// [`super::Writeback`] to acknowledge its own locations after both parts are written.
     /// What every event had seen is compacted when [`Projection::compaction_due`] says so:
-    /// the events the state still names and the frontier are kept, and otherwise every event
+    /// the events the state still names, the frontier and each journal's last record are kept, and otherwise every event
     /// known since the last compaction (roll-lqjj.43). Records unchanged since decoding are
     /// copied from their existing bytes (roll-lqjj.44).
     pub fn encode(&self, texts_at: u64) -> (Encoded, Vec<(EventId, TextPlace)>) {
@@ -175,6 +175,7 @@ impl Projection {
                 let knowledge = if compact == Compaction::Compact {
                     let mut named = named(&self.state);
                     named.extend(self.heads.iter().copied());
+                    named.extend(self.tails.values().copied());
                     cut = self.state.knowledge.kept(&named);
                     &cut
                 } else {
@@ -268,6 +269,13 @@ impl Projection {
         for (machine, last) in lasts {
             w.text(machine);
             w.id(*last);
+        }
+        let mut tails: Vec<(&String, &EventId)> = self.tails.iter().collect();
+        tails.sort();
+        w.count(tails.len());
+        for (machine, tail) in tails {
+            w.text(machine);
+            w.id(*tail);
         }
         let mut superseded: Vec<EventId> = self.superseded.iter().copied().collect();
         superseded.sort_unstable();
@@ -363,17 +371,11 @@ impl Projection {
         if !ids.windows(2).all(|pair| matches!(pair, [a, b] if a < b)) {
             return Err(Unreadable("the ids"));
         }
-        let mut lengths = HashMap::new();
-        for _ in 0..r.count()? {
-            let machine = r.text()?;
-            lengths.insert(machine, r.small()?);
-        }
-        let mut lasts = HashMap::new();
-        for _ in 0..r.count()? {
-            let machine = r.text()?;
-            lasts.insert(machine, r.id()?);
-        }
-        let superseded = r.ids()?.into_iter().collect();
+        let lengths = by_machine(&mut r, Reader::small)?;
+        let lasts = by_machine(&mut r, Reader::id)?;
+        let tails = by_machine(&mut r, Reader::id)?;
+        let superseded: HashSet<EventId> = r.ids()?.into_iter().collect();
+        held(&ids, &knowledge, &read, &lasts, &superseded)?;
         let open = r.flag()?;
         r.done()?;
         let (sets, positions) = knowledge.read_arena(&mut after)?;
@@ -396,12 +398,19 @@ impl Projection {
             state,
             index,
         };
+        // each machine's last applicable event, and no other: the event its knowledge places at
+        // that machine's last applicable position, which a write that misses it breaks its chain
+        // at. Every machine whose journal holds one named, each once
+        if !read.knowledge.places_last(&tails) {
+            return Err(Unreadable("the journals' last applicable events"));
+        }
         Ok(Projection {
             state: read,
             heads,
             ids: ids.into_iter().collect(),
             lengths,
             lasts,
+            tails,
             superseded,
             open,
             compacted,
@@ -431,4 +440,42 @@ pub fn decode_state(bytes: &[u8]) -> Result<State, Unreadable> {
     after.number()?;
     after.done()?;
     Ok(state)
+}
+
+/// An entry for each machine, by its name, each read by `read`.
+fn by_machine<'a, T>(
+    r: &mut Reader<'a>,
+    read: impl Fn(&mut Reader<'a>) -> Result<T, Unreadable>,
+) -> Result<HashMap<String, T>, Unreadable> {
+    let mut entries = HashMap::new();
+    for _ in 0..r.count()? {
+        let machine = r.text()?;
+        entries.insert(machine, read(r)?);
+    }
+    Ok(entries)
+}
+
+/// That every event the state part names is one the index keeps and replay applied, not one
+/// pending there, and every event the index names one the journal holds, by `ids`, in order:
+/// every event its knowledge keeps (what a write builds on, the frontier, each journal's last
+/// applicable event and each issue's create, a child's parent, among them, which would otherwise
+/// be a cause no journal holds, or none applied, and the write wait for it), each machine's latest
+/// and the claims superseded. The ids its knowledge keeps counted in one pass over the ids, each
+/// lookup a hash's; the few others looked up in them.
+fn held(
+    ids: &[EventId],
+    knowledge: &Knowledge,
+    state: &State,
+    lasts: &HashMap<String, EventId>,
+    superseded: &HashSet<EventId>,
+) -> Result<(), Unreadable> {
+    let applied = names(state).all(|id| knowledge.applied(id));
+    let among = (ids.iter()).filter(|id| knowledge.events.contains_key(*id));
+    let kept = among.count() == knowledge.events.len();
+    let mut named = lasts.values().chain(superseded);
+    if applied && kept && named.all(|id| ids.binary_search(id).is_ok()) {
+        Ok(())
+    } else {
+        Err(Unreadable("the events the journal holds"))
+    }
 }

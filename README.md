@@ -192,7 +192,9 @@ can delay writes.
 
 The stored and published format is frozen at version 1, with additive changes
 only. Machines can upgrade in any order. Older versions preserve and report
-events they cannot apply until upgraded. The [guarantees](docs/GUARANTEES.md)
+events they cannot apply until upgraded; one addition, the parent a child names,
+an older version reads differently, so during an upgrade a child's key can
+differ between machines (*Format and upgrades* in the guarantees). The [guarantees](docs/GUARANTEES.md)
 describe recovery after interrupted writes, lost acknowledgements, and damaged
 stores, along with measured performance and known limits.
 

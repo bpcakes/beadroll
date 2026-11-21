@@ -98,13 +98,13 @@ fn fence_wins_against_a_real_push_still_running_after_timeout() {
         link.merge(tip.as_deref())?;
         let mut tx = Tx::new(&ws, &actor)?;
         claim(&mut tx, Mode::Online, &s.key)?;
-        let id = text(&tx.ownership[0]["id"]);
+        let id = text(&tx.ownership()[0]["id"]);
         let pending = ws.dir.join("pending").join(format!("{id}.json"));
-        write_attempt_file(&ws, &pending, &tx.ownership)?;
+        write_attempt_file(&ws, &pending, tx.ownership())?;
         Link::new(&short, &Endpoint::at(origin))?.publish(
             tip.as_deref(),
             "claim",
-            &tx.ownership,
+            tx.ownership(),
             PublishMode::IfChanged,
         )
     })

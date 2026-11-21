@@ -38,6 +38,7 @@ use beadroll_store::{
 };
 
 use crate::error::Error;
+use crate::synchronise::KeysBefore;
 use crate::tx::Spent;
 
 use self::helpers::Helpers;
@@ -98,9 +99,14 @@ pub struct Link<'a> {
     pub hashed: Vec<String>,
     /// Unchanged claims directories named directly in publication trees, without mktree input.
     pub reused_trees: Vec<String>,
-    /// How many keys the store's state had renamed when a merge that was asked to count them
-    /// first read it ([`Link::merge_from`]).
-    pub(crate) renames_before: Option<usize>,
+    /// The keys the store's state held when a merge that was asked to count renames first read it
+    /// ([`Link::merge_from`]): a sync reports each key its merge changed, from the key the issue
+    /// had then.
+    pub(crate) keys_before: Option<KeysBefore>,
+    /// The projection a reporting sync's merge began with when it found `sync.git` damaged before
+    /// it wrote, set aside for the round to take the keys of once it has let go of the store, if a
+    /// rebuild retries it.
+    pub(crate) unwritten: Option<beadroll_store::Sourced>,
     /// The public merge API cannot return its view. Retain only disposable state until the next
     /// merge or this link's destruction; internal rounds never read or reuse it.
     retained: Spent,
@@ -337,7 +343,8 @@ impl<'a> Link<'a> {
             known: KnownObjects::default(),
             hashed: Vec::new(),
             reused_trees: Vec::new(),
-            renames_before: None,
+            keys_before: None,
+            unwritten: None,
             retained: Spent::default(),
         })
     }

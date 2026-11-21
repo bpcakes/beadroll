@@ -259,7 +259,10 @@ frozen; changes are additive.** A newer bead may add an operation or a field,
 still as format 1; an older bead sets aside the events it cannot apply
 (reported under `integrity`, applied by nobody), carries them through sync
 untouched, and applies them once upgraded. Machines can therefore be upgraded
-in any order; a mixed fleet is safe, and shows integrity notes until it is
+in any order; a mixed fleet is safe, but for one addition an older bead reads
+differently (a child's `parent`, below), which no integrity note shows: both
+machines can report none while one key names two issues. It shows integrity
+notes for the events an older bead sets aside until it is
 uniform. What an older bead sets aside costs it nothing more: it keeps
 reading its projection and applying new events to it. The format number
 changes only for a change that would make an old reader *misread* events;
@@ -267,6 +270,68 @@ none is planned. Should one ever be needed it follows
 *writers lag readers*: the new bead reads both formats but writes the old one
 until every machine on the tracker has announced, in the manifest it publishes,
 that it reads the new one; then it flips. Nothing ever rewrites existing events.
+
+A create an older library caller wrote with a `parent` member, which no released
+bead ever read, follows that parent once upgraded if its causes name it, as they
+did when the parent was the head it built on: such an issue can take its
+parent's key and its own number at the upgrade, with no merge and no rename in
+any sync's report. Look its key up again after upgrading.
+
+One addition is read differently by an older bead, by the maintainer's choice:
+a child's create names its parent (`parent`), which an older bead ignores.
+Where a merge renumbered that parent, a released bead keys the child from the
+key it was minted with, a collision with another copy of it resolved as for any
+key (the later one taking the next free number), and a build of `main` made
+after #301 and before the
+member was added follows by its own judgement of the renames, which can put the
+child under another sibling; an upgraded machine follows the parent the create
+names. Ids and the edges that name them agree everywhere. Until every machine is
+upgraded, a key learned on one machine can name another issue on another, and a
+write made by that key goes to the issue it names there: during a rolling
+upgrade, sync the machine that writes first, then look the issue up there
+(`bead search`, `bead show`), rather than writing by a key another machine
+printed. An online claim merges before it reads its key, so a publication made
+meanwhile can still move one.
+
+A key looked up after a write may name another issue by then, and `bead log KEY`
+lists that issue's events; the unfiltered `bead log --json --limit 0` lists
+every event, whose issue stays the one it was made on, and the `create` event
+shows that issue's key now. A row says an event is there in its causal place,
+not that replay applied it: a claim's says which issue it was made on, not that
+it took (an offline claim is provisional, and replay can decline or set aside
+one), and `bead show` says who holds the issue. The log shows an event only once
+it is in the settled journal in its causal place, so a write's absence proves
+nothing, a comment's as a claim's. An ordinary write (a comment, an update that claims nothing) is
+in its store's journal once its command answers, published or not: `bead sync`
+on that store publishes it, to the remote and ref it was meant for (`--remote R`
+again, if the command was given one), and written again it is there twice. An
+ownership command's attempt (a claim, a release, and an `update` with `--claim`
+or `--status in_progress`, whose edits go with the claim) whose push went
+unanswered is settled by `bead sync` on the store that made it, against the same
+coordination remote and ref, which confirms or fences it off (`UNRESOLVED` until
+then): fenced off, the edits are gone with the claim, and a sync of another
+remote fences nothing there, though it drops the attempt. Either can have landed and still wait for a cause
+that has not arrived. Repeating an ownership command is
+no check either: one its receipt recognizes as already made does nothing again,
+and its answer can name the issue the key holds now, while one whose first try
+never landed acts anew, once that try is fenced off, on the issue the key names
+now, which an upgrade may have changed. Sync first, and `bead show` the issue
+meant.
+
+An imported dependency still waiting for a key binds to the issue that holds it
+on each machine, which can differ, so the two can see different blockers, and
+readiness, for the importing issue. A Beads export names issues by key (`id`),
+which can differ between them as their keys do, and an import matches records
+by that key, making anew a record whose key it does not know, which no sync
+merges with the issue it was exported from. Between copies of one tracker, sync
+rather than export and import; where a round trip is needed, have both stores
+publish what they hold and sync to the same journal, every machine upgraded,
+before exporting, and an export written before the upgrade keeps the keys it
+was written with, which replay may have moved since. An imported
+dependency of type `parent-child` gives them
+different descendants, and `bead close --recursive` on an older machine closes
+the descendants its graph has, by id, for good. Until every machine is upgraded,
+close such a subtree issue by issue, each looked up where it is closed.
 
 ## What else holds
 
@@ -725,8 +790,12 @@ it, and the file is committed again.
   makes 24 rounds before it gives up, its waits doubling to at most 2 s).
 - A renumbered child key changes under the machine that created it, and so do
   the keys of the children made under it before the sync, which follow it
-  (`x.1.1` to `x.2.1`): the issue a child's key named as its writer saw the
-  tracker, whatever else was renamed from that key since. Events refer to issues by an immutable id, so nothing
+  (`x.1.1` to `x.2.1`), at every depth: the parent its create names by id,
+  whatever else was renamed from that key since. A child made by a released
+  version, or imported, is keyed from the key its create gave, as any copy is,
+  and so is a child of a parent whose
+  key merges made far longer than the one the child was minted under (a long
+  padded number given back, `docs/REVIEWING.md` §2). Events refer to issues by an immutable id, so nothing
   is lost, but a key written into a commit message before the sync now names
   the other issue. An online
   `create` of a child publishes before it answers, so the key it prints is the

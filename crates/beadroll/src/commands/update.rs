@@ -105,7 +105,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
             &signature,
             |tx, mode| -> Result<Mode, Failure> {
                 let mode = step.run(tx, mode)?;
-                let me = ctx.actor.label(&tx.replica);
+                let me = ctx.actor.label(tx.replica());
                 let mut attempt = tx.attempt();
                 ended.extend(edits(
                     attempt.lend()?,
@@ -125,7 +125,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         ended
     } else {
         let (ended, state) = writing_state(ctx.ws, ctx.actor, |tx| {
-            let me = ctx.actor.label(&tx.replica);
+            let me = ctx.actor.label(tx.replica());
             edits(tx.lend()?, &me, args, &fields, status.as_deref())
         })?;
         written = state;
