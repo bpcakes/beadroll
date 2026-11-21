@@ -275,3 +275,57 @@ fn a_state_naming_an_event_the_index_lacks_is_refused() {
         "as written"
     );
 }
+
+/// A state part read with an index from before the cause an issue's create waited for came, as
+/// parts written by two commands could pair, is refused though the index keeps that create: it was
+/// pending there, and the issue a parent replay of that journal never made (AT100). The cause, a
+/// machine's `init`, adds nothing else the state names.
+#[test]
+fn a_state_naming_a_create_the_index_holds_pending_is_refused() {
+    let mut data = fields("issue 4");
+    data.insert("key".into(), Value::from("pr-a"));
+    let there = "0000bb02";
+    let records = vec![
+        record(
+            event(1, HERE, &[], "init", 1, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
+        record(
+            event(4, HERE, &[1, 3], "create", 4, data),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
+        record(
+            event(3, there, &[], "init", 3, Object::new()),
+            there,
+            JournalOrder::Sequenced,
+        ),
+    ];
+    let (before, _) = project(journal(&records[..2])).unwrap().encode(0);
+    let after = project(journal(&records)).unwrap();
+    assert_eq!(
+        after.state().issues.len(),
+        1,
+        "the create applied once its cause came"
+    );
+    let (after, _) = after.encode(0);
+    let paired = |state: &[u8], index: &[u8]| Encoded {
+        state: state.to_vec(),
+        index: index.to_vec(),
+        texts: Vec::new(),
+    };
+    let refused = Projection::decode(paired(&after.state, &before.index))
+        .err()
+        .map(|error| format!("{error:?}"));
+    assert!(
+        refused
+            .as_deref()
+            .is_some_and(|error| error.contains("the journal holds")),
+        "an issue whose create the index holds pending: {refused:?}"
+    );
+    assert!(
+        Projection::decode(paired(&after.state, &after.index)).is_ok(),
+        "as written"
+    );
+}

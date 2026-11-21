@@ -406,28 +406,46 @@ impl State {
 /// issue's create, the events behind its registers and its label and dependency tags, its removals,
 /// and its claim and offline claims.
 fn named(state: &State) -> HashSet<EventId> {
-    let mut out = HashSet::new();
-    for issue in state.issues.values() {
-        out.insert(issue.uid);
-        for tags in issue.reg.values() {
-            out.extend(tags.iter().map(|(id, _)| *id));
-        }
-        if let Texts::There(stored) = &issue.texts {
-            out.extend(stored.tags.iter().flat_map(|(_, ids)| ids.iter().copied()));
-        }
-        for tags in issue.label_tags.values() {
-            out.extend(tags.iter().copied());
-        }
-        for tags in issue.dep_tags.values() {
-            out.extend(tags.iter().map(|(id, _)| *id));
-        }
-        for removals in issue.retracted.values() {
-            out.extend(removals.iter().copied());
-        }
-        out.extend(issue.claim.as_ref().map(|claim| claim.id));
-        out.extend(issue.provisional_claims.iter().map(|offline| offline.id));
-    }
-    out
+    names(state).collect()
+}
+
+/// The events `state` names ([`named`]), each as often as it names it, collected into nothing.
+fn names(state: &State) -> impl Iterator<Item = EventId> + '_ {
+    state.issues.values().flat_map(|issue| {
+        let texts = match &issue.texts {
+            Texts::There(stored) => Some(stored),
+            _ => None,
+        };
+        let texts = (texts.into_iter()).flat_map(|stored| stored.tags.iter());
+        std::iter::once(issue.uid)
+            .chain(
+                issue
+                    .reg
+                    .values()
+                    .flat_map(|tags| tags.iter().map(|(id, _)| *id)),
+            )
+            .chain(texts.flat_map(|(_, ids)| ids.iter().copied()))
+            .chain(
+                issue
+                    .label_tags
+                    .values()
+                    .flat_map(|tags| tags.iter().copied()),
+            )
+            .chain(
+                issue
+                    .dep_tags
+                    .values()
+                    .flat_map(|tags| tags.iter().map(|(id, _)| *id)),
+            )
+            .chain(
+                issue
+                    .retracted
+                    .values()
+                    .flat_map(|removals| removals.iter().copied()),
+            )
+            .chain(issue.claim.as_ref().map(|claim| claim.id))
+            .chain(issue.provisional_claims.iter().map(|offline| offline.id))
+    })
 }
 
 /// The events a state read alone asks who wrote: those behind each issue's registers with several

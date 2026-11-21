@@ -75,8 +75,9 @@ pub struct Tx<'a> {
     created: HashMap<EventId, usize>,
     /// The checkout's branch and commit, recorded on each event.
     pub place: Option<Value>,
-    /// The attempt's events emitted, to settle with the remote.
-    pub ownership: Vec<Value>,
+    /// The attempt's events emitted, to settle with the remote: those a create among them was
+    /// judged a parent by, written as they are ([`Tx::ownership`]).
+    ownership: Vec<Value>,
     /// Whether the actor's text can be written ([`Actor::writable`]).
     writable: bool,
 }
@@ -164,6 +165,18 @@ impl<'a> Tx<'a> {
     /// ```
     pub fn replica(&self) -> &str {
         &self.replica
+    }
+
+    /// The attempt's events emitted so far, to settle with the remote. Read only: a create among
+    /// them a later event was judged to have for a parent is written as it was emitted:
+    ///
+    /// ```compile_fail
+    /// fn unmake(tx: &mut beadroll_sync::Tx<'_>) {
+    ///     tx.ownership.clear();
+    /// }
+    /// ```
+    pub fn ownership(&self) -> &[Value] {
+        &self.ownership
     }
 
     /// A fresh id for the next event the caller emits ([`Minted`]).

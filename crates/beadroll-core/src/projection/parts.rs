@@ -21,7 +21,7 @@ use std::sync::Arc;
 use super::codec::{Reader, Table, Unreadable, Writer};
 use super::state_codec::{Records, read_state, write_state};
 use super::text_codec::write_texts;
-use super::{Encoded, Projection, named, sum};
+use super::{Encoded, Projection, named, names, sum};
 use crate::id::EventId;
 use crate::order::position;
 use crate::state::{Knowledge, State, TextPlace, Texts};
@@ -455,11 +455,13 @@ fn by_machine<'a, T>(
     Ok(entries)
 }
 
-/// That every event the state part names is one the index keeps, and every event the index names
-/// one the journal holds, by `ids`, in order: every event its knowledge keeps (what a write builds
-/// on, the frontier, each journal's last applicable event and each issue's create, a child's
-/// parent, among them, which would otherwise be a cause no journal holds and the write wait for
-/// it), each machine's latest and the claims superseded. Each looked up once.
+/// That every event the state part names is one the index keeps and replay applied, not one
+/// pending there, and every event the index names one the journal holds, by `ids`, in order:
+/// every event its knowledge keeps (what a write builds on, the frontier, each journal's last
+/// applicable event and each issue's create, a child's parent, among them, which would otherwise
+/// be a cause no journal holds, or none applied, and the write wait for it), each machine's latest
+/// and the claims superseded. The ids its knowledge keeps counted in one pass over the ids, each
+/// lookup a hash's; the few others looked up in them.
 fn held(
     ids: &[EventId],
     knowledge: &Knowledge,
@@ -467,13 +469,11 @@ fn held(
     lasts: &HashMap<String, EventId>,
     superseded: &HashSet<EventId>,
 ) -> Result<(), Unreadable> {
-    let kept = named(state)
-        .iter()
-        .all(|id| knowledge.events.contains_key(id));
-    let mut named = (knowledge.events.keys())
-        .chain(lasts.values())
-        .chain(superseded);
-    if kept && named.all(|id| ids.binary_search(id).is_ok()) {
+    let applied = names(state).all(|id| knowledge.applied(id));
+    let among = (ids.iter()).filter(|id| knowledge.events.contains_key(*id));
+    let kept = among.count() == knowledge.events.len();
+    let mut named = lasts.values().chain(superseded);
+    if applied && kept && named.all(|id| ids.binary_search(id).is_ok()) {
         Ok(())
     } else {
         Err(Unreadable("the events the journal holds"))
