@@ -801,15 +801,15 @@ it, and the file is committed again.
   padded number given back, `docs/REVIEWING.md` §2). Events refer to issues by an immutable id, so nothing
   is lost, but a key written into a commit message before the sync now names
   the other issue. That id is the issue's `uid`, its create's event id: text,
-  to keep as it is and compare whole (bead mints UUIDv7s, and reads any UUID's
-  shape). `--json` output gives it beside the key of every issue it lists or
-  shows (`uid`), and of the issues those name: `show`'s parents (`parent_uid`,
-  `parent_uids`), dependencies and dependents, `blocked`'s blockers
-  (`blocked_by_uids`), `dep`'s two (`issue_uid`, `depends_on_uid`), a comment's
-  and a logged event's issue (`issue_uid`). `dep cycles`, `recap`, integrity
-  notes and the Beads export name issues by key alone. Every command takes a
-  `uid` where it takes a key, a key first: a tool that keeps an issue keeps its
-  `uid`. An online
+  to keep as it is and compare whole (bead mints UUIDv7s, and reads any
+  lowercase UUID's shape). `--json` output gives it beside the key of every
+  issue it lists or shows (`uid`), and of the issues those name: `show`'s
+  parents (`parent_uid`, `parent_uids`), `show`'s and `dep list`'s dependencies
+  and dependents, `blocked`'s blockers (`blocked_by_uids`), `dep` `add` and
+  `remove` (`issue_uid`, `depends_on_uid`), `comments add`, and `log`'s and
+  `recap`'s events (`issue_uid`). `dep cycles`, integrity notes and the Beads
+  export name issues by key alone. Every command takes a `uid` where it takes a
+  key, a key first: a tool that keeps an issue keeps its `uid`. An online
   `create` of a child publishes before it answers, so the key it prints is the
   one its own publish settled; an offline one's can change at the next sync.
 - A repository with neither a remote nor a `.beadroll.json` gets a machine-local

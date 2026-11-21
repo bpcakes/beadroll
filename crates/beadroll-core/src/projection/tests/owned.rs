@@ -51,9 +51,7 @@ pub(crate) fn answers(state: &State) -> String {
         say("stale", all(stale.collect()));
         say(
             "show",
-            json(super::without_uids(Value::from(
-                details.of(issue.hydrated().unwrap()),
-            ))),
+            json(super::without_uids(details.of(issue.hydrated().unwrap()))),
         );
     }
     for record in state.export_records() {

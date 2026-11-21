@@ -18,7 +18,7 @@ use beadroll_sync::writing_spent;
 
 use super::{
     Context, Failure, Line, Outcome, TextValidity, Tone, arg_text, edge_data, encodable,
-    need_tracker, remove_edge, resolve_arg, row,
+    issue_not_found, need_tracker, remove_edge, resolve_arg, row,
 };
 
 /// What `dep` was asked to do, by the word that asked it: `rm` and `remove` take an edge back
@@ -248,21 +248,9 @@ fn change(
             need_tracker(st)?;
             let issue = resolve_arg(st, issue_key)?;
             let uid = issue.uid().to_string();
-            let target = match resolve_arg(st, target_key) {
-                Ok(target) => Some(target),
-                Err(failure) => {
-                    if action == Action::Add || dangling_key(st, issue, target_key).is_none() {
-                        return Err(failure);
-                    }
-                    // an imported dependency on a key that is not an issue yet: it can still be
-                    // taken back
-                    None
-                }
-            };
-            // what it depends on by id, where it is an issue
-            let target_uid = target.map(|target| target.uid().to_string());
-            let shown = match (action, target) {
-                (Action::Add, Some(target)) => {
+            let (shown, target_uid) = match (action, resolve_target(st, issue, action, target_key)?)
+            {
+                (Action::Add, DepTarget::Issue(target)) => {
                     let kind = kind.as_deref().unwrap_or(BLOCKS);
                     let looped = closes_a_loop(st, issue, target, kind);
                     if issue.uid() == target.uid() || looped {
@@ -275,21 +263,21 @@ fn change(
                             ),
                         ));
                     }
-                    let edge = edge_data(&target.uid().to_string(), kind);
+                    let target_uid = target.uid().to_string();
+                    let edge = edge_data(&target_uid, kind);
                     tx.emit(OpName::DepAdd, Some(&uid), edge, None)?;
                     encodable(validity)?;
-                    target.key().to_owned()
+                    (target.key().to_owned(), Some(target_uid))
                 }
-                (_, None) => {
-                    let key = dangling_key(st, issue, target_key).unwrap_or_default();
+                (_, DepTarget::Awaited(key)) => {
                     let mut data = Object::new();
                     data.insert("key".into(), Value::from(key.as_str()));
                     data.insert("type".into(), kind.clone().map_or(Value::Null, Value::from));
                     tx.emit(OpName::DepRemove, Some(&uid), data, None)?;
                     encodable(validity)?;
-                    key
+                    (key, None)
                 }
-                (_, Some(target)) => {
+                (_, DepTarget::Issue(target)) => {
                     let to = Target::Id(target.uid());
                     // what this machine has of it: a dependency removed elsewhere meanwhile is gone
                     // there too, so the removals still agree
@@ -311,7 +299,7 @@ fn change(
                     }
                     remove_edge(&mut tx, st, issue, &to, kind.as_deref())?;
                     encodable(validity)?;
-                    target.key().to_owned()
+                    (target.key().to_owned(), Some(target.uid().to_string()))
                 }
             };
             Ok::<_, Failure>((issue.key().to_owned(), uid, shown, target_uid))
@@ -332,9 +320,40 @@ fn change(
     Ok(Outcome::new(result, vec![format!("{issue_key} {done} {shown}")]).wrote_in(spent))
 }
 
+/// What `dep add` or `dep remove` acts on as its target: an issue, or an imported dependency's key
+/// that is no issue yet.
+enum DepTarget<'s> {
+    Issue(&'s Issue),
+    Awaited(String),
+}
+
+/// The target `given` names for `action` on `issue`: keys first (an issue's, and for a removal an
+/// awaited import's too, so no key's meaning changes), then an issue's id (`uid`).
+fn resolve_target<'s>(
+    st: &'s State,
+    issue: &Issue,
+    action: Action,
+    given: &OsStr,
+) -> Result<DepTarget<'s>, Failure> {
+    if action == Action::Add {
+        return resolve_arg(st, given).map(DepTarget::Issue);
+    }
+    let Some(text) = given.to_str() else {
+        return Err(issue_not_found(given.as_bytes()));
+    };
+    if let Some(target) = st.resolve(text) {
+        return Ok(DepTarget::Issue(target));
+    }
+    if let Some(awaited) = dangling_key(st, issue, text) {
+        return Ok(DepTarget::Awaited(awaited));
+    }
+    st.issue_named(text)
+        .map(DepTarget::Issue)
+        .ok_or_else(|| issue_not_found(given.as_bytes()))
+}
+
 /// The key of the imported dependency of `issue` that `given` names, itself or with the prefix.
-fn dangling_key(st: &State, issue: &Issue, given: &OsStr) -> Option<String> {
-    let given = given.to_str()?;
+fn dangling_key(st: &State, issue: &Issue, given: &str) -> Option<String> {
     let prefixed = format!("{}-{given}", st.key_prefix());
     issue
         .dangling()

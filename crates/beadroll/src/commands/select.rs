@@ -6,10 +6,11 @@ use beadroll_core::json::{Int, Value};
 use beadroll_core::op::IntegerField;
 use beadroll_core::state::{Issue, State, Target};
 
+use std::collections::HashSet;
 use std::ffi::OsString;
 
 use super::args::{parse_priority_arg, resolve_arg};
-use super::{Failure, Line, Tone, holds_nothing, split_list};
+use super::{Failure, Line, Tone, holds_nothing, resolve, split_list};
 
 /// The filters shared by `list` and `ready`, as given. Command-line text that is not UTF-8 matches
 /// nothing (`args.rs`): the values that are UTF-8 are kept, and `unmatched` says that a filter
@@ -49,6 +50,10 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
     let types = split_list(&filters.issue_type);
     let labels = split_list(&filters.label);
     let ids = split_list(&filters.id);
+    // keys first, then uids, as every command reads an issue; an unknown one matches nothing
+    let wanted_ids: HashSet<_> = (ids.iter())
+        .filter_map(|id| resolve(st, id).ok().map(Issue::uid))
+        .collect();
     let priority = match &filters.priority {
         Some(priority) => Some(IntegerField::from(parse_priority_arg(priority)?)),
         None => None,
@@ -94,7 +99,7 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
         {
             continue;
         }
-        if !filters.id.is_empty() && !ids.iter().any(|id| id == issue.key()) {
+        if !filters.id.is_empty() && !wanted_ids.contains(&issue.uid()) {
             continue;
         }
         if let Some(parent) = &parent

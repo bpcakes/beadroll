@@ -249,7 +249,7 @@ impl State {
     }
 
     /// What an issue depends on, by sorted edge: the key, id, title and status of each target (an
-    /// edge to text that names no issue shows it with no id and status `unknown`).
+    /// edge whose target names no issue shows it with no id and status `unknown`).
     fn dependencies_shown(&self, issue: &Issue) -> Value {
         let mut edges: Vec<&Edge> = issue.deps().keys().collect();
         edges.sort();
@@ -257,7 +257,7 @@ impl State {
             let target = self.target(edge.to());
             let mut dep = Object::new();
             dep.insert("id".into(), Value::from(&*self.target_key(edge.to())));
-            // an edge to text that names no issue has no issue's id
+            // an edge whose target names no issue has no issue's id
             let uid = target.map(|target| target.uid().to_string());
             dep.insert("uid".into(), uid.map_or(Value::Null, Value::from));
             dep.insert("title".into(), Value::from(target.map_or("", Issue::title)));

@@ -160,7 +160,7 @@ pub(super) fn answers(state: &State) -> String {
                 out.push_str(&format!("  tag {to} {kind} {id} {}\n", text(&shown(meta))));
             }
         }
-        let detail = without_uids(Value::from(details.of(issue.hydrated().unwrap())));
+        let detail = without_uids(details.of(issue.hydrated().unwrap()));
         out.push_str(&format!("  details {}\n", text(&detail)));
     }
     for record in state.export_records() {
@@ -187,7 +187,7 @@ pub(super) fn every_way(state: &State) -> String {
             "  blockers {}\n",
             keys(state.open_blockers(issue))
         ));
-        let detail = without_uids(Value::from(state.detail(issue.hydrated().unwrap())));
+        let detail = without_uids(state.detail(issue.hydrated().unwrap()));
         out.push_str(&format!("  detail {}\n", text(&detail)));
         let ready = state.ready(ReadyScope::Subtree(issue.uid()));
         out.push_str(&format!("  ready {}\n", keys(ready)));
