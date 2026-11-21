@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 
-use super::super::{Extended, Projection, asked, decode_state, named, project};
+use super::super::{Extended, Projection, asked, decode_state, project, retained};
 use super::hostile::{HERE, base, event, fields, id, journal, record};
 use super::read_in;
 use super::shown::replayed;
@@ -30,9 +30,7 @@ pub(super) fn knows_alike(
 ) -> bool {
     let read = &decoded.state.knowledge.events;
     let held = &projection.state.knowledge.events;
-    let mut kept = named(projection.state());
-    kept.extend(projection.heads.iter().copied());
-    kept.extend(projection.tails.values().copied());
+    let kept = retained(projection.state(), &projection.heads, &projection.tails);
     let order = held
         .keys()
         .filter(|id| compacted != Compaction::Compact || kept.contains(*id));
