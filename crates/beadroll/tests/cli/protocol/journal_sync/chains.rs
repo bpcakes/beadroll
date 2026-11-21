@@ -1,17 +1,15 @@
 //! A machine's journal chain beside events replay does not apply: each write builds on the
 //! machine's last record, which an event pending in a cycle of causes keeps off the frontier.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use beadroll_test_support::{Json, Machine, json, parse_json};
 
 /// The last segment of `machine`'s own journal, by name: where its next record goes.
 fn last_segment(machine: &Machine) -> PathBuf {
     let folder = machine.store().join("events").join(machine.id());
-    let segments = (std::fs::read_dir(&folder).expect("the machine's journal"))
-        .map(|entry| entry.expect("a segment").path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "jsonl"));
-    segments.max().expect("a segment")
+    let mut segments = beadroll_test_support::segments_in(&folder);
+    segments.pop().expect("a segment")
 }
 
 /// The id of `machine`'s last record in its journal's order: the event its next write builds on.
@@ -40,16 +38,9 @@ fn plant_cycle(machine: &Machine, on: &str) {
         said(&two, vec![&one], "two"),
     ];
     let folder = machine.store().join("events").join("0000000f");
-    private_dir(&folder);
+    beadroll_store::private_dir(&folder).expect("the foreign journal's folder");
     let text = beadroll_store::encode_events(&lines).expect("journal lines");
     std::fs::write(folder.join("000001.jsonl"), text).expect("the foreign journal");
-}
-
-/// Makes `folder` with only its owner able to read it, as the store keeps its own.
-fn private_dir(folder: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::create_dir_all(folder).expect("the folder");
-    std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o700)).expect("its mode");
 }
 
 /// That `machine`'s next writes apply: an issue, shown, and a child under it.
@@ -144,7 +135,7 @@ fn a_release_beside_a_waiting_last_event_builds_on_the_frontier_alone() {
         })
     };
     let folder = a.store().join("events").join("0000000f");
-    private_dir(&folder);
+    beadroll_store::private_dir(&folder).expect("the foreign journal's folder");
     let lines = [said("one content"), said("another")];
     let text = beadroll_store::encode_events(&lines).expect("journal lines");
     std::fs::write(folder.join("000001.jsonl"), text).expect("the foreign journal");
