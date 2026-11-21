@@ -256,10 +256,12 @@ consumer on tokio calls through `spawn_blocking`.
   on every differential and delivery-order history, and `read_back` checks a state read back with
   some issues' texts read in alone.
 - A projection extended is replay: `projection/tests.rs` checks every batch a store takes in on
-  histories of machines that write, sync and race, and each batch it must decline. What replay
-  reports does not stop it (roll-lqjj.28): `projection/tests/flawed.rs` runs the same on histories
-  holding every kind of integrity entry, a copy of a machine's identity among the writers, and
-  `projection/tests/reported.rs` each kind by hand. It is not extended when an event waits for a
+  histories of machines that write, sync and race (`projection/tests/world.rs` draws them), and
+  each batch it must decline. What replay reports does not stop it (roll-lqjj.28):
+  `projection/tests/flawed.rs` runs the same on histories holding every kind of integrity entry, a
+  copy of a machine's identity among the writers, and `projection/tests/reported.rs` each kind by
+  hand; `projection/tests/chained.rs` on journals the frontier leaves (cycles, causes written late,
+  placeholders, a clock turned back), its machine 0 building each write as a transaction does. It is not extended when an event waits for a
   cause, or when a record still to come can change what replay made of the events before it
   (`replay::Replayed::unsettled`: a takeover of an id no event has, an id with several contents
   placed by less than its causes, `Order::loose`), and it declines a batch with a record of an id
