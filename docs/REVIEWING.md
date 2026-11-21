@@ -613,11 +613,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   it, which differs only by what another process writes in between, and an ownership round's
   transaction starts from it (`Tx::on`), since nothing between the merge and the transaction, under
   the same lock, writes the journal, which `Tx::on` checks (roll-lqjj.37, the bullet after this
-  one). A sync that reports (`bead sync`, `init` joining a tracker)
-  counts the renames before it from a projection its first merge reads once the torn tails are cut
-  and before it merges, recorded at once so that a merge that fails later keeps the count, and goes
-  on with that projection when the merge writes no journal file (each of its journal writes marks
-  the merge: `write_journal`, `wrote`). `update` answers from the state its transaction leaves
+  one). A sync that reports (`bead sync`, `init` joining a tracker) keeps every issue's key as
+  the store's state held them when it began, once (`KeysBefore`, AT101): its first merge to write
+  takes them before it writes, kept so that a merge that fails later keeps them, and a round that
+  gives way before any merge wrote takes them from the state it began with; the report compares the
+  keys after with them (each journal write of a merge marks it: `write_journal`, `wrote`). `update` answers from the state its transaction leaves
   (`writing_state`), this machine's pending attempts listed on it as `view` lists them, unless it
   publishes (a close of its own claim), whose merge may bring in more: then from the store. A
   command that reads the state while it emits borrows it beside an `Emitter` (`Tx::lend`) and
@@ -1810,8 +1810,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   fallback transaction is involved. Public `Link::merge` still returns a count and updates its
   compatibility report fields, including partial progress on errors. Its completed projection is
   retained as an opaque `Spent` on the caller-owned link, until the next merge or link destruction;
-  it cannot be reused as an internal merge result. The initial rename count,
-  accumulated pulls and recovery allowance remain command-wide. Failed rounds discard their
+  it cannot be reused as an internal merge result. The keys a reporting sync began
+  with, accumulated pulls and recovery allowance remain command-wide. Failed rounds discard their
   report facts, while completed pulls survive publication failure. A successful report uses
   only its final round's forks and confirmations. Unused merge views are freed after unlocking.
   Coverage includes real-lock error/unwind and cache-phase tests, scoped and mixed emission,

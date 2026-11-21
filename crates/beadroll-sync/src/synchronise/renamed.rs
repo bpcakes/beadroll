@@ -7,10 +7,12 @@ use beadroll_core::id::EventId;
 use beadroll_core::json::Value;
 use beadroll_core::state::{Keys, Rename, State};
 
-/// Every issue's key in the store's state as a reporting sync's first merge to write read it, before
-/// it wrote. A merge may change a key with no rename before or after it (a foreign journal replaced
-/// by the published one, an import holding its own key again), so every key is kept, not only the
-/// renamed ones; a sync whose merges wrote nothing keeps none.
+/// Every issue's key in the store's state as a reporting sync began with it, taken once: by its
+/// first merge to write, before it writes, or by a round that gives way before any merge wrote,
+/// from the state that round began with (another process may sync the store meanwhile). A merge
+/// may change a key with no rename before or after it (a foreign journal replaced by the published
+/// one, an import holding its own key again), so every key is kept, not only the renamed ones; a
+/// sync whose merges wrote nothing and that gave way to nothing keeps none.
 #[derive(Debug, Default)]
 pub(crate) struct KeysBefore {
     keys: Keys,

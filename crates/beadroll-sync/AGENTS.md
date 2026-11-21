@@ -165,10 +165,12 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_pending`).
   `Tx::new`, which reads again): a step added between the merge and the transaction may write the
   journal, and the round then reads the store again, which this crate's `reads::` tests and the
   `beadroll` crate's `protocol::merged_window` tests show with `ownership.before-transaction`. A
-  sync that reports counts the renames before it from a projection its first merge reads before
-  merging, which that merge goes on with when it writes no journal file; every journal write of a
-  merge goes through `write_journal` or `wrote`, which mark it. A write's sync (`publish_soon`)
-  makes no report (roll-lqjj.29; the `reads::` tests count them at `projection.read`).
+  sync that reports keeps every issue's key as the store's state held them when it began, once
+  (`synchronise::renamed::KeysBefore`): its first merge to write takes them before it writes, and a
+  round that gives way before any merge wrote takes them from the state it began with; the report
+  compares the keys after with them, not a count of renames (AT101). Every journal write of a merge
+  goes through `write_journal` or `wrote`, which mark it. A write's sync (`publish_soon`) makes no
+  report (roll-lqjj.29; the `reads::` tests count them at `projection.read`).
 - A link asks for the checkout's transport settings when it is made (`Link::new`,
   `beadroll_git::transport_settings`). A link is made at the start of `synchronise`, another if
   it adopts a published tracker, one before the rounds of `coordinated`, and one for a write
