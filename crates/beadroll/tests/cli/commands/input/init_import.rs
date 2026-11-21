@@ -77,12 +77,13 @@ fn init_import_takes_the_prefix_its_records_share() {
 }
 
 /// One case of an export kept where Beads keeps it: the directory `.beads` is in, the records' ids,
-/// what `config.yaml` holds, and the prefix the tracker starts under, or the code it is refused with.
+/// what `config.yaml` holds, and the prefix the tracker starts under, or the code it is refused with
+/// and what its message says.
 type Keyed = (
     &'static str,
     &'static [&'static str],
     Option<&'static str>,
-    Result<&'static str, &'static str>,
+    Result<&'static str, (&'static str, &'static str)>,
 );
 
 /// `init --import` of an export where Beads keeps it, `DIR/.beads/issues.jsonl`, takes the prefix
@@ -91,7 +92,7 @@ type Keyed = (
 /// may follow (`proj-fix-login-x1`). Records outside the configured prefix are `VALIDATION`.
 #[test]
 fn init_import_takes_the_prefix_beads_keyed_the_records_under() {
-    let cases: [Keyed; 7] = [
+    let cases: [Keyed; 9] = [
         (
             "onesales",
             &["br-onboarding-style-q2"],
@@ -108,7 +109,7 @@ fn init_import_takes_the_prefix_beads_keyed_the_records_under() {
             "mixed",
             &["zz-1", "br-2"],
             Some("issue_prefix: \"br\"\n"),
-            Err("VALIDATION"),
+            Err(("VALIDATION", "not all keyed under br")),
         ),
         // a byte order mark, and a space before the colon
         (
@@ -122,6 +123,19 @@ fn init_import_takes_the_prefix_beads_keyed_the_records_under() {
             &["br-x-q2"],
             Some("issue-prefix : br\n"),
             Ok("br"),
+        ),
+        // YAML that is not a plain or quoted scalar is reported, never taken for the prefix
+        (
+            "block",
+            &["br-x-q2"],
+            Some("issue_prefix: |\n  br\n"),
+            Err(("VALIDATION", "YAML")),
+        ),
+        (
+            "tagged",
+            &["br-x-q2"],
+            Some("issue_prefix: !!str br\n"),
+            Err(("VALIDATION", "YAML")),
         ),
         // bd's spelling, and a comment after a tab
         (
@@ -158,7 +172,10 @@ fn init_import_takes_the_prefix_beads_keyed_the_records_under() {
                     "{dir}"
                 );
             }
-            Err(failure) => assert_eq!(code(&run), failure, "{dir}: {}", run.stderr),
+            Err((failure, says)) => {
+                assert_eq!(code(&run), failure, "{dir}: {}", run.stderr);
+                assert!(run.stderr.contains(says), "{dir}: {}", run.stderr);
+            }
         }
     }
 }

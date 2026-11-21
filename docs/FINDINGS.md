@@ -25,11 +25,11 @@ Reviewers: propose new rows in your report using the next free id for your revie
 ## Weeding audit (2026-11-17, ids AT)
 
 Not reported by a review: an audit for workarounds and copied patterns that the next change would
-copy as the established way (PRs #143 to #305), each candidate checked against the code. Most of
+copy as the established way (PRs #143 to #306), each candidate checked against the code. Most of
 its slices changed no behaviour; these rows are the bugs it found on the way, each fixed with a
 test that fails without the fix. From AT13 on, many were found by fresh reviews run within the
 audit and by runs of the built bead in scratch repositories, the seven real Beads exports on the
-maintainer's machine among them (AT77), and AT78 to AT95 by reviews of the audit's own changes;
+maintainer's machine among them (AT77), and AT78 to AT99 by reviews of the audit's own changes;
 none of those runs left a report under `reviews/`.
 
 | Id | Severity | Finding | Status | Resolution | Tests |
@@ -129,6 +129,10 @@ none of those runs left a report under `reviews/`.
 | AT93 | Low | AT91's rule kept an scp URL's colon, so `git@host:/srv/r.git` and `ssh://git@host/srv/r.git`, one repository, were refused as `CONFIG` | fixed | Scp's `host:PATH` is compared as `host/PATH`, the colon read as the slash (#304) | `beadroll-sync`: `link::tests::a_port_does_not_make_another_place` |
 | AT94 | Low | A `config.yaml` beginning with a byte order mark, or holding `issue-prefix : br`, had its prefix ignored, so a lone slug-keyed record gave its slug again (AT83) | fixed | A key is read after a byte order mark and with spaces before its colon, unindented (#304) | `beadroll`: `commands::input::init_import_takes_the_prefix_beads_keyed_the_records_under` |
 | AT95 | Medium | AT88's rule, the first rename of the key in replay order, took a rename its writer had seen made: a sibling's child following its renamed parent from the same key (`x.1.1` → `x.2.1`). The child took that subtree while its parent edge named the issue it meant, renamed later from the key (`x.1.1` → `x.1.2`); #301's last-rename rule handled this case | fixed | Each rename records its cause, the holder it gave way to or the parent it followed, and a child follows the first renamed issue it saw whose cause it had not seen: in its view that issue held the key (`ENCODING` 13) (#305) | `beadroll`: `commands::end_to_end::merges::a_child_does_not_follow_a_rename_its_writer_saw_made` |
+| AT96 | Medium | AT95's follow took the parent it followed as its cause, which every writer of a grandchild has seen, so a grandchild made offline under a child that followed its parent kept its key (`x.1.1.1` under `x.2.1`), the AT85 defect one level down | fixed | A follow inherits the cause of the rename it followed (#306) | `beadroll`: `commands::end_to_end::merges::a_grandchild_follows_its_parent_that_followed` |
+| AT97 | Low | The split-remote check refused `host:r` with `ssh://host/~/r`, one repository, and let `host:r` pass with `ssh://host/r`, which on a plain ssh server is another (the home directory's `r`, the root's) | fixed, and a decision | A home directory's path is compared as the root's, as a forge serves both; the plain server's pair passes, recorded in REVIEWING §2 (#306) | `beadroll-sync`: `link::tests::a_port_does_not_make_another_place` |
+| AT98 | Low | An scp URL with a bracketed IPv6 host (`git@[fd00::1]:/srv/r.git`) was refused with its own `ssh://` URL: the colons inside the brackets were taken for scp's, and a port after `]` was not set aside | fixed | Scp syntax is rewritten as its `ssh://` URL, a bracketed host kept whole, and a port is set aside before normalising (#306) | `beadroll-sync`: `link::tests::a_port_does_not_make_another_place` |
+| AT99 | Low | A `config.yaml` whose prefix was a YAML block (`issue_prefix: \|`), tag (`!!str br`) or the like had its first characters taken for the prefix, so the import was refused as not keyed under `\|` | fixed | Such a value is reported as YAML bead does not read: give `--prefix` (#306) | `beadroll`: `commands::input::init_import::init_import_takes_the_prefix_beads_keyed_the_records_under` |
 
 ## Published-count race (roll-byaq, 2026-11-12)
 

@@ -210,43 +210,90 @@ fn one_repository(ws: &Workspace, env: &Env, remote: &Endpoint) -> Result<(), Er
 }
 
 /// Where `url` reaches, as [`one_repository`] compares places: normalised as the URL-derived id
-/// reads a remote, without a URL's port (`ssh://host:2222/…`). Scp syntax has no port
-/// (`host:2222/r` is the path `2222/r`), so its normalised form is kept whole.
+/// reads a remote, without a URL's port (`ssh://host:2222/…`), scp syntax as the `ssh://` URL it
+/// is, and a home directory's path as the root's.
 fn place(url: &OsStr, cwd: &std::path::Path) -> Vec<u8> {
     let normalized = normalize_remote(url, cwd);
     if url.as_bytes().windows(3).any(|w| w == b"://") {
-        return without_port(&normalized);
+        let portless = without_port(url.as_bytes());
+        return home_as_root(normalize_remote(OsStr::from_bytes(&portless), cwd).as_bytes());
     }
     if beadroll_git::is_local_path(url) {
         return normalized.into_vec();
     }
-    // scp's `host:PATH` is `ssh://host/PATH`: its colon read as the slash, whatever follows it
-    let bytes = normalized.as_bytes();
-    match bytes.iter().position(|b| *b == b':') {
-        Some(colon) if !bytes[..colon].contains(&b'/') => {
-            let path = bytes[colon + 1..]
-                .strip_prefix(b"/")
-                .unwrap_or(&bytes[colon + 1..]);
-            [&bytes[..colon], b"/", path].concat()
-        }
-        _ => bytes.to_vec(),
+    match scp_as_ssh(beadroll_git::strip_text_bytes(url.as_bytes())) {
+        Some(ssh) => place(OsStr::from_bytes(&ssh), cwd),
+        None => normalized.into_vec(),
     }
 }
 
-/// `normalized`, a remote as `normalize_remote` gives it, without a port after its host
-/// (`host:2222/o/r` is `host/o/r`); a local path as it is.
-fn without_port(normalized: &OsStr) -> Vec<u8> {
-    let bytes = normalized.as_bytes();
-    if bytes.starts_with(b"/") {
-        return bytes.to_vec();
+/// `place` with a home-directory path (`host/~/r`) read as the root's (`host/r`), as a forge
+/// serves both, and a relative scp path and an absolute one alike (REVIEWING §2).
+fn home_as_root(place: &[u8]) -> Vec<u8> {
+    if place.starts_with(b"/") {
+        return place.to_vec(); // a local path
     }
-    let host_end = bytes.iter().position(|b| *b == b'/').unwrap_or(bytes.len());
-    let (host, rest) = bytes.split_at(host_end);
-    match host.iter().rposition(|b| *b == b':') {
-        Some(colon) if host[colon + 1..].iter().all(u8::is_ascii_digit) => {
-            [&host[..colon], rest].concat()
+    let host_end = place.iter().position(|b| *b == b'/').unwrap_or(place.len());
+    match place[host_end..].strip_prefix(b"/~/") {
+        Some(path) => [&place[..host_end], b"/", path].concat(),
+        None => place.to_vec(),
+    }
+}
+
+/// The `ssh://` URL scp syntax's `[user@]host:PATH` is (a host in brackets may hold colons, and
+/// a port is never there: `host:2222/r` is the path `2222/r`). A relative `PATH` is taken from the
+/// root, as a forge serves `git@forge:o/r` and `https://forge/o/r` alike. `None` for what is not
+/// scp syntax.
+fn scp_as_ssh(url: &[u8]) -> Option<Vec<u8>> {
+    let user_end = (url.iter())
+        .position(|b| matches!(b, b'@' | b':' | b'/' | b'['))
+        .filter(|at| url[*at] == b'@')
+        .map_or(0, |at| at + 1);
+    let (user, rest) = url.split_at(user_end);
+    let host_end = if rest.starts_with(b"[") {
+        rest.iter().position(|b| *b == b']')? + 1
+    } else {
+        rest.iter().position(|b| matches!(b, b':' | b'/'))?
+    };
+    let (host, path) = rest.split_at(host_end);
+    let path = path.strip_prefix(b":")?;
+    if host.is_empty() {
+        return None;
+    }
+    let slash: &[u8] = if path.starts_with(b"/") { b"" } else { b"/" };
+    Some([b"ssh://", user, host, slash, path].concat())
+}
+
+/// `url`, a URL with a scheme, without a port after its host (`ssh://host:2222/o/r` is
+/// `ssh://host/o/r`, and `ssh://[fd00::1]:22/r` is `ssh://[fd00::1]/r`), read before
+/// `normalize_remote`, which takes a bracketed host's colons for scp's.
+fn without_port(url: &[u8]) -> Vec<u8> {
+    let Some(start) = url.windows(3).position(|w| w == b"://").map(|at| at + 3) else {
+        return url.to_vec();
+    };
+    let end = (url[start..].iter())
+        .position(|b| *b == b'/')
+        .map_or(url.len(), |at| start + at);
+    let authority = &url[start..end];
+    let host_start = authority
+        .iter()
+        .rposition(|b| *b == b'@')
+        .map_or(0, |at| at + 1);
+    let host = &authority[host_start..];
+    let after_host = if host.starts_with(b"[") {
+        host.iter()
+            .position(|b| *b == b']')
+            .map_or(host.len(), |at| at + 1)
+    } else {
+        host.iter().position(|b| *b == b':').unwrap_or(host.len())
+    };
+    let port = &host[after_host..];
+    match port.strip_prefix(b":") {
+        Some(digits) if digits.iter().all(u8::is_ascii_digit) => {
+            let cut = start + host_start + after_host;
+            [&url[..cut], &url[end..]].concat()
         }
-        _ => bytes.to_vec(),
+        _ => url.to_vec(),
     }
 }
 
@@ -514,8 +561,17 @@ mod tests {
         assert_ne!(place("https://forge.example/o/other.git"), https);
         assert_eq!(place("/srv/git/r.git"), place("/srv/git/r.git/"));
         // scp syntax has no port: `2222/o/r` is its path, another repository, the same one as
-        // `https://forge.example/2222/o/r`; an absolute scp path is the ssh URL's
+        // `https://forge.example/2222/o/r`; an absolute scp path is the ssh URL's, and a home
+        // directory's path the root's, as a forge reads them
         assert_ne!(place("git@forge.example:2222/o/r.git"), https);
+        assert_eq!(place("forge.example:r"), place("ssh://forge.example/~/r"));
+        assert_eq!(place("forge.example:~/r"), place("ssh://forge.example/r"));
+        assert_ne!(place("forge.example:~u/r"), place("ssh://forge.example/r"));
+        // a bracketed host holds colons
+        let v6 = place("ssh://git@[fd00::1]/srv/r.git");
+        assert_eq!(place("git@[fd00::1]:/srv/r.git"), v6);
+        assert_eq!(place("ssh://git@[fd00::1]:22/srv/r.git"), v6);
+        assert_ne!(place("git@[fd00::2]:/srv/r.git"), v6);
         assert_eq!(
             place("git@forge.example:2222/o/r.git"),
             place("https://forge.example/2222/o/r")

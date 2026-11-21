@@ -25,13 +25,13 @@ pub(super) fn create(
     let eid = event.id;
     let mut key = create.key.clone();
     // a child minted under its parent's key before a merge renamed that parent follows it
-    if let Some((followed, parent)) = followed(st, k, event, &key) {
+    if let Some((followed, cause)) = followed(st, k, event, &key) {
         st.renames.push(Rename {
             from: std::mem::replace(&mut key, followed.clone()),
             to: followed,
             replica: event.trace.replica().to_owned(),
             uid: eid,
-            cause: parent,
+            cause,
         });
     }
     if let Some(&holder) = st.by_key.get(&key) {
@@ -76,7 +76,8 @@ pub(super) fn create(
     Ok(())
 }
 
-/// The key a child minted as `minted` has once its parent's rename is followed, with that parent: `minted`'s parent
+/// The key a child minted as `minted` has once its parent's rename is followed, with that rename's
+/// cause, which the child's follow inherits: `minted`'s parent
 /// part (`t-x.15` of `t-x.15.1`) was the key of the parent its writer meant, which a merge renamed
 /// (another machine's child of that number came first), so that the child takes its parent's key
 /// now with its own number (`t-x.16.1`), where it would read as a child of the issue that holds
@@ -104,7 +105,9 @@ fn followed(
         rename.from == parent && k.saw_at(event.at, rename.uid) && !k.saw_at(event.at, rename.cause)
     })?;
     let now = st.issues.get(&renamed.uid)?.key();
-    (now != parent).then(|| (format!("{now}.{number}"), renamed.uid))
+    // a grandchild made under the child before the sync follows the child as the child followed
+    // its parent: a writer that saw what made the parent give way saw both renames made
+    (now != parent).then(|| (format!("{now}.{number}"), renamed.cause))
 }
 
 /// The issue a create makes, under `key`: a register for each field it carries, the status's
