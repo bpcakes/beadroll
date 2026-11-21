@@ -472,12 +472,7 @@ pub fn write_problem(event: &Value) -> Option<String> {
         let key = data_of(event)
             .and_then(|d| d.get("key"))
             .and_then(Value::as_str);
-        let numbered = key
-            .and_then(|key| key.rsplit_once('.'))
-            .is_some_and(|(under, n)| {
-                !under.is_empty() && !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())
-            });
-        if !numbered {
+        if key.and_then(crate::key::child_number).is_none() {
             return Some("create event names a 'parent' but has no PARENT.N 'key'".into());
         }
     }

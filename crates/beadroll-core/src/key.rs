@@ -17,6 +17,17 @@ pub(crate) fn split_number(key: &str) -> Option<(&str, &str)> {
     numbered.then_some((stem, digits))
 }
 
+/// `minted`'s parent part and number (`t-x.15` and `1` of `t-x.15.1`), when its last part is a
+/// number after a parent part: the key of a child minted under its parent's, what a create naming
+/// a parent must have (`event::write_problem`) and what replay gives the parent's key now
+/// (`replay::apply::create`). `.1` is none, as no issue has the empty key. Unlike
+/// [`split_number`], the parent part may hold a newline: it is the parent's key, whatever it is.
+pub(crate) fn child_number(minted: &str) -> Option<(&str, &str)> {
+    let (parent, number) = minted.rsplit_once('.')?;
+    let numbered = !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit());
+    (numbered && !parent.is_empty()).then_some((parent, number))
+}
+
 /// Whether a key exceeds format 1's original admission limit. Older imports wrote numbered keys
 /// with up to 4,299 digits; they remain valid even though ordinary counters now use an `i128`.
 pub(crate) fn number_too_long(key: &str) -> bool {
@@ -198,5 +209,17 @@ mod tests {
             mint_key("ex", "s", Some("ex-1"), &[&format!("ex-1.{BELOW}")]).as_deref(),
             Ok(&*format!("ex-1.{MOST}"))
         );
+    }
+
+    /// A child's key is a parent part and a number, whatever the parent part holds: a newline,
+    /// which a key with a number of its own may not, among it; neither part may be empty.
+    #[test]
+    fn a_childs_key_is_a_parent_part_and_a_number() {
+        assert_eq!(child_number("t-x.15.1"), Some(("t-x.15", "1")));
+        assert_eq!(child_number("odd\nstem.2"), Some(("odd\nstem", "2")));
+        assert_eq!(split_number("odd\nstem.2"), None);
+        for none in [".1", "t-x.", "t-x", "t-x.1a", "t-x.١"] {
+            assert_eq!(child_number(none), None, "{none:?}");
+        }
     }
 }
