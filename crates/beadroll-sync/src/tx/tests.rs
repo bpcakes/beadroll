@@ -338,7 +338,7 @@ fn a_create_the_state_applies_is_a_parent_only_if_replay_made_it() {
 /// waited for them when the remote refused the attempt, or, built beside them, could replay before
 /// the claim, edit or create of the attempt it relied on, its effect lost though both landed. Any
 /// record of the journal after the attempt began is refused, whether or not the state was read
-/// between, and goes through the attempt instead (AT100).
+/// between, and goes through the attempt instead (AT104).
 #[test]
 fn a_record_of_the_journal_after_the_attempt_began_is_refused() {
     let fixture = Fixture::new("");

@@ -357,7 +357,7 @@ fn create_of(key: &str, parent: Option<EventId>) -> Object {
 
 /// A create built on a cause that waits for one of its own makes no issue until it comes, and is
 /// no parent of a create after it in the transaction whether or not the state was read between
-/// them, where the transaction took it for one until a read applied it (AT100).
+/// them, where the transaction took it for one until a read applied it (AT102).
 #[test]
 fn a_create_built_on_a_waiting_cause_is_no_parent_however_the_transaction_is_read() {
     let sandbox = sandbox();
@@ -399,7 +399,7 @@ fn a_create_built_on_a_waiting_cause_is_no_parent_however_the_transaction_is_rea
 /// in no journal's chain and applied, for a parent of the attempt's own creates (not of the
 /// journal's, appended before the attempt is published), whether or not the state was read
 /// between, as the state says once read; `writing` refuses such a journal before its body runs
-/// (AT100).
+/// (AT102).
 #[test]
 fn a_create_on_a_broken_chain_is_no_parent_however_the_transaction_is_read() {
     let sandbox = sandbox();
@@ -455,7 +455,7 @@ fn a_create_on_a_broken_chain_is_no_parent_however_the_transaction_is_read() {
 /// A placeholder that broke this machine's journal chain, malformed and built on nothing, is no
 /// predecessor: a create after it builds on the valid record before it and applies, and is a
 /// parent whether or not the state was read between, where every break was taken for one that
-/// sets aside each record after it (AT100).
+/// sets aside each record after it (AT102).
 #[test]
 fn a_create_after_a_placeholder_that_broke_the_chain_is_a_parent() {
     let sandbox = sandbox();

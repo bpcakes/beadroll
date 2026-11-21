@@ -121,7 +121,7 @@ fn a_count_of_entries_made_anew_beyond_the_table_is_refused() {
 
 /// An index part naming as a machine's last applicable event one that is not, an earlier event
 /// its knowledge holds, or naming none for a machine whose journal holds one, is refused: a write would build on it, and replay set the write aside as a
-/// broken chain where the frontier did not reach the last (AT100).
+/// broken chain where the frontier did not reach the last (AT102).
 #[test]
 fn an_index_naming_another_event_last_in_a_journal_is_refused() {
     let (encoded, _) = project(journal(&three())).unwrap().encode(0);
@@ -167,7 +167,7 @@ fn an_index_naming_another_event_last_in_a_journal_is_refused() {
 
 /// A projection whose ids hold one the journal does not, as an index read back could, declines an
 /// event naming it beside the frontier: replay leaves that event waiting for it, where the
-/// projection, taking the id for a cause applied, applied the event without it (AT100).
+/// projection, taking the id for a cause applied, applied the event without it (AT102).
 #[test]
 fn an_id_the_journal_does_not_hold_is_no_cause_an_extension_applies_after() {
     let mut projection = project(journal(&three())).unwrap();
@@ -186,7 +186,7 @@ fn an_id_the_journal_does_not_hold_is_no_cause_an_extension_applies_after() {
 
 /// A projection whose ids lack one its knowledge keeps a record of, as an index read back could,
 /// declines an event naming it beside the frontier: the journal does not hold it, and replay leaves
-/// the event waiting for it (AT100).
+/// the event waiting for it (AT102).
 #[test]
 fn a_record_kept_without_its_id_is_no_cause_an_extension_applies_after() {
     let mut projection = project(journal(&three())).unwrap();
@@ -206,7 +206,7 @@ fn a_record_kept_without_its_id_is_no_cause_an_extension_applies_after() {
 /// An index naming an event its ids lack, as a buggy build could write one, is refused: a
 /// journal's last applicable event off the frontier, which a write builds on, would otherwise be
 /// a cause no journal holds, and the write wait for it; and so with any event its knowledge keeps,
-/// a machine's latest, or a claim superseded (AT100).
+/// a machine's latest, or a claim superseded (AT103).
 #[test]
 fn an_index_naming_an_event_its_ids_lack_is_refused() {
     let mut records = three();
@@ -251,7 +251,7 @@ fn an_index_naming_an_event_its_ids_lack_is_refused() {
 /// A state part read with an index from before an issue it holds was made, as only bytes forged
 /// with their sums, or a buggy build, could pair (both parts are of one file, under one header's
 /// sums), is refused: the issue's create, which a child's create names among its causes, would
-/// otherwise be a parent no journal holds, and the child wait for it (AT100).
+/// otherwise be a parent no journal holds, and the child wait for it (AT103).
 #[test]
 fn a_state_naming_an_event_the_index_lacks_is_refused() {
     let records = three();
@@ -280,7 +280,7 @@ fn a_state_naming_an_event_the_index_lacks_is_refused() {
 /// A state part read with an index from before the cause an issue's create waited for came, as
 /// only bytes forged with their sums, or a buggy build, could pair, is refused though the index
 /// keeps that create: it was pending there, and the issue a parent replay of that journal never
-/// made (AT100). The cause, a machine's `init`, adds nothing else the state names.
+/// made (AT103). The cause, a machine's `init`, adds nothing else the state names.
 #[test]
 fn a_state_naming_a_create_the_index_holds_pending_is_refused() {
     let mut data = fields("issue 4");

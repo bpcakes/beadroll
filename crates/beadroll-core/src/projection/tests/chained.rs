@@ -1,4 +1,4 @@
-//! Histories whose journals hold what keeps the frontier off a machine's last record (AT100): a
+//! Histories whose journals hold what keeps the frontier off a machine's last record (AT102): a
 //! cycle of causes, a cause no journal holds yet (later written, by another machine), an operation
 //! replay does not know, a placeholder (an operation that is no text), a record written with the
 //! clock turned back, in the store's own journal as in others. Machine 0 builds each write on what
