@@ -9,10 +9,10 @@ same commands, and goes when bead has them.
 
 A machine joins a board once: `board join REMOTE` reads from REMOTE's journal the workspace it
 belongs to and remembers both. `board setup` puts the skill and a session-start notice into
-every home Claude Code and Codex have on the machine, and `board` on the PATH; `board doctor`
-says what each home has and whether the machine can reach the board. A board is started with
-bead itself, outside every checkout: `BEAD_WORKSPACE=NAME BEAD_REMOTE=REMOTE bead init --prefix
-msg`.
+every home Claude Code and Codex have on the machine, and `board` on the PATH; `board uninstall`
+takes all of that out again; `board doctor` says what each home has and whether the machine
+can reach the board. A board is started with bead itself, outside every checkout:
+`BEAD_WORKSPACE=NAME BEAD_REMOTE=REMOTE bead init --prefix msg`.
 
 Beside this file, messages.py is the board through bead and homes.py the agents' homes; this
 file is what each command prints.
@@ -154,18 +154,76 @@ def join(board, args):
 
 def setup(board, args):
     """Puts the board into every home Claude Code and Codex have on this machine, and `board` on
-    the PATH (homes.plan says where, and why there), or with `--remove` takes out what this made
-    and nothing else."""
+    the PATH: homes.plan says where, and why there. `uninstall` takes it out again."""
     source = skill_folder()
     if not homes.is_skill(source):
         raise Failure("SETUP", f"{source} is not the board skill's folder: it has no SKILL.md of it")
     chosen = state_file("setup.json")
     try:
-        document, lines, left = homes.setup(source, not args.no_hooks, args.remove, args.dry_run, chosen)
+        document, lines, left = homes.setup(source, not args.no_hooks, False, args.dry_run, chosen)
     except homes.Unusable as error:
         raise Failure("SETUP", str(error)) from error
-    if not args.remove and not (board.remote and board.workspace):
+    if not (board.remote and board.workspace):
         lines.append("This machine has joined no board yet: board join REMOTE")
+    emit(args, document, "\n".join(lines).replace(os.path.expanduser("~"), "~"))
+    return 1 if left else 0
+
+
+def forgotten(dry_run):
+    """Removes, unless `dry_run`, what `join` and `inbox` keep on this machine: the board joined
+    and, for each board, what each name was shown. Only the files this command writes go, and a
+    folder only once it is empty. Returns their paths."""
+    home = state_file()
+    paths = [path for path in [state_file("joined.json")] if os.path.exists(path)]
+    folders = []
+    for name in sorted(os.listdir(home)) if os.path.isdir(home) else []:
+        folder = os.path.join(home, name)
+        if os.path.isdir(folder) and not os.path.islink(folder):
+            folders.append(folder)
+            paths += [os.path.join(folder, shown) for shown in sorted(os.listdir(folder)) if shown.endswith(".json")]
+    if not dry_run:
+        for path in paths:
+            os.unlink(path)
+        for folder in [*folders, home]:
+            if os.path.isdir(folder) and not os.listdir(folder):
+                os.rmdir(folder)
+    return paths
+
+
+def uninstall(board, args):
+    """Takes out everything `setup` put on this machine, in every home it set up: the skill's
+    copy, the links to it, `board` on the PATH and the session-start hooks. With `--forget`,
+    what `join` and `inbox` remember goes too. bead's own copy of the board's journal is never
+    touched: it is bead's, and may hold what was not yet published."""
+    try:
+        store = board.once("info").get("path") if board.remote and board.workspace else None
+    except Failure:
+        store = None
+    try:
+        document, lines, left = homes.setup(skill_folder(), False, True, args.dry_run, state_file("setup.json"))
+    except homes.Unusable as error:
+        raise Failure("SETUP", str(error)) from error
+    if not document["steps"]:
+        lines.append("Nothing that setup made is here.")
+    if any(step["path"].endswith("hooks.json") for step in document["steps"]):
+        lines.append(
+            "Codex's own note that its user trusted the hook stays in its config.toml, under"
+            " [hooks.state]; it does nothing without the hook."
+        )
+    if args.forget:
+        document["forgotten"] = forgotten(args.dry_run)
+        would = "would have " if args.dry_run else ""
+        lines += [f"{would}removed  {path}" for path in document["forgotten"]]
+    elif os.path.exists(state_file("joined.json")):
+        lines.append(
+            f"Kept: the board this machine joined and what each name was shown, in {state_file()}"
+            " (--forget removes them too)."
+        )
+    if store and os.path.isdir(store):
+        lines.append(
+            f"Kept: bead's copy of the board's journal, in {store}. It is bead's, and may hold what"
+            " was not yet published."
+        )
     emit(args, document, "\n".join(lines).replace(os.path.expanduser("~"), "~"))
     return 1 if left else 0
 
@@ -535,8 +593,13 @@ def parser():
     command("sync", sync, "exchange the journal with the remote now")
     placing = command("setup", setup, "put the board into every home of Claude Code and Codex, and on the PATH")
     placing.add_argument("--dry-run", action="store_true", help="say what would be done, and do nothing")
-    placing.add_argument("--remove", action="store_true", help="take out what setup made")
     placing.add_argument("--no-hooks", action="store_true", help="the skill only: no notice when a session starts")
+    removing = command("uninstall", uninstall, "take out everything setup put on this machine, in every home")
+    removing.add_argument("--dry-run", action="store_true", help="say what would be removed, and remove nothing")
+    removing.add_argument(
+        "--forget", action="store_true",
+        help="also what join and inbox remember: the board joined, and what each name was shown",
+    )
     command("doctor", doctor, "what this machine and each agent home have, and what is missing")
     hooked = command("hook", None, "what a session-start hook runs: a line when something is new for you")
     hooked.add_argument("agent", choices=sorted(homes.VARIABLE), help="the agent whose session starts")
@@ -549,7 +612,7 @@ def main():
         sys.exit(hook(args))
     try:
         board = Board(args.name or None)
-        if args.command not in ("join", "setup", "doctor"):
+        if args.command not in ("join", "setup", "uninstall", "doctor"):
             board.name()
         sys.exit(args.run(board, args) or 0)
     except (Failure, OSError) as error:

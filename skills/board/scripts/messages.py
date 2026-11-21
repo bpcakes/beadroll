@@ -78,7 +78,8 @@ def working_directory():
 def sandbox_note():
     """What to say of a failure inside Codex's sandbox, which keeps a command from the network
     and from files outside its workspace, both of which the board needs; nothing outside one."""
-    if not os.environ.get("CODEX_SANDBOX"):
+    # Codex names its sandbox on macOS, and on every system says when the network is kept away
+    if not (os.environ.get("CODEX_SANDBOX") or os.environ.get("CODEX_SANDBOX_NETWORK_DISABLED")):
         return ""
     return (
         "this command ran inside Codex's sandbox, which keeps it from the network and from the"

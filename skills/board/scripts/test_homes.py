@@ -6,6 +6,7 @@ directory of its own in a scratch folder; none reads or writes the real one.
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -64,7 +65,8 @@ class Scratch(unittest.TestCase):
                 if os.path.islink(path):
                     found[path] = ("link", os.readlink(path))
                 elif os.path.isfile(path):
-                    found[path] = ("file", read(path))
+                    with open(path, "rb") as file:
+                        found[path] = ("file", file.read())
         return found
 
 
@@ -137,8 +139,26 @@ class Setting(Scratch):
             self.path(".codex", "hooks.json"), self.path(".codex-other", "hooks.json"),
         ):
             self.assertTrue(homes.has_hook(json.loads(read(hooked))), hooked)
-        self.assertEqual(json.loads(read(self.chosen)), {"hooks": True})
+        kept = json.loads(read(self.chosen))
+        self.assertIs(kept["hooks"], True)
+        self.assertEqual(
+            kept["homes"],
+            [["claude", self.path(".claude")], ["claude", self.path(".claude-work")],
+             ["codex", self.path(".codex")], ["codex", self.path(".codex-other")]],
+        )
         self.assertIn({"what": "hooked", "path": self.path(".codex", "hooks.json")}, document["steps"])
+
+    def test_only_the_skills_own_files_are_installed(self):
+        source = self.path("copied", "board")
+        shutil.copytree(SOURCE, source, ignore=shutil.ignore_patterns("__pycache__"))
+        with open(os.path.join(source, "scripts", "._board"), "wb") as left:  # what a copy from macOS leaves
+            left.write(b"\x00\x05\x16\x07\xa3")
+        write(os.path.join(source, "scripts", ".DS_Store"), "x")
+        _, lines, left = homes.setup(source, True, False, False, self.chosen, self.top, {})
+        self.assertFalse(left, lines)
+        installed = self.path(".agents", "skills", "board")
+        self.assertEqual(sorted(os.listdir(os.path.join(installed, "scripts"))), ["board", "homes.py", "messages.py"])
+        self.assertTrue(homes.same_skill(source, installed))
 
     def test_a_settings_file_keeps_everything_it_had_in_its_order_and_spelling(self):
         self.setup()
@@ -173,6 +193,23 @@ class Setting(Scratch):
         self.assertEqual(after[self.settings], before[self.settings])
         self.assertFalse(os.path.exists(self.path(".agents", "skills", "board")))
         self.assertFalse(os.path.exists(self.path(".codex", "hooks.json")))
+        self.assertFalse(os.path.exists(self.chosen))
+
+    def test_remove_reaches_a_home_that_only_its_variable_named_when_it_was_set_up(self):
+        elsewhere = self.path("accounts", "claude-x")
+        os.makedirs(elsewhere)
+        before = self.tree()
+        homes.setup(SOURCE, True, False, False, self.chosen, self.top, {"CLAUDE_CONFIG_DIR": elsewhere})
+        self.assertTrue(os.path.islink(os.path.join(elsewhere, "skills", "board")))
+        self.assertTrue(homes.has_hook(json.loads(read(os.path.join(elsewhere, "settings.json")))))
+        _, lines, left = self.setup(remove=True)  # run later, from a session of another home
+        self.assertFalse(left, lines)
+        self.assertEqual({path for path in self.tree() if path not in before}, set(), "left behind")
+
+    def test_remove_with_nothing_set_up_does_nothing(self):
+        before = self.tree()
+        document, _, left = self.setup(remove=True)
+        self.assertEqual((document["steps"], left, self.tree()), ([], False, before))
 
     def test_without_hooks_the_skill_goes_in_and_a_hook_set_before_comes_out(self):
         self.setup()
@@ -180,7 +217,7 @@ class Setting(Scratch):
         self.assertEqual(read(self.settings), self.kept_settings)
         self.assertFalse(os.path.exists(self.path(".codex", "hooks.json")))
         self.assertTrue(os.path.islink(self.path(".claude", "skills", "board")))
-        self.assertEqual(json.loads(read(self.chosen)), {"hooks": False})
+        self.assertIs(json.loads(read(self.chosen))["hooks"], False)
 
     def test_what_setup_did_not_make_is_left_and_said(self):
         foreign = self.path(".claude-work", "skills", "board", "SKILL.md")
@@ -215,6 +252,7 @@ class Healing(Scratch):
                 ("linked", os.path.join(".claude-new", "skills", "board")),
             ],
         )
+        self.assertIn(["claude", self.path(".claude-new")], json.loads(read(self.chosen))["homes"])
         self.assertEqual(homes.heal(self.chosen, self.top, {}), [])
 
     def test_nothing_is_healed_before_setup_or_after_remove(self):

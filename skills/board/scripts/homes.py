@@ -35,11 +35,12 @@ class Unusable(Exception):
     """Something of a home, or in the way of one, that is not what it should be."""
 
 
-def found(top=None, environ=None):
+def found(top=None, environ=None, known=()):
     """This user's homes of both agents: for each, the default folder and those named after it
     with a dash, when they hold what a home holds, and the home this command runs under when it
     is elsewhere. It is the convention the agents' own variables follow, so a home made later is
-    found the next time anything looks."""
+    found the next time anything looks. `known` are homes found before, which stay in the list
+    while their folders exist: one that only its variable named is not forgotten."""
     top = top or os.path.expanduser("~")
     environ = os.environ if environ is None else environ
     homes = []
@@ -53,7 +54,8 @@ def found(top=None, environ=None):
         here = environ.get(VARIABLE[agent])
         if here and os.path.isdir(here) and os.path.abspath(here) not in paths:
             paths.append(os.path.abspath(here))
-        homes += [Home(agent, path) for path in paths]
+        paths += [home.path for home in known if home.agent == agent and home.path not in paths]
+        homes += [Home(agent, path) for path in paths if os.path.isdir(path)]
     return homes
 
 
@@ -159,27 +161,36 @@ def write_json(path, document):
             os.unlink(partial)
 
 
+def scripts_of(source):
+    """The scripts of the skill at `source` that are installed, by name: not their tests, and
+    not what a system or an editor leaves beside a file (a name that begins with a dot)."""
+    folder = os.path.join(source, "scripts")
+    return [
+        name for name in sorted(os.listdir(folder))
+        if os.path.isfile(os.path.join(folder, name))
+        and not name.startswith((".", "test_")) and not name.endswith(".pyc")
+    ]
+
+
 def copy_skill(source, folder):
-    """Copies the skill from `source` to `folder`: its SKILL.md and its scripts, without their
-    tests. A copy, never a link into a checkout, whose files change with its branch."""
+    """Copies the skill from `source` to `folder`: its SKILL.md and its scripts. A copy, never a
+    link into a checkout, whose files change with its branch."""
     scripts = os.path.join(folder, "scripts")
     if os.path.isdir(scripts):
         shutil.rmtree(scripts)
     os.makedirs(scripts)
     shutil.copyfile(os.path.join(source, "SKILL.md"), os.path.join(folder, "SKILL.md"))
-    for name in sorted(os.listdir(os.path.join(source, "scripts"))):
-        path = os.path.join(source, "scripts", name)
-        if os.path.isfile(path) and not name.startswith("test_") and not name.endswith(".pyc"):
-            shutil.copyfile(path, os.path.join(scripts, name))
+    for name in scripts_of(source):
+        shutil.copyfile(os.path.join(source, "scripts", name), os.path.join(scripts, name))
     os.chmod(os.path.join(scripts, "board"), 0o755)
 
 
 def same_skill(source, folder):
     """Whether `folder` holds what `copy_skill` would put there from `source` now."""
-    names = [os.path.join("scripts", name) for name in sorted(os.listdir(os.path.join(source, "scripts")))]
-    names = [name for name in names if os.path.isfile(os.path.join(source, name))]
-    names = [name for name in names if not os.path.basename(name).startswith("test_") and not name.endswith(".pyc")]
+    names = [os.path.join("scripts", name) for name in scripts_of(source)]
     try:
+        if sorted(os.listdir(os.path.join(folder, "scripts"))) != scripts_of(source):
+            return False
         for name in ["SKILL.md", *names]:
             with open(os.path.join(source, name), "rb") as ours, open(os.path.join(folder, name), "rb") as theirs:
                 if ours.read() != theirs.read():
@@ -189,10 +200,10 @@ def same_skill(source, folder):
     return True
 
 
-def plan(source, hooks, remove=False, top=None, environ=None):
-    """What puts the board into every home of this user, or with `remove` takes it out: the
-    steps, each with what it does, the path it does it to and how (a step without an action only
-    reports), and what was left alone and why.
+def plan(source, hooks, remove=False, top=None, environ=None, known=()):
+    """What puts the board into every home of this user (those `found`, with the `known`), or
+    with `remove` takes it out: the steps, each with what it does, the path it does it to and how
+    (a step without an action only reports), and what was left alone and why.
 
     The skill's folder is copied to ~/.agents/skills/board, which Codex reads under every home;
     each Claude home's skills get a link to it; ~/.local/bin gets a link to the script; and with
@@ -201,7 +212,7 @@ def plan(source, hooks, remove=False, top=None, environ=None):
     top = top or os.path.expanduser("~")
     folder = os.path.join(top, INSTALLED)
     script = os.path.join(top, SCRIPT)
-    homes = found(top, environ)
+    homes = found(top, environ, known)
     links = [(os.path.join(home.path, "skills", "board"), folder, home.path) for home in homes if home.agent == "claude"]
     links.append((os.path.join(top, ".local", "bin", "board"), script, os.path.join(top, ".local", "bin")))
     installed = os.path.isdir(folder) and not os.path.islink(folder) and is_skill(folder)
@@ -271,7 +282,7 @@ def sandbox_of(home):
     return mode.group(1) if mode else None
 
 
-def checks(top=None, environ=None):
+def checks(top=None, environ=None, known=()):
     """What each home has of the board, for `board doctor`: per home its agent, its path, how
     its sessions find the skill, whether its session-start hook is set, and for a Codex home how
     it runs commands."""
@@ -279,7 +290,7 @@ def checks(top=None, environ=None):
     folder = os.path.join(top, INSTALLED)
     installed = os.path.isdir(folder) and not os.path.islink(folder) and is_skill(folder)
     rows = []
-    for home in found(top, environ):
+    for home in found(top, environ, known):
         if home.agent == "claude":
             link = os.path.join(home.path, "skills", "board")
             if made_here(link, folder):
@@ -299,28 +310,41 @@ def checks(top=None, environ=None):
     return rows
 
 
-def chosen_hooks(chosen):
-    """Whether `setup` was last asked for the session-start notice, as the file at `chosen`
-    remembers it, or None when setup has not run."""
+def remembered(chosen):
+    """What `setup` keeps in the file at `chosen`: whether the session-start notice was asked
+    for (None when setup has not run), and the homes it has set up, among them any that the
+    convention would not find again."""
     try:
         document = read_json(chosen)
     except Unusable:
-        return None
-    return bool(document["hooks"]) if "hooks" in document else None
+        return None, []
+    kept = document.get("homes", [])
+    homes = [
+        Home(*entry) for entry in (kept if isinstance(kept, list) else [])
+        if isinstance(entry, list) and len(entry) == 2 and entry[0] in MARKS and isinstance(entry[1], str)
+    ]
+    return (bool(document["hooks"]) if "hooks" in document else None), homes
+
+
+def remember(chosen, hooks, homes):
+    """Keeps at `chosen` what `setup` was asked and the `homes` it has set up."""
+    os.makedirs(os.path.dirname(chosen), mode=0o700, exist_ok=True)
+    write_json(chosen, {"hooks": hooks, "homes": [[home.agent, home.path] for home in homes]})
 
 
 def setup(source, hooks, remove, dry_run, chosen, top=None, environ=None):
-    """Carries out `plan`, unless `dry_run`, and remembers at `chosen` what was asked, so that
-    `heal` can do the same for a home made later. Returns what a command reports: a document,
-    its lines for a person, and whether anything was left alone."""
-    steps, refused = plan(source, hooks, remove, top, environ)
+    """Carries out `plan`, unless `dry_run`, and remembers at `chosen` what was asked and for
+    which homes, so that `heal` can do the same for a home made later and a removal reaches
+    every home that was set up. Returns what a command reports: a document, its lines for a
+    person, and whether anything was left alone."""
+    known = remembered(chosen)[1]
+    steps, refused = plan(source, hooks, remove, top, environ, known)
     if not dry_run:
         for step in steps:
             if step.act:
                 step.act()
         if not remove:
-            os.makedirs(os.path.dirname(chosen), mode=0o700, exist_ok=True)
-            write_json(chosen, {"hooks": hooks})
+            remember(chosen, hooks, found(top, environ, known))
         elif os.path.exists(chosen):
             os.unlink(chosen)
     would = "would have " if dry_run else ""
@@ -349,13 +373,15 @@ def heal(chosen, top=None, environ=None):
     it took."""
     top = top or os.path.expanduser("~")
     folder = os.path.join(top, INSTALLED)
-    hooks = chosen_hooks(chosen)
+    hooks, known = remembered(chosen)
     if hooks is None or not is_skill(folder):
         return []
-    steps, _ = plan(folder, hooks, top=top, environ=environ)
+    steps, _ = plan(folder, hooks, top=top, environ=environ, known=known)
     done = [step for step in steps if step.act]
     for step in done:
         step.act()
+    if done:
+        remember(chosen, hooks, found(top, environ, known))
     return done
 
 
@@ -378,8 +404,8 @@ def rows(source, chosen, top=None, environ=None):
         told.append((False, "command", f"{linked} is there, but its folder is not on this shell's PATH"))
     else:
         told.append((False, "command", "board is not on the PATH: board setup links it into ~/.local/bin"))
-    wanted = chosen_hooks(chosen)
-    for home in checks(top, environ):
+    wanted, known = remembered(chosen)
+    for home in checks(top, environ, known):
         skill_ok = home["skill"] in ("linked", "read from ~/.agents/skills")
         hook_ok = home["hook"] == "set" or (home["hook"] == "missing" and wanted is False)
         text = f"{home['home']}: skill {home['skill']}, session-start notice {home['hook']}"
