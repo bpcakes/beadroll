@@ -90,11 +90,7 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: History
         ..Tally::default()
     };
     for seed in seeds {
-        let mut world = if flawed == HistoryKind::Flawed {
-            World::flawed(20_261_012 + seed)
-        } else {
-            World::new(20_261_012 + seed)
-        };
+        let mut world = World::of(20_261_012 + seed, flawed);
         let mut data = Object::new();
         data.insert("prefix".into(), Value::from("pr"));
         world.write(0, "init", None, data);

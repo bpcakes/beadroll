@@ -169,8 +169,8 @@ jobs:
         uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
         with:
           shared-key: rust-${{ runner.os }}-${{ github.job }}
-      - name: The projection past integrity entries, over 10,000 seeds
-        run: cargo nextest run --locked --release --package beadroll-core --run-ignored only -E 'test(=projection::tests::flawed::many_seeds_past_integrity_entries)'
+      - name: The projection past integrity entries, over 10,000 seeds, and journals the frontier leaves, over 2,000
+        run: cargo nextest run --locked --release --package beadroll-core --run-ignored only -E 'test(=projection::tests::flawed::many_seeds_past_integrity_entries) | test(=projection::tests::chained::many_chained_seeds)'
 
   # fuzz/ is a workspace of its own on the nightly its rust-toolchain.toml pins; bead itself, which
   # writes the seed corpus, builds on the root's toolchain as everywhere else. Nothing real seeds

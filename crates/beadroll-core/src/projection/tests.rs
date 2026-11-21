@@ -5,6 +5,7 @@
 
 pub(crate) mod awaiting;
 mod causes;
+mod chained;
 mod compacted;
 mod copied;
 mod edges;
@@ -29,7 +30,7 @@ use fields::{CreateOrigin, created, written};
 use taken::differential;
 
 use super::parts::Copying;
-use super::{Projection, Record, decode_state};
+use super::{Causes, Projection, Record, decode_state};
 use crate::event::event_problem;
 use crate::id::EventId;
 use crate::journal::{Journal, JournalOrder, canonical};
@@ -44,6 +45,9 @@ pub(crate) enum HistoryKind {
     Valid,
     /// Records replay reports too, and a machine whose identity was copied.
     Flawed,
+    /// Flawed, and journals whose last record the frontier does not reach ([`World::chained`]),
+    /// machine 0 building on what its projection names.
+    Chained,
 }
 
 /// The seeded generator the tests of the crate draw from: the same draws on every run.
@@ -80,6 +84,15 @@ struct World {
     next_id: Option<String>,
     /// Ids a takeover named before any event had them, with the issue it was on.
     promised: Vec<(String, String)>,
+    /// Whether machine 0 builds on what its projection names (`Projection::causes_for`), and the
+    /// machines also write what keeps the frontier off a journal's last record.
+    chained: bool,
+    /// Machine 0's writes built so, by index, with what they were built on: for the test to judge.
+    built: Vec<(usize, Causes)>,
+    /// Ids events name as causes that no event has yet, for another machine to write later.
+    owed: Vec<String>,
+    /// Whether the machines also write cycles of causes, which replay never applies.
+    cycles: bool,
 }
 
 impl World {
@@ -94,6 +107,10 @@ impl World {
             flawed: false,
             next_id: None,
             promised: Vec::new(),
+            chained: false,
+            built: Vec::new(),
+            owed: Vec::new(),
+            cycles: false,
         }
     }
 
@@ -171,7 +188,21 @@ impl World {
         event.insert("v".into(), Value::from(1));
         event.insert("id".into(), Value::from(id.as_str()));
         event.insert("replica".into(), Value::from(self.folders[m]));
-        let deps = self.heads(m).into_iter().map(Value::from).collect();
+        let attempt = matches!(op, "claim" | "release");
+        let causes = (self.chained && m == 0).then(|| {
+            let known = self.machines[0].known.clone();
+            super::project(load(self, &known))
+                .unwrap()
+                .causes_for(MACHINES[0])
+        });
+        let deps = match &causes {
+            // as a transaction builds: the machine's last record too, for one of its journal
+            Some(causes) => (causes.ids.iter())
+                .chain(causes.predecessor.iter().filter(|_| !attempt))
+                .map(|id| Value::from(id.to_string()))
+                .collect(),
+            None => self.heads(m).into_iter().map(Value::from).collect(),
+        };
         event.insert("deps".into(), Value::Array(deps));
         let mut actor = Object::new();
         actor.insert("agent".into(), Value::from("claude"));
@@ -187,7 +218,6 @@ impl World {
             Value::from(issue.unwrap_or_else(|| id.clone())),
         );
         event.insert("data".into(), Value::from(data));
-        let attempt = matches!(op, "claim" | "release");
         self.events.push(Written {
             value: Value::from(event),
             machine: m,
@@ -195,6 +225,7 @@ impl World {
         });
         let at = self.events.len() - 1;
         self.learn(m, at);
+        self.built.extend(causes.map(|causes| (at, causes)));
         id
     }
 
@@ -420,11 +451,7 @@ fn load(world: &World, held: &[usize]) -> Journal {
 /// properties of replay deliver in other orders (`replay::tests`). A world `flawed` also writes
 /// what replay reports.
 pub(crate) fn history(seed: u64, batches: usize, flawed: HistoryKind) -> Vec<Record> {
-    let mut world = if flawed == HistoryKind::Flawed {
-        World::flawed(seed)
-    } else {
-        World::new(seed)
-    };
+    let mut world = World::of(seed, flawed);
     let mut data = Object::new();
     data.insert("prefix".into(), Value::from("pr"));
     world.write(0, "init", None, data);
@@ -476,7 +503,11 @@ impl World {
             if m == 0 && self.rng.chance(60) {
                 let before = self.events.len();
                 for _ in 0..1 + self.rng.below(3) {
-                    self.act(0);
+                    if self.chained && self.rng.chance(10) {
+                        self.chain_flaw(0);
+                    } else {
+                        self.act(0);
+                    }
                 }
                 return (before..self.events.len()).collect();
             }
@@ -487,17 +518,24 @@ impl World {
             if self.flawed && m == 3 && !self.rng.chance(20) {
                 continue;
             }
+            // and a copy of machine 0's, seldom
+            if m == 4 && !self.rng.chance(5) {
+                continue;
+            }
             // two machines now and then claim one issue at once
             if self.rng.chance(10) {
                 self.race();
                 continue;
             }
+            self.pays(m);
             // Another machine usually takes in the latest before it writes, and publishes after.
             if self.rng.chance(70) {
                 self.sync(m);
             }
             for _ in 0..1 + self.rng.below(3) {
-                if self.flawed && self.rng.chance(15) {
+                if self.chained && self.rng.chance(6) {
+                    self.chain_flaw(m);
+                } else if self.flawed && self.rng.chance(15) {
                     self.flaw(m);
                 } else {
                     self.act(m);
@@ -657,10 +695,11 @@ fn read_back(projection: &Projection, file: &mut TextFile, back: WriteBack) -> P
 }
 
 /// Whether `extended` is what projecting the whole journal (`full`) makes, and answers as it does
-/// of every event its state names.
+/// of every event its state names, and of what each machine's next event builds on.
 fn equal(extended: &Projection, full: &Projection) -> bool {
     same(extended.state(), full.state())
         && answers_alike(extended, full.state())
+        && (MACHINES.iter()).all(|machine| extended.causes_for(machine) == full.causes_for(machine))
         && extended.heads == full.heads
         && extended.ids == full.ids
         && extended.lengths == full.lengths
