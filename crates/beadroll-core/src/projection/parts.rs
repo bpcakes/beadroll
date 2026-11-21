@@ -469,7 +469,7 @@ fn held(
     lasts: &HashMap<String, EventId>,
     superseded: &HashSet<EventId>,
 ) -> Result<(), Unreadable> {
-    let applied = names(state).all(|id| knowledge.applied(id));
+    let applied = names(state).all(|id| knowledge.observed(id));
     let among = (ids.iter()).filter(|id| knowledge.events.contains_key(*id));
     let kept = among.count() == knowledge.events.len();
     let mut named = lasts.values().chain(superseded);

@@ -283,7 +283,7 @@ impl Projection {
                 } else if let Some(cause) = events.get_index_of(dep) {
                     *waiting.get_mut(at)? += 1;
                     dependents.get_mut(cause)?.push(at);
-                } else if !self.ids.contains(dep) || !self.state.knowledge.applied(*dep) {
+                } else if !self.ids.contains(dep) || !self.state.knowledge.observed(*dep) {
                     // a cause neither new nor applied here, in the journal and by a record the
                     // knowledge keeps of it: replay places it
                     return None;

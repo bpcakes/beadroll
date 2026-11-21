@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 
 use beadroll_core::json::Value;
 use beadroll_store::{Endpoint, claim_files, read_attempt};
-use beadroll_sync::synchronise;
+use beadroll_sync::{Error, Tx, locked, synchronise};
 use beadroll_test_support::{Machine, git, json, json_line};
 
 use super::damage_tip;
-use crate::support::{Gate, alongside, sandbox, text, workspace};
+use crate::support::{Gate, actor, alongside, sandbox, text, workspace};
 
 /// A pending twin of an already published attempt models a lost confirmation before recovery.
 fn pending_twin(store: &Path, accepted: &Path) -> PathBuf {
@@ -198,8 +198,7 @@ fn a_rebuilt_round_reports_the_rename_its_first_merge_made() {
         synced.sync_repo_rebuilt.is_some(),
         "the merge found sync.git damaged"
     );
-    let from = |r: &Value| r.get("from").and_then(Value::as_str) == Some("ex-a");
-    assert!(synced.renamed.iter().any(from), "{:?}", synced.renamed);
+    reports_the_copy_that_gave_way(&m2, sandbox.origin(), &synced.renamed);
 }
 
 /// A round that wrote nothing and was contended keeps the keys it began with: another process's
@@ -250,8 +249,7 @@ fn a_retried_round_reports_against_the_keys_the_sync_began_with() {
         "both round boundaries were reached"
     );
     let synced = result.expect("the retried round succeeds");
-    let from = |r: &Value| r.get("from").and_then(Value::as_str) == Some("ex-a");
-    assert!(synced.renamed.iter().any(from), "{:?}", synced.renamed);
+    reports_the_copy_that_gave_way(&m2, sandbox.origin(), &synced.renamed);
 }
 
 /// A merge that fails before it writes (`sync.git` damaged at the first blob it reads) keeps the
@@ -341,8 +339,7 @@ fn a_merge_that_fails_before_writing_keeps_the_keys_the_sync_began_with() {
         synced.sync_repo_rebuilt.is_some(),
         "the first merge found sync.git damaged"
     );
-    let from = |r: &Value| r.get("from").and_then(Value::as_str) == Some("ex-a");
-    assert!(synced.renamed.iter().any(from), "{:?}", synced.renamed);
+    reports_the_copy_that_gave_way(&m2, sandbox.origin(), &synced.renamed);
 }
 
 /// A key another process restores between a sync's rounds, with no rename on either side, is
@@ -431,4 +428,36 @@ fn a_key_restored_between_rounds_without_a_rename_is_reported() {
             && r.get("to").and_then(Value::as_str) == Some(key.as_str())
     };
     assert!(synced.renamed.iter().any(back), "{:?}", synced.renamed);
+}
+
+/// The id of the issue `key` names in `machine`'s store now, if one does.
+fn uid_of(machine: &Machine, origin: &Path, key: &str) -> Option<String> {
+    let ws = workspace(machine, origin, &[]);
+    let actor = actor(machine);
+    locked(&ws, || -> Result<_, Error> {
+        let mut tx = Tx::new(&ws, &actor)?;
+        Ok(tx
+            .state()?
+            .resolve(key)
+            .map(|issue| issue.uid().to_string()))
+    })
+    .expect("the store, read")
+}
+
+/// That `renamed` reports the copy of `ex-a` that gave way, and only it: one row moves `ex-a`, the
+/// copy it names by id is the one its new key names in `machine`'s store now, and `ex-a` names the
+/// other copy. A row naming either copy, or any key, passed before.
+fn reports_the_copy_that_gave_way(machine: &Machine, origin: &Path, renamed: &[Value]) {
+    let moved: Vec<&Value> = (renamed.iter())
+        .filter(|row| row.get("from").and_then(Value::as_str) == Some("ex-a"))
+        .collect();
+    let [row] = moved[..] else {
+        panic!("one move of ex-a: {renamed:?}");
+    };
+    let field = |name: &str| row.get(name).and_then(Value::as_str).unwrap_or_default();
+    let (uid, to) = (field("uid"), field("to"));
+    assert_ne!(to, "ex-a", "{row:?}");
+    assert_eq!(uid_of(machine, origin, to).as_deref(), Some(uid), "{row:?}");
+    let kept = uid_of(machine, origin, "ex-a");
+    assert!(kept.is_some_and(|kept| kept != uid), "{row:?}");
 }

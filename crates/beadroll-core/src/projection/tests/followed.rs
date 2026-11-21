@@ -396,12 +396,13 @@ fn a_create_naming_a_held_parent_extends_the_projection() {
     assert_eq!(taken.declined, 0, "{taken:?}");
 }
 
-/// The one journal, read as this build reads it and as a released reader does, which ignores the
-/// member: the child of a parent that gave way is `pr-base.2.1` here and `pr-base.1.1` there, its
-/// minted key, as *Format and upgrades* in GUARANTEES says. CI runs no released bead, so this
-/// holds the difference a mixed fleet shows (AT100).
+/// The one journal, read by this build with and without the create's `parent` member, as a
+/// released reader reads it, ignoring the member: the child of a parent that gave way is
+/// `pr-base.2.1` with it and `pr-base.1.1` without, its minted key, as *Format and upgrades* in
+/// GUARANTEES says. This build reads both; CI runs no released bead, so this stands in for the
+/// difference a mixed fleet shows, not a run of one (AT100).
 #[test]
-fn an_older_reader_keys_the_child_from_its_minted_key() {
+fn a_create_without_its_parent_member_keys_the_child_from_its_minted_key() {
     let mut rest = two_firsts(2);
     rest.push(at(
         22,
