@@ -241,78 +241,81 @@ fn change(
         }
         None => (None, TextValidity::Utf8),
     };
-    let ((issue_key, shown), spent) = writing_spent(ctx.ws, ctx.actor, |tx| {
-        // read as it was before anything is emitted, without a copy (roll-lqjj.29)
-        let (st, mut tx) = tx.lend()?;
-        need_tracker(st)?;
-        let issue = resolve_arg(st, issue_key)?;
-        let uid = issue.uid().to_string();
-        let target = match resolve_arg(st, target_key) {
-            Ok(target) => Some(target),
-            Err(failure) => {
-                if action == Action::Add || dangling_key(st, issue, target_key).is_none() {
-                    return Err(failure);
+    let ((issue_key, issue_uid, shown, shown_uid), spent) =
+        writing_spent(ctx.ws, ctx.actor, |tx| {
+            // read as it was before anything is emitted, without a copy (roll-lqjj.29)
+            let (st, mut tx) = tx.lend()?;
+            need_tracker(st)?;
+            let issue = resolve_arg(st, issue_key)?;
+            let uid = issue.uid().to_string();
+            let target = match resolve_arg(st, target_key) {
+                Ok(target) => Some(target),
+                Err(failure) => {
+                    if action == Action::Add || dangling_key(st, issue, target_key).is_none() {
+                        return Err(failure);
+                    }
+                    // an imported dependency on a key that is not an issue yet: it can still be
+                    // taken back
+                    None
                 }
-                // an imported dependency on a key that is not an issue yet: it can still be
-                // taken back
-                None
-            }
-        };
-        let shown = match (action, target) {
-            (Action::Add, Some(target)) => {
-                let kind = kind.as_deref().unwrap_or(BLOCKS);
-                let looped = closes_a_loop(st, issue, target, kind);
-                if issue.uid() == target.uid() || looped {
-                    return Err(Failure::new(
-                        Code::Cycle,
-                        format!(
-                            "{} -> {} would create a dependency cycle",
-                            issue.key(),
-                            target.key()
-                        ),
-                    ));
+            };
+            // what it depends on by id, where it is an issue
+            let target_uid = target.map(|target| target.uid().to_string());
+            let shown = match (action, target) {
+                (Action::Add, Some(target)) => {
+                    let kind = kind.as_deref().unwrap_or(BLOCKS);
+                    let looped = closes_a_loop(st, issue, target, kind);
+                    if issue.uid() == target.uid() || looped {
+                        return Err(Failure::new(
+                            Code::Cycle,
+                            format!(
+                                "{} -> {} would create a dependency cycle",
+                                issue.key(),
+                                target.key()
+                            ),
+                        ));
+                    }
+                    let edge = edge_data(&target.uid().to_string(), kind);
+                    tx.emit(OpName::DepAdd, Some(&uid), edge, None)?;
+                    encodable(validity)?;
+                    target.key().to_owned()
                 }
-                let edge = edge_data(&target.uid().to_string(), kind);
-                tx.emit(OpName::DepAdd, Some(&uid), edge, None)?;
-                encodable(validity)?;
-                target.key().to_owned()
-            }
-            (_, None) => {
-                let key = dangling_key(st, issue, target_key).unwrap_or_default();
-                let mut data = Object::new();
-                data.insert("key".into(), Value::from(key.as_str()));
-                data.insert("type".into(), kind.clone().map_or(Value::Null, Value::from));
-                tx.emit(OpName::DepRemove, Some(&uid), data, None)?;
-                encodable(validity)?;
-                key
-            }
-            (_, Some(target)) => {
-                let to = Target::Id(target.uid());
-                // what this machine has of it: a dependency removed elsewhere meanwhile is gone
-                // there too, so the removals still agree
-                let depends = (issue.deps().keys()).any(|edge| {
-                    *edge.to() == to && kind.as_deref().is_none_or(|k| k == edge.kind())
-                });
-                if !depends {
-                    let of_kind = kind
-                        .as_deref()
-                        .map_or_else(String::new, |k| format!(" ({k})"));
-                    return Err(Failure::new(
-                        Code::Validation,
-                        format!(
-                            "{} does not depend on {}{of_kind}",
-                            issue.key(),
-                            target.key()
-                        ),
-                    ));
+                (_, None) => {
+                    let key = dangling_key(st, issue, target_key).unwrap_or_default();
+                    let mut data = Object::new();
+                    data.insert("key".into(), Value::from(key.as_str()));
+                    data.insert("type".into(), kind.clone().map_or(Value::Null, Value::from));
+                    tx.emit(OpName::DepRemove, Some(&uid), data, None)?;
+                    encodable(validity)?;
+                    key
                 }
-                remove_edge(&mut tx, st, issue, &to, kind.as_deref())?;
-                encodable(validity)?;
-                target.key().to_owned()
-            }
-        };
-        Ok::<_, Failure>((issue.key().to_owned(), shown))
-    })?;
+                (_, Some(target)) => {
+                    let to = Target::Id(target.uid());
+                    // what this machine has of it: a dependency removed elsewhere meanwhile is gone
+                    // there too, so the removals still agree
+                    let depends = (issue.deps().keys()).any(|edge| {
+                        *edge.to() == to && kind.as_deref().is_none_or(|k| k == edge.kind())
+                    });
+                    if !depends {
+                        let of_kind = kind
+                            .as_deref()
+                            .map_or_else(String::new, |k| format!(" ({k})"));
+                        return Err(Failure::new(
+                            Code::Validation,
+                            format!(
+                                "{} does not depend on {}{of_kind}",
+                                issue.key(),
+                                target.key()
+                            ),
+                        ));
+                    }
+                    remove_edge(&mut tx, st, issue, &to, kind.as_deref())?;
+                    encodable(validity)?;
+                    target.key().to_owned()
+                }
+            };
+            Ok::<_, Failure>((issue.key().to_owned(), uid, shown, target_uid))
+        })?;
     let done = if action == Action::Add {
         "now depends on"
     } else {
@@ -320,7 +323,11 @@ fn change(
     };
     let mut result = Object::new();
     result.insert("issue_id".into(), Value::from(issue_key.as_str()));
+    result.insert("issue_uid".into(), Value::from(issue_uid));
     result.insert("depends_on_id".into(), Value::from(shown.as_str()));
+    // an imported dependency on a key that is no issue yet has no id
+    let depends_on_uid = shown_uid.map_or(Value::Null, Value::from);
+    result.insert("depends_on_uid".into(), depends_on_uid);
     result.insert("action".into(), Value::from(action.word()));
     Ok(Outcome::new(result, vec![format!("{issue_key} {done} {shown}")]).wrote_in(spent))
 }

@@ -147,6 +147,12 @@ events, the result stays on stdout and a warning goes to stderr. With
 write because of that warning; follow its repair instructions. See the
 [command guarantees](docs/GUARANTEES.md) for error and recovery details.
 
+To keep a handle on an issue, store its `uid`, not its key. Every issue in
+`--json` output has an `id`, the key you type (`ex-a.1`), and a `uid`, which
+never changes. A sync can renumber a key that two machines minted offline, so
+`ex-a.1` may name another issue afterwards, while the `uid` names the same one
+on every machine. Every command takes a `uid` wherever it takes a key.
+
 ## Coming from Beads
 
 beadroll reads and writes [Beads](https://github.com/steveyegge/beads) JSONL,

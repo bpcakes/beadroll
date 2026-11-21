@@ -284,11 +284,15 @@ impl State {
         self.knowledge.saw(event, other)
     }
 
-    /// The issue named by a full key or bare suffix.
+    /// The issue named by a full key, a bare suffix, or its id (`uid`, its create's event id,
+    /// which no rename changes): keys first, so that no key's meaning changes.
     pub fn resolve(&self, key: &str) -> Option<&Issue> {
         let uid = (self.by_key.get(key))
-            .or_else(|| self.by_key.get(&format!("{}-{key}", self.key_prefix())))?;
-        self.issue(*uid)
+            .or_else(|| self.by_key.get(&format!("{}-{key}", self.key_prefix())));
+        match uid {
+            Some(uid) => self.issue(*uid),
+            None => self.issue_named(key),
+        }
     }
 
     /// The key of issue `uid`, or `uid` itself if it names no issue.

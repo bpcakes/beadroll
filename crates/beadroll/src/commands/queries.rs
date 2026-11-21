@@ -123,6 +123,7 @@ pub(crate) fn lint(ctx: &Context<'_>) -> Result<Outcome, Failure> {
         .map(|issue| {
             let mut item = Object::new();
             item.insert("id".into(), Value::from(issue.key()));
+            item.insert("uid".into(), Value::from(issue.uid().to_string()));
             item.insert(
                 "title".into(),
                 issue.get(Field::Title).cloned().unwrap_or(Value::Null),

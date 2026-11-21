@@ -25,6 +25,7 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
         let row = |owner: Value, since: Value| {
             let mut row = Object::new();
             row.insert("id".into(), Value::from(issue.key()));
+            row.insert("uid".into(), Value::from(issue.uid().to_string()));
             row.insert("title".into(), title.clone());
             row.insert("owner".into(), owner);
             row.insert("since".into(), since);
@@ -51,6 +52,7 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
             let idle = ((now - millis as f64 / 1000.0) / 60.0).trunc();
             let mut entry = Object::new();
             entry.insert("id".into(), Value::from(issue.key()));
+            entry.insert("uid".into(), Value::from(issue.uid().to_string()));
             entry.insert("title".into(), title.clone());
             entry.insert("owner".into(), Value::from(&*held.owner));
             entry.insert("machine".into(), Value::from(machine));

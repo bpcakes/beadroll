@@ -32,6 +32,7 @@ use world::{MACHINES, Machine, World, Written, load, records, str_of};
 use super::parts::Copying;
 use super::{Causes, Projection, decode_state};
 use crate::id::EventId;
+use crate::json::{Object, Value};
 use crate::projection::parts::Compaction;
 use crate::state::State;
 
@@ -290,4 +291,24 @@ fn every_extension_is_replays_answer_or_declined() {
     assert!(tally.seen.more_than(5), "{:?}", tally.seen);
     assert_eq!(tally.owned, owned::DIFFERENTIAL, "{:#x}", tally.owned);
     tally.marked.enough();
+}
+
+/// The members an issue's answers gained when they began to name issues by id too (`uid`,
+/// `parent_uid`, `parent_uids`), which the answers pinned before them did not hold.
+const UID_MEMBERS: [&str; 3] = ["uid", "parent_uid", "parent_uids"];
+
+/// `value` without the members an answer gained when it began to name issues by id
+/// ([`UID_MEMBERS`]), at any depth: what an answer pinned before that compares with, so that those
+/// pins still say every other member answers as it did. Tests of their own check the ids.
+pub(crate) fn without_uids(value: Value) -> Value {
+    match value {
+        Value::Object(members) => {
+            let kept = (members.into_iter())
+                .filter(|(name, _)| !UID_MEMBERS.contains(&name.as_str()))
+                .map(|(name, member)| (name, without_uids(member)));
+            Value::from(kept.collect::<Object>())
+        }
+        Value::Array(items) => Value::Array(items.into_iter().map(without_uids).collect()),
+        other => other,
+    }
 }

@@ -51,6 +51,7 @@ impl State {
     pub fn brief(&self, issue: &Issue) -> Object {
         let mut out = Object::new();
         out.insert("id".into(), Value::from(issue.key()));
+        out.insert("uid".into(), Value::from(issue.uid().to_string()));
         for name in [
             Field::Title,
             Field::Status,
@@ -122,6 +123,7 @@ impl State {
         let issue = hydrated.as_issue();
         let mut out = Object::new();
         out.insert("id".into(), Value::from(issue.key()));
+        out.insert("uid".into(), Value::from(issue.uid().to_string()));
         for name in EXPORT_FIELDS {
             if let Some(value) = issue.get(name).filter(|value| **value != Value::from("")) {
                 out.insert(name.name().into(), value.clone());
@@ -133,13 +135,7 @@ impl State {
                 texts(issue.labels().iter().map(String::as_str)),
             );
         }
-        let parents = self.parents_of(issue);
-        if let Some(first) = parents.first() {
-            out.insert("parent".into(), Value::from(first.key()));
-            if parents.len() > 1 {
-                out.insert("parents".into(), texts(parents.iter().map(|p| p.key())));
-            }
-        }
+        self.parents_shown(issue, &mut out);
         out.insert("dependencies".into(), self.dependencies_shown(issue));
         if !issue.dangling().is_empty() {
             out.insert("unresolved_dependencies".into(), unresolved(issue));
@@ -238,8 +234,22 @@ impl State {
         out
     }
 
-    /// What an issue depends on, by sorted edge: the key, title and status of each target (an
-    /// edge to text that names no issue shows it with status `unknown`).
+    /// `out` with an issue's parent, by key and by id, and every parent where it has several.
+    fn parents_shown(&self, issue: &Issue, out: &mut Object) {
+        let parents = self.parents_of(issue);
+        if let Some(first) = parents.first() {
+            out.insert("parent".into(), Value::from(first.key()));
+            out.insert("parent_uid".into(), Value::from(first.uid().to_string()));
+            if parents.len() > 1 {
+                out.insert("parents".into(), texts(parents.iter().map(|p| p.key())));
+                let uids = parents.iter().map(|p| Value::from(p.uid().to_string()));
+                out.insert("parent_uids".into(), Value::Array(uids.collect()));
+            }
+        }
+    }
+
+    /// What an issue depends on, by sorted edge: the key, id, title and status of each target (an
+    /// edge to text that names no issue shows it with no id and status `unknown`).
     fn dependencies_shown(&self, issue: &Issue) -> Value {
         let mut edges: Vec<&Edge> = issue.deps().keys().collect();
         edges.sort();
@@ -247,6 +257,9 @@ impl State {
             let target = self.target(edge.to());
             let mut dep = Object::new();
             dep.insert("id".into(), Value::from(&*self.target_key(edge.to())));
+            // an edge to text that names no issue has no issue's id
+            let uid = target.map(|target| target.uid().to_string());
+            dep.insert("uid".into(), uid.map_or(Value::Null, Value::from));
             dep.insert("title".into(), Value::from(target.map_or("", Issue::title)));
             dep.insert(
                 "status".into(),
@@ -330,12 +343,13 @@ impl std::fmt::Display for Row {
     }
 }
 
-/// The issues that depend on one, as [`State::dependents_of`] found them: the key, title and status
-/// of each, and the type of its edge.
+/// The issues that depend on one, as [`State::dependents_of`] found them: the key, id, title and
+/// status of each, and the type of its edge.
 fn dependents_shown(dependents: &[(&Issue, &str)]) -> Value {
     let dependents = dependents.iter().map(|(other, kind)| {
         let mut dep = Object::new();
         dep.insert("id".into(), Value::from(other.key()));
+        dep.insert("uid".into(), Value::from(other.uid().to_string()));
         dep.insert("title".into(), field(other, Field::Title));
         dep.insert("status".into(), field(other, Field::Status));
         dep.insert("dependency_type".into(), Value::from(*kind));

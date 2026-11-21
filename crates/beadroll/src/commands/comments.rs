@@ -118,7 +118,7 @@ fn add(
         return Err(Failure::new(Code::Validation, "--author needs a name"));
     }
     let author = args.author.as_deref().map(arg_text);
-    let ((id, issue_key), spent) = writing_spent(ctx.ws, ctx.actor, |tx| {
+    let ((id, issue_key, issue_uid), spent) = writing_spent(ctx.ws, ctx.actor, |tx| {
         let (uid, issue_key) = {
             let st = tx.state()?;
             need_tracker(st)?;
@@ -135,11 +135,12 @@ fn add(
             .to_string();
         let author_valid = author.as_ref().map_or(TextValidity::Utf8, |(_, ok)| *ok);
         encodable(valid.and(author_valid))?;
-        Ok::<_, Failure>((id, issue_key))
+        Ok::<_, Failure>((id, issue_key, uid))
     })?;
     let mut result = Object::new();
     result.insert("id".into(), Value::from(id));
     result.insert("issue_id".into(), Value::from(issue_key.as_str()));
+    result.insert("issue_uid".into(), Value::from(issue_uid));
     result.insert("text".into(), Value::from(text));
     Ok(Outcome::new(result, vec![format!("Comment added to {issue_key}")]).wrote_in(spent))
 }

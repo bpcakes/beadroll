@@ -90,6 +90,10 @@ fn answer(args: &CreateArgs, key: String, title: &str, result: Object) -> Outcom
     if args.silent {
         let mut out = Object::new();
         out.insert("id".into(), Value::from(key.as_str()));
+        out.insert(
+            "uid".into(),
+            result.get("uid").cloned().unwrap_or(Value::Null),
+        );
         return Outcome::new(out, vec![key]).first_line_alone();
     }
     Outcome::new(result, vec![format!("✓ Created {key}: {title}")])

@@ -6,6 +6,14 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- An issue's `uid`, the id of its create event, which no rename changes, is in `--json` output
+  beside every key: each issue (`list`, `ready`, `show`, `create`, `claims` and the rest), `show`'s
+  parent (`parent_uid`, `parent_uids`), dependencies and dependents, `dep` (`issue_uid`,
+  `depends_on_uid`; none for a key that is no issue yet), `comments add` and `log` (`issue_uid`).
+  Every command takes a `uid` where it takes a key, keys first, so that a tool can keep an issue
+  across the renumbering a sync makes of keys two machines minted offline. The Beads export is
+  unchanged.
+
 - Actor detection recognises Cursor sessions (`CURSOR_CONVERSATION_ID` and `CURSOR_AGENT`),
   recording `agent: "cursor"` and the conversation id as the thread so concurrent Cursor threads
   (including those hosted by T3 Code) hold distinct claims instead of falling back to `human`. When

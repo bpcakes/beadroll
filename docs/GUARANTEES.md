@@ -800,7 +800,10 @@ it, and the file is committed again.
   key merges made far longer than the one the child was minted under (a long
   padded number given back, `docs/REVIEWING.md` §2). Events refer to issues by an immutable id, so nothing
   is lost, but a key written into a commit message before the sync now names
-  the other issue. An online
+  the other issue. That id is the issue's `uid` (its create's event id, a
+  UUIDv7), which `--json` output gives beside every key it names (`uid`,
+  `parent_uid`, `issue_uid`, `depends_on_uid`) and every command takes where it
+  takes a key, a key first: a tool that keeps an issue keeps its `uid`. An online
   `create` of a child publishes before it answers, so the key it prints is the
   one its own publish settled; an offline one's can change at the next sync.
 - A repository with neither a remote nor a `.beadroll.json` gets a machine-local

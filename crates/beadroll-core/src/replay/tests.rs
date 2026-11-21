@@ -17,7 +17,7 @@ use crate::json::{self, Format, Object, Value};
 use crate::projection::Record;
 use crate::projection::tests::awaiting::fnv;
 use crate::projection::tests::owned::{self, BASIS};
-use crate::projection::tests::{HistoryKind, Rng, history};
+use crate::projection::tests::{HistoryKind, Rng, history, without_uids};
 use crate::query::{Edges, ReadyScope};
 use crate::state::State;
 
@@ -33,7 +33,8 @@ const ORDERS: usize = 6;
 fn answers(state: &State, flawed: HistoryKind) -> Vec<(String, String)> {
     let mut said: Vec<(String, String)> = Vec::new();
     let mut say = |asked: String, answer: String| said.push((asked, answer));
-    let shown = |object: Object| written(&Value::from(object));
+    // as pinned before answers named issues by id too, which the uid asked above says
+    let shown = |object: Object| written(&without_uids(Value::from(object)));
     say("prefix".into(), format!("{:?}", state.prefix()));
     say("name".into(), format!("{:?}", state.name()));
     say("keys".into(), format!("{:?}", state.keys()));

@@ -13,9 +13,9 @@
 pub(super) mod drawn;
 
 use super::super::{Extended, decode_state, project};
-use super::TextFile;
 use super::awaiting::fnv;
 use super::shown::{FIXTURES as SHOWN, fixture};
+use super::{TextFile, without_uids};
 use crate::id::EventId;
 use crate::journal::{Journal, JournalOrder};
 use crate::json::{Format, Object, Value, write};
@@ -159,7 +159,7 @@ pub(super) fn answers(state: &State) -> String {
                 out.push_str(&format!("  tag {to} {kind} {id} {}\n", text(&shown(meta))));
             }
         }
-        let detail = Value::from(details.of(issue.hydrated().unwrap()));
+        let detail = without_uids(Value::from(details.of(issue.hydrated().unwrap())));
         out.push_str(&format!("  details {}\n", text(&detail)));
     }
     for record in state.export_records() {
@@ -186,7 +186,7 @@ pub(super) fn every_way(state: &State) -> String {
             "  blockers {}\n",
             keys(state.open_blockers(issue))
         ));
-        let detail = Value::from(state.detail(issue.hydrated().unwrap()));
+        let detail = without_uids(Value::from(state.detail(issue.hydrated().unwrap())));
         out.push_str(&format!("  detail {}\n", text(&detail)));
         let ready = state.ready(ReadyScope::Subtree(issue.uid()));
         out.push_str(&format!("  ready {}\n", keys(ready)));
