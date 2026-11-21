@@ -11,7 +11,8 @@ import environment
 
 class Scrubbed(unittest.TestCase):
     CALLER = {"PATH": "/bin", "HOME": "/home/x", "BEAD_HOME": "/elsewhere", "GIT_DIR": "/repo.git",
-              "CLAUDE_CODE_SESSION_ID": "s", "CODEX_THREAD_ID": "t", "BV_OUTPUT_FORMAT": "json"}
+              "CLAUDE_CODE_SESSION_ID": "s", "CODEX_THREAD_ID": "t",
+              "CURSOR_CONVERSATION_ID": "u", "CURSOR_AGENT": "1", "BV_OUTPUT_FORMAT": "json"}
 
     def test_what_routes_bead_or_git_or_names_an_agent_is_dropped(self):
         with mock.patch.dict(os.environ, self.CALLER, clear=True):

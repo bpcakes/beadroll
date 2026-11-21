@@ -1376,7 +1376,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   on a nightly toolchain, which `rust-toolchain.toml` does not pin), the growth guards (timings an
   instrumented build would spoil) and the `infra/` drivers (Python). It counts the `bead` processes
   the black-box tests start, since the children inherit the profile file's name from the test and
-  `beadroll-test-support` scrubs only `CLAUDE*`, `CODEX*`, `BEAD_*`, `GIT_*`, the colour settings and
+  `beadroll-test-support` scrubs only `CLAUDE*`, `CODEX*`, `CURSOR*`, `BEAD_*`, `GIT_*`, the colour settings and
   `COLUMNS`; the command fails
   when `crates/beadroll/src/main.rs`, which only such a process runs, has no line run, and ignores
   `BEAD_UNDER_TEST`, since another `bead` has no counters. Its profiles are written into 16 files
@@ -2817,8 +2817,9 @@ happened, and attach the reproduction (command or test).
 - Grep every event ever written for absolute paths, hostnames, usernames, or profile
   directory names. Only opaque machine ids, thread ids, branch names and commit hashes should
   appear.
-- `detect_actor`: `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`/`CODEX_SESSION_ID`, nested
-  harnesses (process tree), a human shell, `--actor`, `BEAD_AGENT`, a sandbox without `ps`.
+- `detect_actor`: `CLAUDE_CODE_SESSION_ID`/`CLAUDECODE`, `CODEX_THREAD_ID`/`CODEX_SESSION_ID`,
+  `CURSOR_CONVERSATION_ID`/`CURSOR_AGENT`, nested harnesses (process tree), a human shell,
+  `--actor`, `BEAD_AGENT`, a sandbox without `ps`.
 
 **Performance and scale**
 - Synthetic journals of 10k, 50k and 200k events, and ownership-heavy histories: replay time,

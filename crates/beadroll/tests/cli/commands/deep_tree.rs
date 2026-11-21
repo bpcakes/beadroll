@@ -56,7 +56,7 @@ fn deep_valid_dependency_tree_does_not_overflow() {
     let mut env: BTreeMap<OsString, OsString> = std::env::vars_os()
         .filter(|(key, _)| {
             let key = key.as_encoded_bytes();
-            !["CLAUDE", "CODEX", "BEAD_", "GIT_"]
+            !["CLAUDE", "CODEX", "CURSOR", "BEAD_", "GIT_"]
                 .iter()
                 .any(|prefix| key.starts_with(prefix.as_bytes()))
         })

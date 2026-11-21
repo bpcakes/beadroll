@@ -90,7 +90,7 @@ tests it builds events, and for the round-trip properties it draws JSON values.
   git's auto maintenance would repack a remote in the background, whenever its sample of loose
   objects (`objects/17`, times 256) passes a threshold, and pack the objects a test is about to
   inspect or damage (roll-k2wy.20). A test that wants a repack runs it.
-- A run's environment is the test's, less every `CLAUDE*`, `CODEX*`, `BEAD_*` and `GIT_*`
+- A run's environment is the test's, less every `CLAUDE*`, `CODEX*`, `CURSOR*`, `BEAD_*` and `GIT_*`
   variable, the colour settings (`NO_COLOR`, `CLICOLOR*`) and `COLUMNS`, then the machine's home
   and identity, then its extras. A fixture's own `git` (`git`) runs without the `GIT_*` variables
   too. Test-local Git calls that need byte output, stdin or environment overrides use

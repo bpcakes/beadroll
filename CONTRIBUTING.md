@@ -145,9 +145,9 @@ git, ssh or bead stops the run (`infra/test_deadlines.py` checks every driver).
   `Settings.clock`: `now_ns` for event ids and the stamps events carry, which offsets and the
   `clock` failpoint move, and `real_ns` for when something really happened here, which they do
   not; nothing reads `SystemTime` itself. The actor's
-  one impure step, the walk up the process tree with `ps` when both a Claude
-  and a Codex session variable are set, goes through a function the CLI passes
-  in, so a fake `ps` on `PATH` drives its test.
+  one impure step, the walk up the process tree with `ps` when more than one
+  agent harness's session variables are set, goes through a function the CLI
+  passes in, so a fake `ps` on `PATH` drives its test.
 - **Errors.** Each crate has precise `thiserror` enums whose variants are only
   those its operations can produce, and each error has a `code()`, one of the
   closed set `bead prime` lists. An OS error is wrapped with its path where it

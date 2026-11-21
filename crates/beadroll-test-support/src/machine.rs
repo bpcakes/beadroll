@@ -12,8 +12,8 @@ use crate::{Json, Sandbox};
 /// Environment prefixes removed so the developer's harness, store, repository, colour settings and
 /// terminal width (bead wraps its help and its texts at `COLUMNS`) cannot reach the binary under
 /// test.
-const SCRUBBED: [&str; 7] = [
-    "CLAUDE", "CODEX", "BEAD_", "GIT_", "NO_COLOR", "CLICOLOR", "COLUMNS",
+const SCRUBBED: [&str; 8] = [
+    "CLAUDE", "CODEX", "CURSOR", "BEAD_", "GIT_", "NO_COLOR", "CLICOLOR", "COLUMNS",
 ];
 
 /// The variable that keeps the profile an instrumented `bead` writes at exit (`cargo xtask
@@ -82,8 +82,8 @@ impl Machine {
         &self.bead
     }
 
-    /// The inherited environment without CLAUDE*, CODEX*, BEAD_*, GIT_*, NO_COLOR or CLICOLOR*
-    /// variables (whether bead colours its output is each test's to say), followed by
+    /// The inherited environment without CLAUDE*, CODEX*, CURSOR*, BEAD_*, GIT_*, NO_COLOR or
+    /// CLICOLOR* variables (whether bead colours its output is each test's to say), followed by
     /// this machine's home and identity and then Machine::extra. The default thread is
     /// NAME-thread-0001.
     pub fn env(&self, thread: Option<&str>, agent: &str) -> BTreeMap<OsString, OsString> {
@@ -378,6 +378,8 @@ mod tests {
             "CLAUDE_CODE_SESSION_ID",
             "CLAUDECODE",
             "CODEX_THREAD_ID",
+            "CURSOR_CONVERSATION_ID",
+            "CURSOR_AGENT",
             "BEAD_UNDER_TEST",
             "BEAD_HOME",
             "GIT_DIR",

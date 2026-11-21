@@ -113,6 +113,8 @@ class RoundtripFailureReporting(unittest.TestCase):
             "GIT_OBJECT_DIRECTORY": "/real-repository/objects",
             "CODEX_THREAD_ID": "inherited-thread",
             "CLAUDE_SESSION_ID": "inherited-session",
+            "CURSOR_CONVERSATION_ID": "inherited-cursor",
+            "CURSOR_AGENT": "1",
             "LLVM_PROFILE_FILE": "/scratch/coverage-%p.profraw",
         }
         with mock.patch.dict(os.environ, hostile):
@@ -127,7 +129,7 @@ class RoundtripFailureReporting(unittest.TestCase):
         for command, env in self.environments:
             with self.subTest(command=command):
                 isolated = {key: value for key, value in env.items()
-                            if key.startswith(("BEAD_", "GIT_", "CLAUDE", "CODEX"))}
+                            if key.startswith(("BEAD_", "GIT_", "CLAUDE", "CODEX", "CURSOR"))}
                 self.assertEqual(isolated, expected)
                 self.assertEqual(env["LLVM_PROFILE_FILE"], hostile["LLVM_PROFILE_FILE"])
 

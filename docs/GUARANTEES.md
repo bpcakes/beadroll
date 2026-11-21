@@ -512,11 +512,14 @@ client hooks, and the remote string always passed after `--`.
 `"where": false` in `.beadroll.json` stops events from recording the branch and
 commit; outside a checkout nothing is recorded anyway.
 
-Agent type and thread come from the environment: `CLAUDE_CODE_SESSION_ID`
-for Claude Code and `CODEX_THREAD_ID` for Codex (both confirmed to reach shell
-commands). When one agent is started from inside the other's session both are
-present, and `bead` picks the nearest agent in the process tree. `BEAD_AGENT`,
-`BEAD_THREAD` and `--actor NAME` override them. The machine is an opaque id; its
+Agent type and thread come from the environment: `CLAUDE_CODE_SESSION_ID` (and
+`CLAUDECODE`) for Claude Code, `CODEX_THREAD_ID` (or `CODEX_SESSION_ID`) for
+Codex, and `CURSOR_CONVERSATION_ID` (and `CURSOR_AGENT`) for Cursor (all
+confirmed to reach shell commands). When one agent is started from inside
+another's session more than one set of variables is present, and `bead` picks
+the nearest matching agent in the process tree (falling back to Codex, then
+Claude, then Cursor when the walk finds none). `BEAD_AGENT`, `BEAD_THREAD` and
+`--actor NAME` override them. The machine is an opaque id; its
 hostname is a local alias (`bead machines --name ID=ALIAS`, for a machine the
 journal has seen, by its id or a prefix of one alone, or an id named here
 already), never in events. An
