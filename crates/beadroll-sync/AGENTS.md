@@ -26,7 +26,8 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_pending`).
   with no emitter or applied prefix) from `Spent` (the retained materialized view). Both local
   and coordinated paths retain these outside the lock on errors as well as success.
 
-- `src/tx.rs`: `Tx` (`emit`, `state`, `lend`, `on`), `Emitter` and `Spent`. A `Tx` starts from the
+- `src/tx.rs`: `Tx` (`emit`, `state`, `lend`, `on`) and `Spent`; `src/tx/emitter.rs`: `Emitter`
+  and the judgement of a create's parent. A `Tx` starts from the
   store's projection (`on`: one the caller read under the lock it holds, with the journal files it
   was made from (`Sourced`); read again, as `new` does, when a file was written since,
   roll-lqjj.37) and applies each event it emits to it; one the projection cannot take (a takeover)
