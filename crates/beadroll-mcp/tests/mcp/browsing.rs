@@ -1,5 +1,6 @@
-//! Browsing ready issues (order, 25-row cap, empty state), full detail views, local-only reads,
-//! and Refresh rereading local state without syncing.
+//! Browsing ready issues (order, 25-row cap, empty state), full detail views (including
+//! unconfirmed ownership attempts, lost/stale claims, closed_on/merged, multi-parent, and
+//! tracked config warnings), local-only reads, and Refresh rereading local state without syncing.
 
 use serde_json::{Value, json};
 use tempfile::tempdir;
@@ -95,7 +96,6 @@ fn ready_preserves_order_caps_at_25_and_reports_more() {
     let expected: Vec<String> = (1..=25).map(|i| format!("alp-{i:02}")).collect();
     assert_eq!(ids, expected);
 
-    // Text-only fallback contains workspace identity, sync timestamp, and issue rows.
     let text = res
         .pointer("/content/0/text")
         .and_then(Value::as_str)
@@ -106,7 +106,6 @@ fn ready_preserves_order_caps_at_25_and_reports_more() {
     assert!(text.contains("alp-25"));
     assert!(!text.contains("alp-26"));
 
-    // Only local read commands were invoked.
     let log = std::fs::read_to_string(&log_file).expect("read log");
     for line in log.lines() {
         let entry: Value = serde_json::from_str(line).expect("log line");
@@ -178,7 +177,6 @@ fn ready_empty_state_and_refresh_rereads_local_tracker() {
         .expect("text");
     assert!(empty_text.contains("No ready issues"));
 
-    // Mutate local state as a CLI command + sync would, then refresh via `bead_ready`.
     std::fs::write(
         &state_file,
         serde_json::to_string(&json!({
@@ -225,16 +223,20 @@ fn sample_detail_fixture(uid: &str, dep_uid: &str, parent_uid: &str) -> Value {
                 "title": "Harden rate limiter",
                 "description": "Keep token counts across restarts.",
                 "acceptance_criteria": "Restart preserves remaining quota.",
+                "external_ref": "GH-102",
                 "status": "in_progress",
                 "priority": 1,
                 "issue_type": "bug",
                 "labels": ["backend", "urgent"],
                 "parent": "alp-1",
                 "parent_uid": parent_uid,
+                "parents": ["alp-1", "alp-2"],
+                "parent_uids": [parent_uid, "019a0000-0000-7000-8000-000000000002"],
                 "blocked": false,
                 "created_at": "2026-11-20T09:00:00Z",
                 "created_by": "codex:t1@aaaa1111",
                 "updated_at": "2026-11-21T11:00:00Z",
+                "where": { "branch": "fix/rate-limit", "commit": "abcdef1234567890" },
                 "claim": {
                     "owner": "claude:s2@bbbb2222",
                     "since": "2026-11-21T10:30:00Z",
@@ -309,14 +311,13 @@ fn show_returns_full_detail_sections_and_readable_text_fallback() {
         Some(uid)
     );
     assert_eq!(
-        res.pointer("/structuredContent/issue/description")
-            .and_then(Value::as_str),
-        Some("Keep token counts across restarts.")
+        res.pointer("/structuredContent/issue/parents"),
+        Some(&json!(["alp-1", "alp-2"]))
     );
     assert_eq!(
-        res.pointer("/structuredContent/issue/acceptance_criteria")
+        res.pointer("/structuredContent/issue/external_ref")
             .and_then(Value::as_str),
-        Some("Restart preserves remaining quota.")
+        Some("GH-102")
     );
     assert_eq!(
         res.pointer("/structuredContent/issue/claim/owner")
@@ -342,9 +343,111 @@ fn show_returns_full_detail_sections_and_readable_text_fallback() {
         "Harden rate limiter",
         "Keep token counts across restarts.",
         "Restart preserves remaining quota.",
+        "GH-102",
+        "alp-1, alp-2",
         "claude:s2@bbbb2222",
         "alp-10",
         "Reproduced with two workers.",
+    ] {
+        assert!(text.contains(needle), "fallback text missing {needle:?}");
+    }
+
+    assert_eq!(client.close(), Some(0));
+}
+
+#[test]
+fn show_preserves_unconfirmed_lost_stale_and_closure_metadata() {
+    let dir = tempdir().expect("tempdir");
+    let state_file = dir.path().join("state.json");
+    let log_file = dir.path().join("bead.log");
+
+    let mut info = sample_info(Some("2026-11-21T16:30:00Z"));
+    info["tracked_config_warning"] = json!(".beadroll.json is untracked on this branch");
+
+    let fixture = json!({
+        "info": info,
+        "ready": [],
+        "details": {
+            "alp-9": {
+                "id": "alp-9",
+                "uid": "019a0000-0000-7000-8000-000000000009",
+                "title": "Ownership uncertainty check",
+                "status": "closed",
+                "priority": 2,
+                "issue_type": "task",
+                "closed_at": "2026-11-21T16:20:00Z",
+                "close_reason": "Landed on topic branch",
+                "closed_on": { "branch": "feat/topic", "commit": "1234567890abcdef" },
+                "merged": false,
+                "unconfirmed": [{ "op": "claim", "by": "codex:t9@cccc3333" }],
+                "lost_claims": [{ "by": "claude:s1@dddd4444", "held_by": "codex:t9@cccc3333" }],
+                "stale": [{ "op": "release", "by": "claude:s1@dddd4444" }],
+                "dependencies": [],
+                "dependents": [],
+                "comments": [],
+                "blocked": false,
+            }
+        }
+    });
+    std::fs::write(&state_file, serde_json::to_string(&fixture).expect("json"))
+        .expect("write state");
+
+    let fake_bead = write_stateful_fake_bead(dir.path(), "fake-bead", &state_file, &log_file);
+    let mut client = McpClient::spawn(
+        dir.path(),
+        &[
+            "--repo",
+            dir.path().to_str().expect("utf8"),
+            "--bead",
+            fake_bead.to_str().expect("utf8"),
+        ],
+        &[],
+    );
+    client.initialize();
+
+    let res = client.call_tool("bead_show", json!({ "id": "alp-9" }));
+    assert_eq!(
+        res.pointer("/structuredContent/workspace/tracked_config_warning")
+            .and_then(Value::as_str),
+        Some(".beadroll.json is untracked on this branch")
+    );
+    assert_eq!(
+        res.pointer("/structuredContent/issue/unconfirmed/0/by")
+            .and_then(Value::as_str),
+        Some("codex:t9@cccc3333")
+    );
+    assert_eq!(
+        res.pointer("/structuredContent/issue/lost_claims/0/held_by")
+            .and_then(Value::as_str),
+        Some("codex:t9@cccc3333")
+    );
+    assert_eq!(
+        res.pointer("/structuredContent/issue/stale/0/op")
+            .and_then(Value::as_str),
+        Some("release")
+    );
+    assert_eq!(
+        res.pointer("/structuredContent/issue/closed_on_branch")
+            .and_then(Value::as_str),
+        Some("feat/topic")
+    );
+    assert_eq!(
+        res.pointer("/structuredContent/issue/merged")
+            .and_then(Value::as_bool),
+        Some(false)
+    );
+
+    let text = res
+        .pointer("/content/0/text")
+        .and_then(Value::as_str)
+        .expect("text");
+    for needle in [
+        "untracked on this branch",
+        "Unconfirmed: claim by codex:t9@cccc3333",
+        "Lost claim: claude:s1@dddd4444 lost to codex:t9@cccc3333",
+        "Ignored stale release by claude:s1@dddd4444",
+        "Closed on: feat/topic at 1234567890ab",
+        "NOT yet on the default branch",
     ] {
         assert!(text.contains(needle), "fallback text missing {needle:?}");
     }

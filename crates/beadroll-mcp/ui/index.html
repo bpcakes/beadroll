@@ -51,6 +51,18 @@
     overflow: hidden;
   }
 
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
   #app {
     display: flex;
     flex-direction: column;
@@ -126,7 +138,8 @@
     cursor: pointer;
   }
 
-  button:focus-visible {
+  button:focus-visible,
+  [tabindex="-1"]:focus-visible {
     outline: 2px solid var(--color-ring-primary);
     outline-offset: 1px;
   }
@@ -165,6 +178,14 @@
   .btn-ghost:hover:not(:disabled) {
     background: var(--color-background-tertiary);
     color: var(--color-text-primary);
+  }
+
+  .action-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
   }
 
   .body {
@@ -425,6 +446,11 @@
     gap: 3px;
   }
 
+  .claim-card-neutral {
+    background: var(--color-background-secondary);
+    color: var(--color-text-secondary);
+  }
+
   .claim-card-title {
     font-weight: 600;
   }
@@ -540,7 +566,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
   }
 
   .state-title {
@@ -600,7 +626,8 @@
 </style>
 </head>
 <body>
-<div id="app" role="main" aria-live="polite"></div>
+<div id="live-status" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+<div id="app" role="main"></div>
 <script>
 (() => {
   "use strict";
@@ -609,6 +636,7 @@
   const APP_INFO = { name: "beadroll", version: "0.2.0" };
 
   const rootEl = document.getElementById("app");
+  const liveEl = document.getElementById("live-status");
   let nextRpcId = 1;
   const pendingRpc = new Map();
   let requestSeq = 0;
@@ -627,12 +655,23 @@
     busy: false,
     workspace: null,
     ready: null,
+    readyStale: false,
+    lastOpenedUid: null,
     detail: null,
     detailStack: [],
     error: null,
     inlineError: null,
+    lastFailed: null,
     fallbackText: null,
   };
+
+  let resizeRaf = 0;
+  let lastSentHeight = 0;
+
+  function announce(message) {
+    if (!liveEl || typeof message !== "string") return;
+    liveEl.textContent = message;
+  }
 
   function initialColorScheme() {
     try {
@@ -647,6 +686,17 @@
     hostState.theme = theme;
     document.documentElement.style.colorScheme = theme;
     document.documentElement.dataset.theme = theme;
+  }
+
+  function setDisplayMode(mode) {
+    if (typeof mode !== "string") return;
+    const changed = hostState.displayMode !== mode;
+    hostState.displayMode = mode;
+    document.documentElement.dataset.displayMode = mode;
+    if (changed) {
+      // Force the next inline layout to report its height even if it matches the pre-fullscreen height.
+      lastSentHeight = 0;
+    }
   }
 
   function applyHostContext(ctx) {
@@ -674,8 +724,7 @@
       }
     }
     if (typeof ctx.displayMode === "string") {
-      hostState.displayMode = ctx.displayMode;
-      document.documentElement.dataset.displayMode = ctx.displayMode;
+      setDisplayMode(ctx.displayMode);
     }
     if (Array.isArray(ctx.availableDisplayModes)) {
       hostState.availableDisplayModes = ctx.availableDisplayModes.filter((m) => typeof m === "string");
@@ -706,6 +755,10 @@
 
   function sendResponse(id, result) {
     postMessage({ jsonrpc: "2.0", id, result });
+  }
+
+  function sendErrorResponse(id, code, message) {
+    postMessage({ jsonrpc: "2.0", id, error: { code, message } });
   }
 
   function callServerTool(name, args) {
@@ -813,8 +866,24 @@
       .trim();
   }
 
-  function updateCachedRowFromDetail(issue) {
+  function hasOwnershipUncertainty(issue) {
+    return Boolean(
+      issue.claim
+        || (Array.isArray(issue.provisional_claims) && issue.provisional_claims.length > 0)
+        || (Array.isArray(issue.unconfirmed) && issue.unconfirmed.length > 0)
+    );
+  }
+
+  function updateCachedListFromDetail(issue, workspace) {
     if (!state.ready || !Array.isArray(state.ready.issues) || !issue || !issue.uid) return;
+    if (workspace) {
+      state.ready.workspace = workspace;
+    }
+    const stillReady = issue.status === "open" && !issue.blocked && !hasOwnershipUncertainty(issue);
+    if (!stillReady) {
+      state.ready.issues = state.ready.issues.filter((row) => row.uid !== issue.uid);
+      return;
+    }
     for (const row of state.ready.issues) {
       if (row.uid === issue.uid) {
         row.id = issue.id;
@@ -824,6 +893,17 @@
         row.issue_type = issue.issue_type;
       }
     }
+  }
+
+  function inferInitialCall() {
+    const args = hostState.initialArguments && typeof hostState.initialArguments === "object"
+      ? hostState.initialArguments
+      : {};
+    const hasLookup = typeof args.uid === "string" || typeof args.id === "string";
+    if (hostState.toolName === "bead_show" || hasLookup) {
+      return hasLookup ? { tool: "bead_show", args } : null;
+    }
+    return { tool: "bead_ready", args };
   }
 
   function applyToolPayload(result, options) {
@@ -838,12 +918,17 @@
 
     if (sc && sc.view === "ready") {
       state.ready = sc;
+      state.readyStale = false;
+      state.detailStack = [];
       state.workspace = sc.workspace || state.workspace;
       state.view = "ready";
       state.error = null;
       state.inlineError = null;
+      state.lastFailed = null;
       state.fallbackText = null;
-      render();
+      const count = Array.isArray(sc.issues) ? sc.issues.length : 0;
+      announce("Loaded " + count + (count === 1 ? " ready issue." : " ready issues."));
+      render(opts.focusKey || null);
       syncModelContext();
       return;
     }
@@ -852,78 +937,84 @@
       if (opts.pushCurrentToStack && state.view === "detail" && state.detail) {
         state.detailStack.push(state.detail);
       }
+      if (opts.isDetailRefresh) {
+        state.readyStale = true;
+      }
       state.detail = {
         workspace: sc.workspace || state.workspace,
         issue: sc.issue,
         clickedKey: opts.clickedKey || null,
       };
+      state.lastOpenedUid = sc.issue.uid;
       state.workspace = state.detail.workspace;
-      updateCachedRowFromDetail(sc.issue);
+      updateCachedListFromDetail(sc.issue, state.detail.workspace);
       state.view = "detail";
       state.error = null;
       state.inlineError = null;
+      state.lastFailed = null;
       state.fallbackText = null;
-      render();
+      announce("Showing issue " + sc.issue.id + ": " + (sc.issue.title || ""));
+      render(opts.focusKey || "detail-title");
       syncModelContext();
       return;
     }
 
     if (sc && sc.view === "error" && sc.error) {
+      state.lastFailed = opts.request || inferInitialCall();
+      announce("Error " + (sc.error.code || "") + ": " + (sc.error.message || "Request failed."));
       if (opts.preserveCurrentView && (state.view === "ready" || state.view === "detail")) {
         state.inlineError = sc.error;
-        render();
+        render(opts.focusKey || null);
         return;
       }
       state.error = sc.error;
       state.view = "error";
       state.inlineError = null;
-      render();
+      render(opts.focusKey || null);
       return;
     }
 
     const text = extractTextContent(result);
     if (result && result.isError) {
       const errObj = { code: "ERROR", message: text || "Tool call failed." };
+      state.lastFailed = opts.request || inferInitialCall();
+      announce(errObj.message);
       if (opts.preserveCurrentView && (state.view === "ready" || state.view === "detail")) {
         state.inlineError = errObj;
       } else {
         state.error = errObj;
         state.view = "error";
       }
-      render();
+      render(opts.focusKey || null);
       return;
     }
 
     // Some hosts flatten the initial model-turn tool result to text only; hydrate once via a
-    // read-only app tool call (which returns raw structuredContent) while keeping the text fallback.
+    // read-only app tool call when the call's arguments can be inferred safely.
     if (opts.fromInitialNotification && !hostState.hydratedFromText) {
       hostState.hydratedFromText = true;
       state.fallbackText = text || "No output returned.";
-      hydrateFromInitialInput();
-      return;
+      const inferred = inferInitialCall();
+      if (inferred) {
+        hydrateFromInitialCall(inferred);
+        return;
+      }
     }
 
     state.fallbackText = text || "No output returned.";
     state.view = "text-fallback";
-    render();
+    render(opts.focusKey || null);
   }
 
-  function hydrateFromInitialInput() {
-    const args = hostState.initialArguments && typeof hostState.initialArguments === "object"
-      ? hostState.initialArguments
-      : {};
-    const inferredShow = hostState.toolName === "bead_show"
-      || typeof args.uid === "string"
-      || typeof args.id === "string";
-    const tool = inferredShow ? "bead_show" : "bead_ready";
+  function hydrateFromInitialCall(call) {
     const seq = ++requestSeq;
     state.busy = true;
     render();
-    callServerTool(tool, args)
+    callServerTool(call.tool, call.args)
       .then((res) => {
         if (seq !== requestSeq) return;
         state.busy = false;
-        applyToolPayload(res, { fromInitialNotification: false });
+        applyToolPayload(res, { fromInitialNotification: false, request: call });
       })
       .catch(() => {
         if (seq !== requestSeq) return;
@@ -933,70 +1024,103 @@
       });
   }
 
-  function loadReady(preserveView) {
+  function loadReady(preserveView, focusKey) {
     const seq = ++requestSeq;
     state.busy = true;
     state.inlineError = null;
     render();
     const limit = state.ready && typeof state.ready.limit === "number" ? state.ready.limit : 25;
-    callServerTool("bead_ready", { limit })
+    const request = { tool: "bead_ready", args: { limit } };
+    callServerTool(request.tool, request.args)
       .then((res) => {
         if (seq !== requestSeq) return;
         state.busy = false;
-        state.detailStack = [];
-        applyToolPayload(res, { preserveCurrentView: preserveView });
+        applyToolPayload(res, {
+          preserveCurrentView: preserveView,
+          request,
+          focusKey,
+        });
       })
       .catch((error) => {
         if (seq !== requestSeq) return;
         state.busy = false;
+        state.lastFailed = request;
         const err = { code: "HOST_ERROR", message: error.message || "Unable to refresh ready issues." };
+        announce(err.message);
         if (preserveView && (state.view === "ready" || state.view === "detail")) {
           state.inlineError = err;
         } else {
           state.error = err;
           state.view = "error";
         }
-        render();
+        render(focusKey || null);
       });
   }
 
-  function openIssueByUid(uid, clickedKey, pushStack) {
-    const ws = activeWorkspace();
-    const args = { uid };
-    if (ws && ws.id) {
-      args.workspace = ws.id;
-    }
+  function openIssue(args, clickedKey, pushStack, isDetailRefresh, focusKey) {
+    const request = { tool: "bead_show", args };
     const seq = ++requestSeq;
     state.busy = true;
     state.inlineError = null;
     render();
-    callServerTool("bead_show", args)
+    callServerTool(request.tool, request.args)
       .then((res) => {
         if (seq !== requestSeq) return;
         state.busy = false;
         applyToolPayload(res, {
           clickedKey,
           pushCurrentToStack: pushStack,
-          preserveCurrentView: true,
+          isDetailRefresh,
+          preserveCurrentView: state.view === "ready" || state.view === "detail",
+          request,
+          focusKey,
         });
       })
       .catch((error) => {
         if (seq !== requestSeq) return;
         state.busy = false;
-        state.inlineError = {
+        state.lastFailed = request;
+        const err = {
           code: "HOST_ERROR",
           message: error.message || "Unable to load issue details.",
         };
-        render();
+        announce(err.message);
+        if (state.view === "ready" || state.view === "detail") {
+          state.inlineError = err;
+        } else {
+          state.error = err;
+          state.view = "error";
+        }
+        render(focusKey || null);
       });
+  }
+
+  function openIssueByUid(uid, clickedKey, pushStack, isDetailRefresh, focusKey) {
+    const ws = activeWorkspace();
+    const args = { uid };
+    if (ws && ws.id) {
+      args.workspace = ws.id;
+    }
+    openIssue(args, clickedKey, pushStack, isDetailRefresh, focusKey);
+  }
+
+  function retryLastFailed() {
+    const failed = state.lastFailed;
+    if (failed && failed.tool === "bead_show") {
+      openIssue(failed.args, null, false, false, "detail-title");
+      return;
+    }
+    loadReady(false, "refresh");
   }
 
   function refreshCurrentView() {
     if (state.view === "detail" && state.detail && state.detail.issue) {
       const issue = state.detail.issue;
-      openIssueByUid(issue.uid, issue.id, false);
+      openIssueByUid(issue.uid, issue.id, false, true, "refresh");
+    } else if (state.view === "error" && state.lastFailed) {
+      retryLastFailed();
     } else {
-      loadReady(state.view === "ready");
+      loadReady(state.view === "ready", "refresh");
     }
   }
 
@@ -1005,17 +1129,20 @@
     if (state.detailStack.length > 0) {
       state.detail = state.detailStack.pop();
       state.view = "detail";
-      render();
+      announce("Returned to issue " + state.detail.issue.id + ".");
+      render("detail-title");
       syncModelContext();
       return;
     }
-    if (state.ready) {
+    const rowFocus = state.lastOpenedUid ? "row:" + state.lastOpenedUid : "refresh";
+    if (state.ready && !state.readyStale) {
       state.view = "ready";
-      render();
+      announce("Returned to ready issues.");
+      render(rowFocus);
       syncModelContext();
       return;
     }
-    loadReady(false);
+    loadReady(false, rowFocus);
   }
 
   function toggleFullscreen() {
@@ -1023,9 +1150,8 @@
     sendRequest("ui/request-display-mode", { mode: target })
       .then((res) => {
         if (res && typeof res.mode === "string") {
-          hostState.displayMode = res.mode;
-          document.documentElement.dataset.displayMode = res.mode;
-          render();
+          setDisplayMode(res.mode);
+          render("fullscreen");
         }
       })
       .catch(() => {});
@@ -1039,6 +1165,7 @@
           ws.name ? "Name: " + ws.name : null,
           ws.prefix ? "Prefix: " + ws.prefix : null,
           ws.id ? "Workspace ID: " + ws.id : null,
+          ws.source ? "Source: " + ws.source : null,
           ws.checkout ? "Checkout: " + ws.checkout : null,
         ].filter(Boolean).join("\n")
       : "";
@@ -1064,6 +1191,7 @@
       el("button", {
         type: "button",
         className: "btn",
+        "data-focus-key": "refresh",
         disabled: state.busy,
         title: "Reread the local tracker (does not run bead sync)",
         text: state.busy ? "Refreshing…" : "Refresh",
@@ -1073,6 +1201,7 @@
         ? el("button", {
             type: "button",
             className: "btn btn-ghost",
+            "data-focus-key": "fullscreen",
             title: hostState.displayMode === "fullscreen" ? "Exit full screen" : "Expand full screen",
             text: hostState.displayMode === "fullscreen" ? "Inline" : "Expand",
             onClick: toggleFullscreen,
@@ -1081,6 +1210,14 @@
     ]);
 
     return el("header", { className: "header" }, [left, right]);
+  }
+
+  function renderWorkspaceWarning() {
+    const ws = activeWorkspace();
+    if (!ws || !ws.tracked_config_warning) return null;
+    return el("div", { className: "banner banner-warning" }, [
+      el("div", { className: "banner-body", text: ws.tracked_config_warning }),
+    ]);
   }
 
   function renderInlineError() {
@@ -1095,10 +1232,11 @@
       el("button", {
         type: "button",
         className: "btn btn-ghost",
+        "data-focus-key": "dismiss-error",
         text: "Dismiss",
         onClick: () => {
           state.inlineError = null;
-          render();
+          render("refresh");
         },
       }),
     ]);
@@ -1182,7 +1320,8 @@
         disabled: state.busy,
         "data-uid": issue.uid,
         "data-key": issue.id,
-        onClick: () => openIssueByUid(issue.uid, issue.id, false),
+        "data-focus-key": "row:" + issue.uid,
+        onClick: () => openIssueByUid(issue.uid, issue.id, false, false, "detail-title"),
       }, [
         priorityBadge(issue.priority),
         el("span", { className: "issue-row-main" }, [
@@ -1220,7 +1359,11 @@
           el("span", { className: "pill", text: item.dependency_type || "blocks" }),
           el("span", { className: "issue-key", text: item.id }),
           statusBadge(item.status || "unknown"),
-          el("span", { className: "rel-title", text: item.title || "" }),
+          el("span", {
+            className: "rel-title",
+            title: item.title || "",
+            text: item.title || "",
+          }),
         ];
         if (item.uid) {
           inner.push(el("span", { className: "chevron", "aria-hidden": "true", text: "›" }));
@@ -1230,7 +1373,7 @@
                 type: "button",
                 className: "rel-btn",
                 disabled: state.busy,
-                onClick: () => openIssueByUid(item.uid, item.id, true),
+                onClick: () => openIssueByUid(item.uid, item.id, true, false, "detail-title"),
               }, inner),
             ])
           );
@@ -1263,6 +1406,109 @@
     ]);
   }
 
+  function renderParentsMeta(issue) {
+    const keys = Array.isArray(issue.parents) && issue.parents.length > 0
+      ? issue.parents
+      : issue.parent
+        ? [issue.parent]
+        : [];
+    if (keys.length === 0) return null;
+
+    const uids = Array.isArray(issue.parent_uids) && issue.parent_uids.length > 0
+      ? issue.parent_uids
+      : issue.parent_uid
+        ? [issue.parent_uid]
+        : [];
+
+    const nodes = [keys.length > 1 ? "Parents: " : "Parent: "];
+    for (let i = 0; i < keys.length; i++) {
+      if (i > 0) nodes.push(", ");
+      const key = keys[i];
+      const uid = uids[i];
+      if (typeof uid === "string" && uid) {
+        nodes.push(
+          el("button", {
+            type: "button",
+            className: "inline-link",
+            disabled: state.busy,
+            text: key,
+            onClick: () => openIssueByUid(uid, key, true, false, "detail-title"),
+          })
+        );
+      } else {
+        nodes.push(key);
+      }
+    }
+    return el("span", null, nodes);
+  }
+
+  function renderOwnershipCards(issue, content) {
+    if (issue.claim) {
+      const details = [];
+      if (issue.claim.since) details.push("since " + formatTimestamp(issue.claim.since) + " (" + issue.claim.since + ")");
+      if (issue.claim.branch) details.push("branch " + issue.claim.branch);
+      if (typeof issue.claim.generation === "number") details.push("gen " + issue.claim.generation);
+      content.appendChild(
+        el("div", { className: "claim-card" }, [
+          el("div", { className: "claim-card-title", text: "Claimed by " + issue.claim.owner }),
+          details.length > 0 ? el("div", { text: details.join(" · ") }) : null,
+        ])
+      );
+    }
+
+    if (Array.isArray(issue.unconfirmed) && issue.unconfirmed.length > 0) {
+      for (const pending of issue.unconfirmed) {
+        content.appendChild(
+          el("div", { className: "claim-card" }, [
+            el("div", {
+              className: "claim-card-title",
+              text: "Ownership pending: " + pending.op + " by " + pending.by,
+            }),
+            el("div", { text: "Awaiting the remote's acknowledgement; run `bead sync` to settle." }),
+          ])
+        );
+      }
+    }
+
+    if (Array.isArray(issue.provisional_claims) && issue.provisional_claims.length > 0) {
+      for (const claim of issue.provisional_claims) {
+        content.appendChild(
+          el("div", { className: "claim-card" }, [
+            el("div", {
+              className: "claim-card-title",
+              text: "Provisional offline claim by " + claim.owner + " (not exclusive)",
+            }),
+            claim.since ? el("div", { text: "since " + claim.since }) : null,
+          ])
+        );
+      }
+    }
+
+    if (Array.isArray(issue.lost_claims) && issue.lost_claims.length > 0) {
+      for (const lost of issue.lost_claims) {
+        content.appendChild(
+          el("div", { className: "claim-card claim-card-neutral" }, [
+            el("div", {
+              text: "Claim by " + lost.by + " lost to " + lost.held_by,
+            }),
+          ])
+        );
+      }
+    }
+
+    if (Array.isArray(issue.stale) && issue.stale.length > 0) {
+      for (const old of issue.stale) {
+        content.appendChild(
+          el("div", { className: "claim-card claim-card-neutral" }, [
+            el("div", {
+              text: "Ignored stale " + old.op + " by " + old.by + ": named a claim that is no longer current",
+            }),
+          ])
+        );
+      }
+    }
+  }
+
   function renderDetailView() {
     const entry = state.detail;
     const issue = entry.issue;
@@ -1279,6 +1525,7 @@
         el("button", {
           type: "button",
           className: "btn",
+          "data-focus-key": "back",
           disabled: state.busy,
           text: backLabel,
           onClick: navigateBack,
@@ -1305,7 +1552,6 @@
 
     const content = el("div", { className: "detail-content" });
 
-    // Header badges + title + metadata
     const badges = [
       statusBadge(issue.status),
       priorityBadge(issue.priority),
@@ -1333,69 +1579,60 @@
     if (issue.updated_at && issue.updated_at !== issue.created_at) {
       submeta.push(el("span", { title: issue.updated_at, text: "Updated " + formatTimestamp(issue.updated_at) }));
     }
+    if (issue.closed_at) {
+      submeta.push(el("span", { title: issue.closed_at, text: "Closed " + formatTimestamp(issue.closed_at) }));
+    }
+    if (issue.closed_on_branch || issue.closed_on_commit) {
+      const commitShort = issue.closed_on_commit ? issue.closed_on_commit.slice(0, 12) : "";
+      const mergedNote = issue.merged === true
+        ? " · merged"
+        : issue.merged === false
+          ? " · not merged"
+          : "";
+      submeta.push(
+        el("span", {
+          title: issue.closed_on_commit || "",
+          text: "Closed on " + (issue.closed_on_branch || "detached HEAD") + (commitShort ? " (" + commitShort + ")" : "") + mergedNote,
+        })
+      );
+    }
     if (issue.assignee) {
       submeta.push(el("span", { text: "Assignee: " + issue.assignee }));
     }
-    if (issue.where_branch) {
-      submeta.push(el("span", { text: "Branch: " + issue.where_branch }));
+    if (issue.external_ref) {
+      submeta.push(el("span", { text: "Ref: " + issue.external_ref }));
     }
-    if (!issue.claim && (!issue.provisional_claims || issue.provisional_claims.length === 0)) {
+    if (issue.where_branch) {
+      const commitShort = issue.where_commit ? " (" + issue.where_commit.slice(0, 12) + ")" : "";
+      submeta.push(
+        el("span", {
+          title: issue.where_commit || "",
+          text: "Branch: " + issue.where_branch + commitShort,
+        })
+      );
+    }
+    if (!hasOwnershipUncertainty(issue)) {
       submeta.push(el("span", { text: "Claim: unclaimed" }));
     }
-    if (issue.parent) {
-      if (issue.parent_uid) {
-        submeta.push(
-          el("span", null, [
-            "Parent: ",
-            el("button", {
-              type: "button",
-              className: "inline-link",
-              disabled: state.busy,
-              text: issue.parent,
-              onClick: () => openIssueByUid(issue.parent_uid, issue.parent, true),
-            }),
-          ])
-        );
-      } else {
-        submeta.push(el("span", { text: "Parent: " + issue.parent }));
-      }
+    const parentsNode = renderParentsMeta(issue);
+    if (parentsNode) {
+      submeta.push(parentsNode);
     }
 
     content.appendChild(
       el("div", { className: "detail-head" }, [
         el("div", { className: "detail-badges" }, badges),
-        el("h2", { className: "detail-title", text: issue.title || "(untitled)" }),
+        el("h2", {
+          className: "detail-title",
+          tabindex: "-1",
+          "data-focus-key": "detail-title",
+          text: issue.title || "(untitled)",
+        }),
         submeta.length > 0 ? el("div", { className: "detail-submeta" }, submeta) : null,
       ])
     );
 
-    // Claim owner card
-    if (issue.claim) {
-      const details = [];
-      if (issue.claim.since) details.push("since " + formatTimestamp(issue.claim.since) + " (" + issue.claim.since + ")");
-      if (issue.claim.branch) details.push("branch " + issue.claim.branch);
-      if (typeof issue.claim.generation === "number") details.push("gen " + issue.claim.generation);
-      content.appendChild(
-        el("div", { className: "claim-card" }, [
-          el("div", { className: "claim-card-title", text: "Claimed by " + issue.claim.owner }),
-          details.length > 0 ? el("div", { text: details.join(" · ") }) : null,
-        ])
-      );
-    }
-
-    if (Array.isArray(issue.provisional_claims) && issue.provisional_claims.length > 0) {
-      for (const claim of issue.provisional_claims) {
-        content.appendChild(
-          el("div", { className: "claim-card" }, [
-            el("div", {
-              className: "claim-card-title",
-              text: "Provisional offline claim by " + claim.owner + " (not exclusive)",
-            }),
-            claim.since ? el("div", { text: "since " + claim.since }) : null,
-          ])
-        );
-      }
-    }
+    renderOwnershipCards(issue, content);
 
     if (issue.conflicts && typeof issue.conflicts === "object" && Object.keys(issue.conflicts).length > 0) {
       content.appendChild(
@@ -1474,6 +1711,27 @@
 
   function renderErrorView() {
     const err = state.error || { code: "ERROR", message: "Unable to read the beadroll tracker." };
+    const buttons = [
+      el("button", {
+        type: "button",
+        className: "btn",
+        "data-focus-key": "retry",
+        disabled: state.busy,
+        text: "Try again",
+        onClick: retryLastFailed,
+      }),
+    ];
+    if (state.lastFailed && state.lastFailed.tool === "bead_show") {
+      buttons.push(
+        el("button", {
+          type: "button",
+          className: "btn btn-ghost",
+          disabled: state.busy,
+          text: "Show ready issues",
+          onClick: () => loadReady(false, "refresh"),
+        })
+      );
+    }
     return el("div", { className: "error-state", role: "alert" }, [
       el("div", { className: "error-box" }, [
         el("div", null, [
@@ -1481,25 +1739,46 @@
         ]),
         el("div", { text: err.message || "Unable to read the beadroll tracker." }),
       ]),
-      el("button", {
-        type: "button",
-        className: "btn",
-        disabled: state.busy,
-        text: "Try again",
-        onClick: () => loadReady(false),
-      }),
+      el("div", { className: "action-row" }, buttons),
     ]);
   }
 
   function renderFallbackTextView() {
     return el("div", { className: "detail-content" }, [
       el("pre", { className: "prose", text: state.fallbackText || "" }),
+      el("div", { className: "action-row" }, [
+        el("button", {
+          type: "button",
+          className: "btn",
+          disabled: state.busy,
+          text: "Load ready issues",
+          onClick: () => loadReady(false, "refresh"),
+        }),
+      ]),
     ]);
   }
 
-  function render() {
+  function findFocusTarget(focusKey) {
+    if (!focusKey || typeof rootEl.querySelector !== "function") return null;
+    const buttons = rootEl.querySelectorAll("[data-focus-key]");
+    for (const node of buttons) {
+      if (node.getAttribute("data-focus-key") === focusKey) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  function render(explicitFocusKey) {
+    const active = document.activeElement;
+    const preservedFocusKey = !explicitFocusKey && active && typeof active.getAttribute === "function"
+      ? active.getAttribute("data-focus-key")
+      : null;
+
     rootEl.textContent = "";
     rootEl.appendChild(renderHeader());
+    const wsWarning = renderWorkspaceWarning();
+    if (wsWarning) rootEl.appendChild(wsWarning);
     const banner = renderInlineError();
     if (banner) rootEl.appendChild(banner);
 
@@ -1520,11 +1799,15 @@
       body.appendChild(renderFallbackTextView());
     }
     rootEl.appendChild(body);
+
+    const targetKey = explicitFocusKey || preservedFocusKey;
+    const targetNode = findFocusTarget(targetKey);
+    if (targetNode && typeof targetNode.focus === "function" && !targetNode.disabled) {
+      targetNode.focus();
+    }
     scheduleResize();
   }
 
-  let resizeRaf = 0;
-  let lastSentHeight = 0;
   function scheduleResize() {
     if (hostState.displayMode === "fullscreen") return;
     if (resizeRaf) cancelAnimationFrame(resizeRaf);
@@ -1532,10 +1815,9 @@
       resizeRaf = 0;
       const rect = rootEl.getBoundingClientRect();
       const height = Math.ceil(Math.max(rect.height, document.body.scrollHeight));
-      const width = Math.ceil(rect.width);
       if (height > 0 && height !== lastSentHeight) {
         lastSentHeight = height;
-        sendNotification("ui/notifications/size-changed", { width, height });
+        sendNotification("ui/notifications/size-changed", { height });
       }
     });
   }
@@ -1567,6 +1849,8 @@
     if (msg.id !== undefined && typeof msg.method === "string") {
       if (msg.method === "ping" || msg.method === "ui/resource-teardown") {
         sendResponse(msg.id, {});
+      } else {
+        sendErrorResponse(msg.id, -32601, "Method not found: " + msg.method);
       }
       return;
     }
@@ -1581,6 +1865,7 @@
       } else if (msg.method === "ui/notifications/tool-result") {
         applyToolPayload(params, { fromInitialNotification: true });
       } else if (msg.method === "ui/notifications/tool-cancelled") {
+        state.lastFailed = inferInitialCall();
         state.error = {
           code: "CANCELLED",
           message: typeof params.reason === "string" && params.reason
@@ -1588,7 +1873,8 @@
             : "Tool call was cancelled.",
         };
         state.view = "error";
-        render();
+        announce(state.error.message);
+        render("retry");
       } else if (msg.method === "ui/notifications/host-context-changed") {
         applyHostContext(params);
       }
@@ -1614,7 +1900,17 @@
       }
       sendNotification("ui/notifications/initialized", {});
     })
-    .catch(() => {});
+    .catch((error) => {
+      if (state.view === "loading") {
+        state.error = {
+          code: "INIT_FAILED",
+          message: (error && error.message) || "Unable to connect to the MCP Apps host.",
+        };
+        state.view = "error";
+        announce(state.error.message);
+        render("retry");
+      }
+    });
 })();
 </script>
 </body>

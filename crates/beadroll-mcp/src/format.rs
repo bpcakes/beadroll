@@ -3,7 +3,7 @@
 
 use std::fmt::Write as _;
 
-use crate::model::{DetailView, IssueDetail, ReadyView, WorkspaceInfo};
+use crate::model::{DetailView, IssueDetail, MergedStatus, ReadyView, WorkspaceInfo};
 
 /// Formats the ready-issues list as plain text for non-UI clients and model context.
 pub(crate) fn format_ready(view: &ReadyView) -> String {
@@ -42,6 +42,7 @@ pub(crate) fn format_detail(view: &DetailView) -> String {
     let mut out = String::new();
     write_workspace_header(&mut out, &view.workspace);
     write_issue_summary(&mut out, &view.issue);
+    write_issue_ownership(&mut out, &view.issue);
     write_issue_sections(&mut out, &view.issue);
     write_issue_relations(&mut out, &view.issue);
     out
@@ -65,6 +66,9 @@ fn write_workspace_header(out: &mut String, ws: &WorkspaceInfo) {
             let _ = writeln!(out, "Last sync: never synced (local read only)");
         }
     }
+    if let Some(warning) = &ws.tracked_config_warning {
+        let _ = writeln!(out, "Warning: {warning}");
+    }
 }
 
 fn write_issue_summary(out: &mut String, issue: &IssueDetail) {
@@ -83,7 +87,9 @@ fn write_issue_summary(out: &mut String, issue: &IssueDetail) {
     if issue.blocked {
         out.push_str("Blocked: yes\n");
     }
-    if let Some(parent) = &issue.parent {
+    if issue.parents.len() > 1 {
+        let _ = writeln!(out, "Parents: {}", issue.parents.join(", "));
+    } else if let Some(parent) = &issue.parent {
         let _ = writeln!(out, "Parent: {parent}");
     }
     if !issue.labels.is_empty() {
@@ -92,6 +98,39 @@ fn write_issue_summary(out: &mut String, issue: &IssueDetail) {
     if let Some(assignee) = &issue.assignee {
         let _ = writeln!(out, "Assignee: {assignee}");
     }
+    if let Some(ext) = &issue.external_ref {
+        let _ = writeln!(out, "External ref: {ext}");
+    }
+    if let Some(branch) = &issue.where_branch {
+        let _ = write!(out, "Last worked on branch: {branch}");
+        if let Some(commit) = &issue.where_commit {
+            let short: String = commit.chars().take(12).collect();
+            let _ = write!(out, " ({short})");
+        }
+        out.push('\n');
+    }
+    if let Some(closed_at) = &issue.closed_at {
+        let _ = writeln!(out, "Closed at: {closed_at}");
+    }
+    if issue.closed_on_branch.is_some() || issue.closed_on_commit.is_some() {
+        let branch = issue.closed_on_branch.as_deref().unwrap_or("detached HEAD");
+        let commit: String = issue
+            .closed_on_commit
+            .as_deref()
+            .unwrap_or_default()
+            .chars()
+            .take(12)
+            .collect();
+        let merged = match issue.merged {
+            Some(MergedStatus::Merged) => " · merged into the default branch",
+            Some(MergedStatus::NotMerged) => " · NOT yet on the default branch",
+            Some(MergedStatus::Unknown) | None => "",
+        };
+        let _ = writeln!(out, "Closed on: {branch} at {commit}{merged}");
+    }
+}
+
+fn write_issue_ownership(out: &mut String, issue: &IssueDetail) {
     if let Some(claim) = &issue.claim {
         let _ = write!(out, "Claimed by: {}", claim.owner);
         if let Some(since) = &claim.since {
@@ -103,12 +142,29 @@ fn write_issue_summary(out: &mut String, issue: &IssueDetail) {
         }
         out.push('\n');
     }
+    for pending in &issue.unconfirmed {
+        let _ = writeln!(
+            out,
+            "Unconfirmed: {} by {} awaiting the remote's acknowledgement",
+            pending.op, pending.by
+        );
+    }
     for provisional in &issue.provisional_claims {
         let _ = write!(out, "Provisional claim (offline): {}", provisional.owner);
         if let Some(since) = &provisional.since {
             let _ = write!(out, " (since {since})");
         }
         out.push('\n');
+    }
+    for lost in &issue.lost_claims {
+        let _ = writeln!(out, "Lost claim: {} lost to {}", lost.by, lost.held_by);
+    }
+    for old in &issue.stale {
+        let _ = writeln!(
+            out,
+            "Ignored stale {} by {}: named a claim that is no longer current",
+            old.op, old.by
+        );
     }
 }
 

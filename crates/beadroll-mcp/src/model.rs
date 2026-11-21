@@ -14,6 +14,7 @@ pub(crate) struct WorkspaceInfo {
     pub(crate) source: Option<String>,
     pub(crate) last_sync: Option<String>,
     pub(crate) bead_version: Option<String>,
+    pub(crate) tracked_config_warning: Option<String>,
     pub(crate) checkout: String,
 }
 
@@ -50,6 +51,38 @@ pub(crate) struct ClaimInfo {
     pub(crate) since: Option<String>,
     pub(crate) generation: Option<i64>,
     pub(crate) branch: Option<String>,
+}
+
+/// An unconfirmed ownership attempt awaiting the remote or a stale ignored ownership event.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct OwnershipNotice {
+    pub(crate) op: String,
+    pub(crate) by: String,
+}
+
+/// A claim attempt that lost an ownership race to another owner.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct LostClaim {
+    pub(crate) by: String,
+    pub(crate) held_by: String,
+}
+
+/// Whether a closed issue's closing commit has been merged into the default branch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MergedStatus {
+    Merged,
+    NotMerged,
+    Unknown,
+}
+
+impl MergedStatus {
+    fn to_json(self) -> Value {
+        match self {
+            Self::Merged => Value::Bool(true),
+            Self::NotMerged => Value::Bool(false),
+            Self::Unknown => Value::from("unknown"),
+        }
+    }
 }
 
 /// A dependency or dependent issue linked from an issue detail view.
@@ -107,8 +140,14 @@ pub(crate) struct IssueDetail {
     pub(crate) closed_at: Option<String>,
     pub(crate) where_branch: Option<String>,
     pub(crate) where_commit: Option<String>,
+    pub(crate) closed_on_branch: Option<String>,
+    pub(crate) closed_on_commit: Option<String>,
+    pub(crate) merged: Option<MergedStatus>,
     pub(crate) claim: Option<ClaimInfo>,
     pub(crate) provisional_claims: Vec<ClaimInfo>,
+    pub(crate) unconfirmed: Vec<OwnershipNotice>,
+    pub(crate) lost_claims: Vec<LostClaim>,
+    pub(crate) stale: Vec<OwnershipNotice>,
     pub(crate) dependencies: Vec<RelatedIssue>,
     pub(crate) unresolved_dependencies: Vec<UnresolvedDep>,
     pub(crate) dependents: Vec<RelatedIssue>,
@@ -138,6 +177,7 @@ impl WorkspaceInfo {
             source: non_empty_str(obj.get("workspace_source")),
             last_sync: non_empty_str(obj.get("last_sync")),
             bead_version: non_empty_str(obj.get("version")),
+            tracked_config_warning: non_empty_str(obj.get("tracked_config_warning")),
             checkout,
         })
     }
@@ -151,11 +191,12 @@ impl WorkspaceInfo {
             "source": self.source,
             "last_sync": self.last_sync,
             "bead_version": self.bead_version,
+            "tracked_config_warning": self.tracked_config_warning,
             "checkout": self.checkout,
         })
     }
 
-    /// Human-friendly label identifying this workspace (`name` or `prefix` or short id).
+    /// Human-friendly label identifying this workspace (`name` or `prefix` or id).
     pub(crate) fn display_name(&self) -> &str {
         self.name
             .as_deref()
@@ -234,6 +275,7 @@ impl IssueDetail {
         let uid = non_empty_str(obj.get("uid"))
             .ok_or_else(|| AppError::upgrade_required(bead_version))?;
         let place = obj.get("where").and_then(Value::as_object);
+        let closed_on = obj.get("closed_on").and_then(Value::as_object);
         Ok(Self {
             id,
             uid,
@@ -260,9 +302,21 @@ impl IssueDetail {
             closed_at: non_empty_str(obj.get("closed_at")),
             where_branch: place.and_then(|p| non_empty_str(p.get("branch"))),
             where_commit: place.and_then(|p| non_empty_str(p.get("commit"))),
+            closed_on_branch: closed_on.and_then(|p| non_empty_str(p.get("branch"))),
+            closed_on_commit: closed_on.and_then(|p| non_empty_str(p.get("commit"))),
+            merged: parse_merged(obj.get("merged")),
             claim: obj.get("claim").and_then(parse_claim),
             provisional_claims: array_items(obj.get("provisional_claims"))
                 .filter_map(parse_claim)
+                .collect(),
+            unconfirmed: array_items(obj.get("unconfirmed"))
+                .filter_map(parse_ownership_notice)
+                .collect(),
+            lost_claims: array_items(obj.get("lost_claims"))
+                .filter_map(parse_lost_claim)
+                .collect(),
+            stale: array_items(obj.get("stale"))
+                .filter_map(parse_ownership_notice)
                 .collect(),
             dependencies: array_items(obj.get("dependencies"))
                 .filter_map(parse_related)
@@ -312,8 +366,14 @@ impl IssueDetail {
             "closed_at": self.closed_at,
             "where_branch": self.where_branch,
             "where_commit": self.where_commit,
+            "closed_on_branch": self.closed_on_branch,
+            "closed_on_commit": self.closed_on_commit,
+            "merged": self.merged.map(MergedStatus::to_json),
             "claim": self.claim.as_ref().map(ClaimInfo::to_json),
             "provisional_claims": self.provisional_claims.iter().map(ClaimInfo::to_json).collect::<Vec<_>>(),
+            "unconfirmed": self.unconfirmed.iter().map(OwnershipNotice::to_json).collect::<Vec<_>>(),
+            "lost_claims": self.lost_claims.iter().map(LostClaim::to_json).collect::<Vec<_>>(),
+            "stale": self.stale.iter().map(OwnershipNotice::to_json).collect::<Vec<_>>(),
             "dependencies": self.dependencies.iter().map(RelatedIssue::to_json).collect::<Vec<_>>(),
             "unresolved_dependencies": self.unresolved_dependencies.iter().map(UnresolvedDep::to_json).collect::<Vec<_>>(),
             "dependents": self.dependents.iter().map(RelatedIssue::to_json).collect::<Vec<_>>(),
@@ -341,6 +401,24 @@ impl ClaimInfo {
             "since": self.since,
             "generation": self.generation,
             "branch": self.branch,
+        })
+    }
+}
+
+impl OwnershipNotice {
+    fn to_json(&self) -> Value {
+        json!({
+            "op": self.op,
+            "by": self.by,
+        })
+    }
+}
+
+impl LostClaim {
+    fn to_json(&self) -> Value {
+        json!({
+            "by": self.by,
+            "held_by": self.held_by,
         })
     }
 }
@@ -412,6 +490,15 @@ fn array_items(value: Option<&Value>) -> impl Iterator<Item = &Value> {
         .flat_map(|items| items.iter())
 }
 
+fn parse_merged(value: Option<&Value>) -> Option<MergedStatus> {
+    match value {
+        Some(Value::Bool(true)) => Some(MergedStatus::Merged),
+        Some(Value::Bool(false)) => Some(MergedStatus::NotMerged),
+        Some(Value::String(text)) if text == "unknown" => Some(MergedStatus::Unknown),
+        _ => None,
+    }
+}
+
 fn parse_claim(value: &Value) -> Option<ClaimInfo> {
     let obj = value.as_object()?;
     let owner = non_empty_str(obj.get("owner"))?;
@@ -425,6 +512,20 @@ fn parse_claim(value: &Value) -> Option<ClaimInfo> {
         generation: read_int(obj.get("generation")),
         branch,
     })
+}
+
+fn parse_ownership_notice(value: &Value) -> Option<OwnershipNotice> {
+    let obj = value.as_object()?;
+    let op = non_empty_str(obj.get("op"))?;
+    let by = non_empty_str(obj.get("by")).unwrap_or_else(|| "unknown".to_owned());
+    Some(OwnershipNotice { op, by })
+}
+
+fn parse_lost_claim(value: &Value) -> Option<LostClaim> {
+    let obj = value.as_object()?;
+    let by = non_empty_str(obj.get("by"))?;
+    let held_by = non_empty_str(obj.get("held_by")).unwrap_or_else(|| "unknown".to_owned());
+    Some(LostClaim { by, held_by })
 }
 
 fn parse_related(value: &Value) -> Option<RelatedIssue> {

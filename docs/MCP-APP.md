@@ -10,26 +10,31 @@ running a separate web server.
 - **Ready list (`bead_ready`)**: shows up to 25 ready issues in beadroll's order with key, title,
   priority, type, labels, workspace identity, and last sync time (plus a clear empty state).
 - **Issue detail (`bead_show`)**: click any row (or ask the agent to show an issue) to read its
-  description, acceptance criteria, status, claim owner, dependencies, dependents, and comments
-  while keeping the ready list available via **← Ready issues**.
+  description, acceptance criteria, status, claim owner and ownership uncertainty (`claim`,
+  `provisional_claims`, `unconfirmed`, `lost_claims`, `stale`), closure/merge status, parents,
+  dependencies, dependents, and comments while keeping the ready list available via
+  **← Ready issues**.
 - **Refresh**: rereads the local tracker and refreshes the last sync timestamp. `beadroll-mcp`
-  performs **local reads only** (`bead info`, `bead ready`, `bead show`). It never runs
-  `bead sync`, never contacts a remote, and never mutates issues; claims, edits, and `bead sync`
+  runs **local reads only** (`bead info`, `bead ready`, `bead show`). It never runs `bead sync`,
+  never contacts a git remote, and never writes tracker events (like any local `bead` read, `bead`
+  may refresh its local derived projection or text caches on disk). Claims, edits, and `bead sync`
   remain explicit CLI actions.
 - **Stable issue IDs**: once `bead` returns an issue, every row click and refresh reopens it by
-  `(workspace, uid)`, so a row whose display key was renumbered during sync still opens the right
-  issue. An older `bead` without stable `uid` output returns an actionable `UPGRADE_REQUIRED`
-  error.
+  `(workspace, uid)`, verifying that the returned issue's `uid` matches the requested `uid` so a
+  display key renamed during sync (or colliding with a UID) never opens the wrong issue. An older
+  `bead` without stable `uid` output returns an actionable `UPGRADE_REQUIRED` error naming the
+  version it found.
 - **Text fallback**: both tools also return readable plain text in `content`, so non-MCP-App
   clients and providers work without rendering HTML.
 
 ## Requirements
 
-- `bead` built with stable issue UIDs (PR #319 or newer) installed on `PATH` (or passed with
-  `--bead PATH`).
+- A `bead` build that emits stable issue UIDs (`uid` in `bead ready --json` and
+  `bead show --json`) installed on `PATH` (or passed via `--bead PATH`). Installing both `bead`
+  and `beadroll-mcp` from the same checkout satisfies this requirement.
 - Stock T3 Code with either:
-  - **Codex** (MCP Apps supported out of the box), or
-  - **Claude Code 2.1.301+** (MCP Apps supported out of the box).
+  - **Codex** (verified on `codex-cli 0.171.0`), or
+  - **Claude Code 2.1.301+** (verified on `2.1.330`).
 
 ## Install
 
@@ -49,11 +54,15 @@ beadroll-mcp --version
 
 ## Configure in your repository
 
-`beadroll-mcp` binds one checkout once at startup and refuses to guess a repository from tool
-arguments. Both Codex (including T3 Code's shared `codex app-server`) and Claude Code launch
-project-scoped stdio MCP servers with the thread's checkout as their working directory. Pass
-`--repo /abs/path/to/checkout` if your host does not set the server's working directory to the
-checkout.
+`beadroll-mcp` binds one checkout once at startup (canonicalizing the path, scrubbing inherited
+`GIT_*` routing/config overrides and `BEAD_WORKSPACE`/`BEAD_REMOTE`, and preserving `BEAD_HOME`)
+and never accepts a repository path on tool calls. Both `codex app-server` (verified on
+`codex-cli 0.171.0`) and Claude Code (verified on `2.1.330`) launch project-scoped stdio MCP
+servers with the thread's checkout as their working directory.
+
+If your host does not set the server's working directory to the checkout, pass
+`--repo /abs/path/to/checkout` in machine-local MCP config (avoid committing machine-specific
+absolute `--repo` paths into a shared repository).
 
 ### Option A: Codex (`.codex/config.toml`)
 
@@ -65,7 +74,7 @@ trusted in `~/.codex/config.toml`):
 command = "beadroll-mcp"
 ```
 
-To bind an explicit checkout or `bead` binary path:
+With an explicit local checkout or `bead` binary path (keep machine-local, not committed):
 
 ```toml
 [mcp_servers.beadroll]
@@ -88,7 +97,7 @@ Claude Code prompts):
 }
 ```
 
-Or bind an explicit checkout or `bead` binary:
+With an explicit local checkout or `bead` binary (keep machine-local, not committed):
 
 ```json
 {
@@ -103,27 +112,45 @@ Or bind an explicit checkout or `bead` binary:
 
 ## Verify in a fresh T3 Code thread
 
-1. Open your repository in T3 Code and start a fresh **Codex** or **Claude Code** thread.
+To test end to end without writing test issues into a real repository tracker, use a scratch
+repository and scratch `BEAD_HOME`:
+
+```sh
+export BEAD_HOME="$(mktemp -d)"
+SCRATCH_REPO="$(mktemp -d)"
+git -C "$SCRATCH_REPO" init -q
+(cd "$SCRATCH_REPO" && bead init --prefix demo && bead create "First demo issue" -p 1 && bead create "Second demo issue" -p 2)
+```
+
+1. Add the Codex or Claude Code MCP config above inside `$SCRATCH_REPO` (passing `BEAD_HOME` via
+   the MCP server's `env` map if testing with a scratch store), open `$SCRATCH_REPO` in T3 Code,
+   and start a fresh **Codex** or **Claude Code** thread.
 2. Ask: **"What's ready in beadroll?"** — the agent calls `bead_ready` and T3 renders the
    interactive issue list below the tool call.
-3. Click a row to open its full details (description, acceptance criteria, status, claim owner,
-   dependencies, comments). Because `bead_show` and `bead_ready` declare `readOnlyHint: true`,
-   T3 executes clicks and refreshes without asking for confirmation.
-4. Click **← Ready issues**, then open a second issue.
-5. Make a local change in a terminal (for example `bead create "Check MCP refresh" --offline` or
-   `bead comments add ID "Updated locally" --offline`) and click **Refresh** in the app. The new
-   local state appears immediately without running `bead sync`.
+3. Click a row to open its full details. Because `bead_show` and `bead_ready` declare
+   `readOnlyHint: true`, T3 runs clicks and refreshes without asking for confirmation.
+4. Click **← Ready issues**, then open the second issue.
+5. In a terminal with the same `BEAD_HOME`, record a local change (for example
+   `cd "$SCRATCH_REPO" && bead create "Third demo issue" --offline`) and click **Refresh** in the
+   app. The updated local state appears immediately without running `bead sync`.
 
 ## Troubleshooting
 
 - **`UPGRADE_REQUIRED`**: the installed `bead` binary does not emit `uid` in `bead ready --json` /
-  `bead show --json`. Upgrade `bead` to a build that includes stable issue UIDs (PR #319 or newer)
+  `bead show --json`. Reinstall `bead` from a build with stable issue UIDs (see *Install* above)
   and restart the thread/server.
 - **`BEAD_NOT_FOUND`**: `bead` is not on the `PATH` inherited by Codex or Claude Code. Add
   `~/.local/bin` to your login `PATH` or pass `--bead` with the absolute path to `bead`.
+- **`NO_WORKSPACE`**: the server's startup working directory is not inside a git repository.
+  Verify that your host launches the MCP server in the project checkout, or bind it explicitly
+  with `--repo /abs/path/to/checkout` in machine-local config.
 - **`NOT_INITIALIZED`**: the bound repository has no local tracker yet. Run `bead sync` (to join an
   existing tracker) or `bead init --prefix NAME` (to start one), then click **Refresh**.
 - **`WORKSPACE_MISMATCH`**: an interactive click sent a `workspace` ID from another tracker to a
   server bound to a different checkout. Open a thread in that repository instead.
+- **`UID_MISMATCH`**: an explicit stable-UID lookup matched a different issue whose display key
+  collides with that UID string; inspect the collision with `bead list --all` in the CLI.
+- **`BEAD_TIMEOUT`**: a local `bead` invocation did not finish within the server timeout (default
+  30 seconds; configurable with `--timeout-ms MS`) and its process group was terminated.
 - **Session stopped**: T3 Code keeps rendered MCP Apps visible after a thread stops, but interactive
   clicks require the thread's agent session to be running. Send a message in the thread to wake it.

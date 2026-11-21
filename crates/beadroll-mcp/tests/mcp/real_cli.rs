@@ -1,7 +1,9 @@
-//! End-to-end tests running `beadroll-mcp` against the real `bead` binary in isolated
-//! `beadroll-test-support::Sandbox` repositories.
+//! End-to-end tests running `beadroll-mcp` against the real workspace-built `bead` binary in
+//! isolated `beadroll-test-support::Sandbox` repositories.
 
-use beadroll_test_support::{Json, Machine, Sandbox, built_bead, converge, path_text};
+use beadroll_test_support::{
+    Json, Machine, Sandbox, built_bead, converge, executable, git, path_text, shell_quoted,
+};
 use serde_json::{Value, json};
 use tempfile::tempdir;
 
@@ -11,20 +13,22 @@ fn sandbox() -> Sandbox {
     Sandbox::new(built_bead())
 }
 
-fn spawn_for_machine(m: &Machine) -> McpClient {
+fn spawn_for_machine(m: &Machine, extra_env: &[(&str, &str)]) -> McpClient {
     let bead_path = m.executable().to_path_buf();
     let home = path_text(m.home()).to_owned();
     let repo = path_text(m.checkout()).to_owned();
+    let mut env = vec![("BEAD_HOME", home.as_str())];
+    env.extend_from_slice(extra_env);
     let mut client = McpClient::spawn(
         m.checkout(),
         &["--repo", &repo, "--bead", path_text(&bead_path)],
-        &[("BEAD_HOME", &home)],
+        &env,
     );
     client.initialize();
     client
 }
 
-fn find_uid_by_title(listed: &Value, title: &str) -> (String, String) {
+fn find_row_by_title(listed: &Value, title: &str) -> (String, String) {
     let row = listed
         .pointer("/structuredContent/issues")
         .and_then(Value::as_array)
@@ -46,12 +50,11 @@ fn find_uid_by_title(listed: &Value, title: &str) -> (String, String) {
 }
 
 #[test]
-fn real_bead_uninitialized_and_empty_ready_perform_local_reads_only() {
+fn real_bead_uninitialized_and_populated_reads_never_contact_remote() {
     let sb = sandbox();
     let m = Machine::new(&sb, "a");
-    let mut client = spawn_for_machine(&m);
+    let mut client = spawn_for_machine(&m, &[]);
 
-    // Uninitialized checkout reports NOT_INITIALIZED and touches nothing on the remote.
     let uninit = client.call_tool("bead_ready", json!({}));
     assert_eq!(uninit.get("isError").and_then(Value::as_bool), Some(true));
     assert_eq!(
@@ -62,26 +65,47 @@ fn real_bead_uninitialized_and_empty_ready_perform_local_reads_only() {
     );
     assert!(sb.remote_journal().is_none());
 
-    // Initialize an empty tracker, then refresh via `bead_ready`.
     m.bead(["init", "--prefix", "mcp"]);
-    let head_before = sb.remote_journal().expect("remote initialized");
+    let created = m
+        .bead(["create", "Verify zero remote contact"])
+        .expect("create");
+    let created_uid = created
+        .get("uid")
+        .and_then(Json::as_str)
+        .expect("uid")
+        .to_owned();
 
-    let empty = client.call_tool("bead_ready", json!({}));
-    assert_ne!(empty.get("isError").and_then(Value::as_bool), Some(true));
-    assert_eq!(
-        empty
-            .pointer("/structuredContent/issues")
-            .and_then(Value::as_array)
-            .map(Vec::len),
-        Some(0)
+    // Install a git uploadpack sentinel on origin without altering `remote.origin.url` so the
+    // workspace ID stays unchanged, while any remote fetch attempt immediately creates the marker.
+    let marker = sb.root().join("remote-contacted");
+    let sentinel = sb.root().join("uploadpack-sentinel.sh");
+    let body = format!(
+        "#!/bin/sh\ntouch {}\nexit 99\n",
+        shell_quoted(path_text(&marker))
     );
-    assert_eq!(
-        empty
-            .pointer("/structuredContent/workspace/prefix")
-            .and_then(Value::as_str),
-        Some("mcp")
+    executable(&sentinel, body);
+    let _ = git(
+        ["config", "remote.origin.uploadpack", path_text(&sentinel)],
+        Some(m.checkout()),
     );
-    assert_eq!(sb.remote_journal(), Some(head_before));
+
+    let ready = client.call_tool("bead_ready", json!({}));
+    assert_ne!(ready.get("isError").and_then(Value::as_bool), Some(true));
+    let ws_id = ready
+        .pointer("/structuredContent/workspace/id")
+        .and_then(Value::as_str)
+        .expect("ws id")
+        .to_owned();
+
+    let detail = client.call_tool(
+        "bead_show",
+        json!({ "uid": created_uid, "workspace": ws_id }),
+    );
+    assert_ne!(detail.get("isError").and_then(Value::as_bool), Some(true));
+    assert!(
+        !marker.exists(),
+        "local MCP reads must never contact the remote transport"
+    );
 
     assert_eq!(client.close(), Some(0));
 }
@@ -118,7 +142,7 @@ fn real_bead_non_git_directory_reports_no_workspace() {
 }
 
 #[test]
-fn real_bead_browsing_and_renumbered_child_key_or_upgrade_contract() {
+fn real_bead_renumbered_child_key_reopens_original_issue_by_stable_uid() {
     let sb = sandbox();
     let m1 = Machine::new(&sb, "a");
     let m2 = Machine::new(&sb, "b");
@@ -133,7 +157,10 @@ fn real_bead_browsing_and_renumbered_child_key_or_upgrade_contract() {
         .and_then(Json::as_str)
         .expect("parent id")
         .to_owned();
-    let supports_uid = parent.get("uid").and_then(Json::as_str).is_some();
+    assert!(
+        parent.get("uid").and_then(Json::as_str).is_some(),
+        "workspace bead must emit stable uids"
+    );
     m2.bead(["sync"]);
 
     // Both machines create a child offline under the same parent so both mint `<parent>.1`.
@@ -157,36 +184,24 @@ fn real_bead_browsing_and_renumbered_child_key_or_upgrade_contract() {
         .expect("create child_b");
     assert_eq!(child_a.get("id"), child_b.get("id"));
 
-    let mut client_a = spawn_for_machine(&m1);
+    let mut client_a = spawn_for_machine(&m1, &[]);
     let listed_a = client_a.call_tool("bead_ready", json!({}));
-    if !supports_uid {
-        assert_eq!(listed_a.get("isError").and_then(Value::as_bool), Some(true));
-        assert_eq!(
-            listed_a
-                .pointer("/structuredContent/error/code")
-                .and_then(Value::as_str),
-            Some("UPGRADE_REQUIRED")
-        );
-        assert_eq!(client_a.close(), Some(0));
-        return;
-    }
-
+    assert_ne!(listed_a.get("isError").and_then(Value::as_bool), Some(true));
     let ws_id = listed_a
         .pointer("/structuredContent/workspace/id")
         .and_then(Value::as_str)
         .expect("workspace id")
         .to_owned();
-    let (pre_key_a, uid_a) = find_uid_by_title(&listed_a, "Child from A");
+    let (pre_key_a, uid_a) = find_row_by_title(&listed_a, "Child from A");
 
-    let mut client_b = spawn_for_machine(&m2);
+    let mut client_b = spawn_for_machine(&m2, &[]);
     let listed_b = client_b.call_tool("bead_ready", json!({}));
-    let (pre_key_b, uid_b) = find_uid_by_title(&listed_b, "Child from B");
+    let (pre_key_b, uid_b) = find_row_by_title(&listed_b, "Child from B");
     assert_eq!(pre_key_a, pre_key_b);
 
     // Converge both machines: one colliding child key is renumbered from `.1` to `.2`.
     converge(&[&m1, &m2]);
 
-    // Clicking both pre-sync rows by `(uid, workspace)` opens each original issue accurately.
     let detail_a = client_a.call_tool("bead_show", json!({ "uid": uid_a, "workspace": ws_id }));
     let detail_b = client_a.call_tool("bead_show", json!({ "uid": uid_b, "workspace": ws_id }));
     assert_eq!(
@@ -213,4 +228,71 @@ fn real_bead_browsing_and_renumbered_child_key_or_upgrade_contract() {
 
     assert_eq!(client_a.close(), Some(0));
     assert_eq!(client_b.close(), Some(0));
+}
+
+#[test]
+fn real_bead_inherited_workspace_and_git_pushurl_cannot_hijack_bound_tracker() {
+    let sb_a = sandbox();
+    let sb_b = sandbox();
+    let shared_home = tempdir().expect("shared BEAD_HOME");
+    let home = path_text(shared_home.path()).to_owned();
+
+    let mut ma = Machine::new(&sb_a, "a");
+    let mut mb = Machine::new(&sb_b, "b");
+    ma.extra.insert("BEAD_HOME".into(), home.clone().into());
+    mb.extra.insert("BEAD_HOME".into(), home.clone().into());
+
+    ma.bead(["init", "--prefix", "dup"]);
+    ma.bead(["create", "Only in Tracker A"]);
+    mb.bead(["init", "--prefix", "dup"]);
+    mb.bead(["create", "Only in Tracker B"]);
+
+    let info_b = mb.bead(["info"]).expect("info b");
+    let ws_b = info_b
+        .get("workspace")
+        .and_then(Json::as_str)
+        .expect("ws_b")
+        .to_owned();
+    let origin_b = path_text(sb_b.origin()).to_owned();
+
+    // Launch `beadroll-mcp` bound to checkout A with inherited BEAD_WORKSPACE and GIT_CONFIG
+    // pushurl overrides pointing at Tracker B (both living in the same BEAD_HOME!).
+    let mut client = McpClient::spawn(
+        ma.checkout(),
+        &[
+            "--repo",
+            path_text(ma.checkout()),
+            "--bead",
+            path_text(ma.executable()),
+        ],
+        &[
+            ("BEAD_HOME", &home),
+            ("BEAD_WORKSPACE", &ws_b),
+            ("GIT_CONFIG_COUNT", "1"),
+            ("GIT_CONFIG_KEY_0", "remote.origin.pushurl"),
+            ("GIT_CONFIG_VALUE_0", &origin_b),
+        ],
+    );
+    client.initialize();
+
+    let listed = client.call_tool("bead_ready", json!({}));
+    assert_ne!(listed.get("isError").and_then(Value::as_bool), Some(true));
+    assert_eq!(
+        listed
+            .pointer("/structuredContent/issues/0/title")
+            .and_then(Value::as_str),
+        Some("Only in Tracker A"),
+        "inherited env redirected read to Tracker B: {listed}"
+    );
+
+    let cross = client.call_tool("bead_show", json!({ "id": "dup-1", "workspace": ws_b }));
+    assert_eq!(cross.get("isError").and_then(Value::as_bool), Some(true));
+    assert_eq!(
+        cross
+            .pointer("/structuredContent/error/code")
+            .and_then(Value::as_str),
+        Some("WORKSPACE_MISMATCH")
+    );
+
+    assert_eq!(client.close(), Some(0));
 }

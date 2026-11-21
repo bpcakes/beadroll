@@ -1,5 +1,6 @@
 //! Integration tests for `beadroll-mcp`: MCP JSON-RPC 2.0 protocol, read-only browsing,
-//! checkout/workspace binding, stable-UID reopening across key renames, and real `bead` runs.
+//! checkout/workspace binding, stable-UID reopening across key renames, UI contract invariants,
+//! and real `bead` runs.
 #![cfg(test)]
 
 mod binding;
@@ -7,6 +8,7 @@ mod browsing;
 mod protocol;
 mod real_cli;
 mod stable_id;
+mod ui_contract;
 
 use std::io::{BufRead as _, BufReader, Write as _};
 use std::path::{Path, PathBuf};
@@ -51,10 +53,15 @@ impl McpClient {
         }
     }
 
-    /// Sends one raw line to stdin without waiting for a response.
+    /// Sends one raw UTF-8 line to stdin without waiting for a response.
     pub(crate) fn send_raw(&mut self, line: &str) {
+        self.send_bytes(line.as_bytes());
+    }
+
+    /// Sends raw bytes followed by `\n` to stdin (supports invalid UTF-8 and oversized frames).
+    pub(crate) fn send_bytes(&mut self, bytes: &[u8]) {
         let stdin = self.stdin.as_mut().expect("stdin still open");
-        stdin.write_all(line.as_bytes()).expect("write request");
+        stdin.write_all(bytes).expect("write request bytes");
         stdin.write_all(b"\n").expect("write newline");
         stdin.flush().expect("flush stdin");
     }
@@ -139,8 +146,7 @@ impl Drop for McpClient {
     }
 }
 
-/// Writes an executable fake `bead` script at `dir/fake-bead` backed by Python 3 and returns its
-/// path. Every invocation appends its `(cwd, argv, git_env)` to `log_path` when supplied.
+/// Writes an executable fake `bead` script at `dir/name` backed by Python 3 and returns its path.
 pub(crate) fn write_fake_bead(dir: &Path, name: &str, python_body: &str) -> PathBuf {
     let script = dir.join(name);
     let content = format!("#!/usr/bin/env python3\n{python_body}\n");
@@ -150,7 +156,7 @@ pub(crate) fn write_fake_bead(dir: &Path, name: &str, python_body: &str) -> Path
 
 /// Writes a fake `bead` script that dispatches `info`, `ready`, and `show` from a JSON fixture
 /// file at `state_file` (reread on every invocation so tests can mutate it to verify Refresh and
-/// key renames) and logs every call into `log_file`.
+/// key renames) and logs every call's cwd, argv, `GIT_*` env, and `BEAD_*` env into `log_file`.
 pub(crate) fn write_stateful_fake_bead(
     dir: &Path,
     name: &str,
@@ -167,7 +173,13 @@ LOG = {log_repr}
 
 with open(LOG, "a") as f:
     git_env = {{k: v for k, v in os.environ.items() if k.startswith("GIT_")}}
-    f.write(json.dumps({{"cwd": os.getcwd(), "argv": sys.argv[1:], "git_env": git_env}}) + "\n")
+    bead_env = {{k: v for k, v in os.environ.items() if k.startswith("BEAD_")}}
+    f.write(json.dumps({{
+        "cwd": os.getcwd(),
+        "argv": sys.argv[1:],
+        "git_env": git_env,
+        "bead_env": bead_env,
+    }}) + "\n")
 
 with open(STATE) as f:
     data = json.load(f)
@@ -202,7 +214,6 @@ if cmd == "show":
     if "show_error" in data:
         sys.stderr.write(json.dumps({{"error": data["show_error"]}}) + "\n")
         sys.exit(1)
-    # Target is the last argument after `--` (or last positional).
     target = args[-1]
     details = data.get("details", {{}})
     # Keys match first, then uids (matching beadroll's commands::resolve precedence).

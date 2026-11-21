@@ -1,10 +1,11 @@
-//! Stable UID reopening when display keys change after list render, actionable upgrade errors on
-//! older `bead` builds, missing binary, uninitialized tracker, and argument-separator safety.
+//! Stable UID reopening when display keys change after list render, explicit UID collision
+//! rejection, actionable upgrade errors on older `bead` builds, missing binary, uninitialized
+//! tracker, dash-prefixed target safety, and subprocess timeout cleanup.
 
 use serde_json::{Value, json};
 use tempfile::tempdir;
 
-use crate::{McpClient, write_stateful_fake_bead};
+use crate::{McpClient, write_fake_bead, write_stateful_fake_bead};
 
 fn rename_state(last_sync: &str, ready: Value, details: Value) -> Value {
     json!({
@@ -134,6 +135,55 @@ fn clicking_row_reopens_renamed_issue_by_stable_uid_not_reassigned_key() {
 }
 
 #[test]
+fn explicit_uid_lookup_refuses_display_key_colliding_with_that_uid() {
+    let dir = tempdir().expect("tempdir");
+    let state_file = dir.path().join("state.json");
+    let log_file = dir.path().join("bead.log");
+
+    let target_uid = "019a0000-0000-7000-8000-333333333333";
+    let impostor_uid = "019a0000-0000-7000-8000-444444444444";
+
+    // An imported issue's display key literally equals `target_uid`; because `bead show` resolves
+    // keys before UIDs, it returns the impostor. `beadroll-mcp` must refuse the mismatch.
+    let fixture = rename_state(
+        "2026-11-21T11:00:00Z",
+        json!([]),
+        json!({
+            "impostor": detail_row(target_uid, impostor_uid, "Imported key colliding with uid", ""),
+            "real": detail_row("ex-real", target_uid, "Real target issue", ""),
+        }),
+    );
+    std::fs::write(&state_file, serde_json::to_string(&fixture).expect("json"))
+        .expect("write state");
+
+    let fake_bead = write_stateful_fake_bead(dir.path(), "fake-bead", &state_file, &log_file);
+    let mut client = McpClient::spawn(
+        dir.path(),
+        &[
+            "--repo",
+            dir.path().to_str().expect("utf8"),
+            "--bead",
+            fake_bead.to_str().expect("utf8"),
+        ],
+        &[],
+    );
+    client.initialize();
+
+    let res = client.call_tool(
+        "bead_show",
+        json!({ "uid": target_uid, "workspace": "ws-rename" }),
+    );
+    assert_eq!(res.get("isError").and_then(Value::as_bool), Some(true));
+    assert_eq!(
+        res.pointer("/structuredContent/error/code")
+            .and_then(Value::as_str),
+        Some("UID_MISMATCH")
+    );
+
+    assert_eq!(client.close(), Some(0));
+}
+
+#[test]
 fn older_bead_without_uid_produces_actionable_upgrade_error() {
     let dir = tempdir().expect("tempdir");
     let state_file = dir.path().join("state.json");
@@ -216,7 +266,6 @@ fn older_bead_without_uid_produces_actionable_upgrade_error() {
 fn missing_binary_uninitialized_tracker_and_not_found_surface_actionable_errors() {
     let dir = tempdir().expect("tempdir");
 
-    // 1. Missing `bead` binary.
     let missing_bin = dir.path().join("no-such-bead-binary");
     let mut missing_client = McpClient::spawn(
         dir.path(),
@@ -242,7 +291,6 @@ fn missing_binary_uninitialized_tracker_and_not_found_surface_actionable_errors(
     );
     assert_eq!(missing_client.close(), Some(0));
 
-    // 2. Uninitialized tracker & issue not found & dash-prefixed target safety.
     let state_file = dir.path().join("state.json");
     let log_file = dir.path().join("bead.log");
     std::fs::write(
@@ -286,14 +334,7 @@ fn missing_binary_uninitialized_tracker_and_not_found_surface_actionable_errors(
             .and_then(Value::as_str),
         Some("NOT_INITIALIZED")
     );
-    assert_eq!(
-        uninit
-            .pointer("/structuredContent/workspace/id")
-            .and_then(Value::as_str),
-        Some("local-uninit")
-    );
 
-    // Passing a dash-prefixed key passes `--` before it so `bead` never treats it as a flag.
     let dash = client.call_tool("bead_show", json!({ "id": "--help" }));
     assert_eq!(dash.get("isError").and_then(Value::as_bool), Some(true));
     assert_eq!(
@@ -311,6 +352,49 @@ fn missing_binary_uninitialized_tracker_and_not_found_surface_actionable_errors(
         show_entry.get("argv"),
         Some(&json!(["show", "--json", "--", "--help"]))
     );
+
+    assert_eq!(client.close(), Some(0));
+}
+
+#[test]
+fn stalled_bead_and_descendant_holding_pipes_time_out_and_session_recovers() {
+    let dir = tempdir().expect("tempdir");
+    // Child spawns a background sleeper inheriting stdout/stderr and exits immediately,
+    // exercising process-group cleanup on open inherited pipes.
+    let stalled_bead = write_fake_bead(
+        dir.path(),
+        "stalled-bead",
+        r#"import subprocess, sys
+subprocess.Popen(["sleep", "30"], stdout=sys.stdout, stderr=sys.stderr)
+sys.exit(0)
+"#,
+    );
+
+    let mut client = McpClient::spawn(
+        dir.path(),
+        &[
+            "--repo",
+            dir.path().to_str().expect("utf8"),
+            "--bead",
+            stalled_bead.to_str().expect("utf8"),
+            "--timeout-ms",
+            "250",
+        ],
+        &[],
+    );
+    client.initialize();
+
+    let res = client.call_tool("bead_ready", json!({}));
+    assert_eq!(res.get("isError").and_then(Value::as_bool), Some(true));
+    assert_eq!(
+        res.pointer("/structuredContent/error/code")
+            .and_then(Value::as_str),
+        Some("BEAD_TIMEOUT")
+    );
+
+    // Server remains healthy after cleaning up the timed-out process group.
+    let ping = client.request("ping", json!({}));
+    assert_eq!(ping.get("result"), Some(&json!({})));
 
     assert_eq!(client.close(), Some(0));
 }

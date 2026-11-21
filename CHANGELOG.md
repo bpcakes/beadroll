@@ -9,11 +9,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 - Added the optional `beadroll-mcp` companion crate (`crates/beadroll-mcp`), a read-only stdio MCP
   App server for browsing ready issues (`bead_ready`, up to 25 in beadroll's order) and issue
   details (`bead_show`) inside stock T3 Code threads (Codex and Claude Code 2.1.301+) and other MCP
-  Apps hosts (`docs/MCP-APP.md`). Each server session binds one checkout at startup (`--repo` or
-  startup working directory, with routing variables scrubbed), performs local reads only via
-  the installed `bead` binary (never running `bead sync` or mutating state), reopens clicked issues
-  by `(workspace, uid)`, refuses cross-workspace lookups, and returns `UPGRADE_REQUIRED` when run
-  against an older `bead` without stable issue UIDs.
+  Apps hosts (`docs/MCP-APP.md`). Each server session canonicalizes one checkout at startup
+  (`--repo` or startup working directory, scrubbing git routing/config overrides and
+  `BEAD_WORKSPACE`/`BEAD_REMOTE`), runs bounded local reads only via the installed `bead` binary
+  (pinning `BEAD_WORKSPACE` to the `bead info` result, never running `bead sync` or mutating
+  tracker events), reopens clicked issues by `(workspace, uid)` with exact `uid` verification,
+  refuses cross-workspace lookups, and returns `UPGRADE_REQUIRED` when run against an older `bead`
+  without stable issue UIDs.
 
 - An issue's `uid`, the id of its create event, which no rename changes, is in `--json` output
   beside its key: each issue listed or shown (`list`, `ready`, `blocked`, `search`, `dep tree`,

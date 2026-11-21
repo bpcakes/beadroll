@@ -3,7 +3,7 @@
 
 use serde_json::{Map, Value, json};
 
-use crate::bead::{AppError, BeadCli};
+use crate::bead::{AppError, BeadCli, ShowTarget};
 use crate::format::{format_detail, format_ready};
 use crate::{MAX_READY_LIMIT, UI_RESOURCE_URI};
 
@@ -13,12 +13,13 @@ pub(crate) const TOOL_READY: &str = "bead_ready";
 /// Tool name for showing one issue in full.
 pub(crate) const TOOL_SHOW: &str = "bead_show";
 
-/// Result of invoking a tool: either an MCP `CallToolResult` or a JSON-RPC `-32602` param error.
+/// Result of invoking a tool: either an MCP `CallToolResult` (including tool execution and
+/// argument-validation errors marked `isError: true`) or a JSON-RPC `-32602` unknown-tool error.
 pub(crate) enum DispatchOutcome {
-    /// Tool executed (successfully or with an actionable tool error marked `isError: true`).
+    /// Tool executed or returned a structured tool error (`isError: true`).
     Result(Value),
-    /// Invalid tool name or invalid arguments (JSON-RPC `-32602`).
-    InvalidParams(String),
+    /// Unknown tool name (JSON-RPC `-32602`).
+    UnknownTool(String),
 }
 
 /// Returns the `tools` array advertised by `tools/list`.
@@ -99,68 +100,71 @@ pub(crate) fn definitions() -> Value {
 }
 
 /// Validates arguments and runs `name` against `cli`.
+///
+/// Per MCP 2025-11-25, invalid arguments to a known tool return a `CallToolResult` with
+/// `isError: true` (`INVALID_ARGUMENT`) so models and MCP Apps receive actionable feedback; an
+/// unknown tool name returns JSON-RPC `-32602`.
 pub(crate) fn call(cli: &BeadCli, name: &str, args: &Map<String, Value>) -> DispatchOutcome {
     match name {
-        TOOL_READY => call_ready(cli, args),
-        TOOL_SHOW => call_show(cli, args),
-        _ => DispatchOutcome::InvalidParams(format!("unknown tool `{name}`")),
+        TOOL_READY => DispatchOutcome::Result(call_ready(cli, args)),
+        TOOL_SHOW => DispatchOutcome::Result(call_show(cli, args)),
+        _ => DispatchOutcome::UnknownTool(format!("unknown tool `{name}`")),
     }
 }
 
-fn call_ready(cli: &BeadCli, args: &Map<String, Value>) -> DispatchOutcome {
+fn call_ready(cli: &BeadCli, args: &Map<String, Value>) -> Value {
     if let Some(unknown) = unknown_key(args, &["limit"]) {
-        return DispatchOutcome::InvalidParams(format!(
-            "bead_ready does not accept argument `{unknown}`"
-        ));
+        return invalid_arg(format!("bead_ready does not accept argument `{unknown}`"));
     }
     let limit = match args.get("limit") {
         None | Some(Value::Null) => MAX_READY_LIMIT,
         Some(value) => match parse_limit(value) {
             Ok(limit) => limit,
-            Err(message) => return DispatchOutcome::InvalidParams(message),
+            Err(message) => return invalid_arg(message),
         },
     };
     match cli.ready(limit) {
         Ok(view) => {
             let text = format_ready(&view);
             let structured = view.to_json();
-            DispatchOutcome::Result(ok_result(text, structured))
+            ok_result(text, structured)
         }
-        Err(error) => DispatchOutcome::Result(error_result(&error)),
+        Err(error) => error_result(&error),
     }
 }
 
-fn call_show(cli: &BeadCli, args: &Map<String, Value>) -> DispatchOutcome {
+fn call_show(cli: &BeadCli, args: &Map<String, Value>) -> Value {
     if let Some(unknown) = unknown_key(args, &["id", "uid", "workspace"]) {
-        return DispatchOutcome::InvalidParams(format!(
-            "bead_show does not accept argument `{unknown}`"
-        ));
+        return invalid_arg(format!("bead_show does not accept argument `{unknown}`"));
     }
     let uid = match optional_trimmed_string(args, "uid") {
         Ok(value) => value,
-        Err(message) => return DispatchOutcome::InvalidParams(message),
+        Err(message) => return invalid_arg(message),
     };
     let id = match optional_trimmed_string(args, "id") {
         Ok(value) => value,
-        Err(message) => return DispatchOutcome::InvalidParams(message),
+        Err(message) => return invalid_arg(message),
     };
     let workspace = match optional_trimmed_string(args, "workspace") {
         Ok(value) => value,
-        Err(message) => return DispatchOutcome::InvalidParams(message),
+        Err(message) => return invalid_arg(message),
     };
-    // Prefer the stable `uid` whenever both `uid` and `id` are supplied.
-    let Some(target) = uid.as_deref().or(id.as_deref()) else {
-        return DispatchOutcome::InvalidParams(
-            "bead_show requires a non-empty `uid` or `id`".to_owned(),
-        );
+    // Prefer the explicit stable `uid` whenever both `uid` and `id` are supplied, and retain the
+    // distinction so `BeadCli::show` refuses any key-colliding response with a different UID.
+    let target = match (uid, id) {
+        (Some(uid), _) => ShowTarget::Uid(uid),
+        (None, Some(id)) => ShowTarget::Id(id),
+        (None, None) => {
+            return invalid_arg("bead_show requires a non-empty `uid` or `id`");
+        }
     };
-    match cli.show(target, workspace.as_deref()) {
+    match cli.show(&target, workspace.as_deref()) {
         Ok(view) => {
             let text = format_detail(&view);
             let structured = view.to_json();
-            DispatchOutcome::Result(ok_result(text, structured))
+            ok_result(text, structured)
         }
-        Err(error) => DispatchOutcome::Result(error_result(&error)),
+        Err(error) => error_result(&error),
     }
 }
 
@@ -169,6 +173,10 @@ fn ok_result(text: String, structured: Value) -> Value {
         "content": [{ "type": "text", "text": text }],
         "structuredContent": structured,
     })
+}
+
+fn invalid_arg(message: impl Into<String>) -> Value {
+    error_result(&AppError::invalid_argument(message))
 }
 
 fn error_result(error: &AppError) -> Value {

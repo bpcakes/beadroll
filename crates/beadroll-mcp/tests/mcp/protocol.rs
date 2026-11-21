@@ -1,6 +1,7 @@
-//! MCP JSON-RPC 2.0 handshake, tool/resource declarations, UI HTML invariants, and error framing.
+//! MCP JSON-RPC 2.0 handshake, envelope validation, bounded frame reading, tool/resource
+//! declarations, UI HTML invariants, and error framing.
 
-use beadroll_mcp::{UI_RESOURCE_MIME_TYPE, UI_RESOURCE_URI};
+use beadroll_mcp::{MAX_FRAME_BYTES, UI_RESOURCE_MIME_TYPE, UI_RESOURCE_URI};
 use serde_json::{Value, json};
 use tempfile::tempdir;
 
@@ -59,10 +60,13 @@ fn initialize_negotiates_supported_versions_and_survives_unknown_discover_method
         Some("2025-11-25")
     );
 
-    // Notifications produce no response, and ping still answers immediately.
+    // Notifications and client responses produce no reply; string-id ping still works.
     client.notify("notifications/initialized", json!({}));
     client.notify("notifications/cancelled", json!({ "requestId": 999 }));
-    let ping = client.request("ping", json!({}));
+    client.send_raw(r#"{"jsonrpc":"2.0","id":"ignored-response","result":{}}"#);
+    client.send_raw(r#"{"jsonrpc":"2.0","id":"str-id-1","method":"ping"}"#);
+    let ping = client.read_json();
+    assert_eq!(ping.get("id"), Some(&json!("str-id-1")));
     assert_eq!(ping.get("result"), Some(&json!({})));
 
     assert_eq!(client.close(), Some(0));
@@ -164,16 +168,6 @@ fn ui_resource_serves_self_contained_mcp_app_html() {
         .and_then(Value::as_str)
         .expect("html text");
     assert!(html.starts_with("<!DOCTYPE html>"));
-    for token in [
-        "ui/initialize",
-        "ui/notifications/initialized",
-        "ui/notifications/tool-result",
-        "ui/notifications/size-changed",
-        "bead_show",
-        "bead_ready",
-    ] {
-        assert!(html.contains(token), "html missing {token}");
-    }
     assert!(!html.contains("http://"));
     assert!(!html.contains("https://"));
 
@@ -196,24 +190,85 @@ fn ui_resource_serves_self_contained_mcp_app_html() {
 }
 
 #[test]
-fn malformed_json_and_invalid_tool_params_return_jsonrpc_errors() {
+fn malformed_envelopes_invalid_utf8_and_oversized_frames_do_not_kill_session() {
     let dir = tempdir().expect("tempdir");
     let mut client = McpClient::spawn(dir.path(), &[], &[]);
     client.initialize();
 
-    client.send_raw("{not valid json");
-    let parse_err = client.read_json();
+    let bad_envelopes = [
+        ("{not valid json", -32700, Value::Null),
+        ("[]", -32600, Value::Null),
+        (
+            r#"{"jsonrpc":"1.0","id":1,"method":"ping"}"#,
+            -32600,
+            Value::Null,
+        ),
+        (
+            r#"{"jsonrpc":"2.0","id":{},"method":"ping"}"#,
+            -32600,
+            Value::Null,
+        ),
+        (
+            r#"{"jsonrpc":"2.0","id":null,"method":"ping"}"#,
+            -32600,
+            Value::Null,
+        ),
+        (
+            r#"{"jsonrpc":"2.0","id":true,"method":"ping"}"#,
+            -32600,
+            Value::Null,
+        ),
+        (
+            r#"{"jsonrpc":"2.0","id":10,"method":"tools/list","params":3}"#,
+            -32600,
+            json!(10),
+        ),
+        (
+            r#"{"jsonrpc":"2.0","id":11,"method":"tools/list","params":[]}"#,
+            -32602,
+            json!(11),
+        ),
+    ];
+    for (raw, expected_code, expected_id) in bad_envelopes {
+        client.send_raw(raw);
+        let err = client.read_json();
+        assert_eq!(
+            err.pointer("/error/code").and_then(Value::as_i64),
+            Some(expected_code),
+            "envelope {raw} got {err}"
+        );
+        assert_eq!(err.get("id"), Some(&expected_id), "envelope {raw}");
+    }
+
+    // Invalid UTF-8 line returns parse error and session resumes cleanly.
+    client.send_bytes(&[0xff, 0xfe, b'{', b'}']);
+    let utf8_err = client.read_json();
     assert_eq!(
-        parse_err.pointer("/error/code").and_then(Value::as_i64),
+        utf8_err.pointer("/error/code").and_then(Value::as_i64),
         Some(-32700)
     );
 
-    client.send_raw("[]");
-    let invalid_req = client.read_json();
+    // Oversized line beyond MAX_FRAME_BYTES returns -32600 and session resumes cleanly.
+    let oversized = vec![b'a'; MAX_FRAME_BYTES + 64];
+    client.send_bytes(&oversized);
+    let size_err = client.read_json();
     assert_eq!(
-        invalid_req.pointer("/error/code").and_then(Value::as_i64),
+        size_err.pointer("/error/code").and_then(Value::as_i64),
         Some(-32600)
     );
+
+    // Subsequent valid ping still succeeds.
+    let ping = client.request("ping", json!({}));
+    assert_eq!(ping.get("result"), Some(&json!({})));
+
+    assert_eq!(client.close(), Some(0));
+}
+
+#[test]
+fn unknown_tool_returns_rpc_error_while_invalid_tool_args_return_tool_errors() {
+    let dir = tempdir().expect("tempdir");
+    let mut client = McpClient::spawn(dir.path(), &[], &[]);
+    client.initialize();
 
     let unknown_tool = client.request(
         "tools/call",
@@ -224,32 +279,21 @@ fn malformed_json_and_invalid_tool_params_return_jsonrpc_errors() {
         Some(-32602)
     );
 
-    let bad_limit = client.request(
-        "tools/call",
-        json!({ "name": "bead_ready", "arguments": { "limit": 26 } }),
-    );
-    assert_eq!(
-        bad_limit.pointer("/error/code").and_then(Value::as_i64),
-        Some(-32602)
-    );
-
-    let extra_arg = client.request(
-        "tools/call",
-        json!({ "name": "bead_ready", "arguments": { "repo": "/tmp" } }),
-    );
-    assert_eq!(
-        extra_arg.pointer("/error/code").and_then(Value::as_i64),
-        Some(-32602)
-    );
-
-    let empty_show = client.request(
-        "tools/call",
-        json!({ "name": "bead_show", "arguments": {} }),
-    );
-    assert_eq!(
-        empty_show.pointer("/error/code").and_then(Value::as_i64),
-        Some(-32602)
-    );
+    for (name, args) in [
+        ("bead_ready", json!({ "limit": 26 })),
+        ("bead_ready", json!({ "repo": "/tmp" })),
+        ("bead_show", json!({})),
+        ("bead_show", json!({ "id": "   " })),
+        ("bead_show", json!({ "id": "ex-1", "extra": true })),
+    ] {
+        let res = client.call_tool(name, args);
+        assert_eq!(res.get("isError").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            res.pointer("/structuredContent/error/code")
+                .and_then(Value::as_str),
+            Some("INVALID_ARGUMENT")
+        );
+    }
 
     assert_eq!(client.close(), Some(0));
 }

@@ -7,10 +7,11 @@ use std::ffi::OsString;
 use std::io::{self, Write as _};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Duration;
 
 use clap::{Arg, Command};
 
-use crate::{Config, run_stdio};
+use crate::{Config, DEFAULT_TIMEOUT, run_stdio};
 
 /// Version reported by `--version` and MCP `serverInfo`.
 pub(crate) const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -85,9 +86,27 @@ fn command() -> Command {
                 .value_parser(clap::value_parser!(PathBuf))
                 .help("Path to the bead executable (default: `bead` on PATH)"),
         )
+        .arg(
+            Arg::new("timeout-ms")
+                .long("timeout-ms")
+                .value_name("MS")
+                .value_parser(parse_positive_ms)
+                .help("Wall-clock timeout per bead invocation in milliseconds (default: 30000)"),
+        )
 }
 
-/// Parses `args` using `cwd` to resolve the bound repository path and captures `env`.
+fn parse_positive_ms(raw: &str) -> Result<Duration, String> {
+    let ms: u64 = raw
+        .parse()
+        .map_err(|_| format!("timeout must be a positive integer in milliseconds, got `{raw}`"))?;
+    if ms == 0 {
+        return Err("timeout must be at least 1 millisecond".to_owned());
+    }
+    Ok(Duration::from_millis(ms))
+}
+
+/// Parses `args` using `cwd` to resolve and canonicalize the bound repository path and captures
+/// `env`.
 fn parse_args(
     args: impl IntoIterator<Item = OsString>,
     cwd: PathBuf,
@@ -109,17 +128,27 @@ fn parse_args(
         }
     };
 
-    let repo = match matches.get_one::<PathBuf>("repo") {
+    let resolved = match matches.get_one::<PathBuf>("repo") {
         Some(path) if path.is_absolute() => path.clone(),
         Some(path) => cwd.join(path),
         None => cwd,
     };
+    // Canonicalize once at startup so retargeting a symlink later cannot redirect the session.
+    // Keep the absolute path when the directory does not exist yet so tool calls report
+    // `CHECKOUT_UNAVAILABLE` clearly instead of failing startup silently.
+    let repo = std::fs::canonicalize(&resolved).unwrap_or(resolved);
     let bead = matches
         .get_one::<PathBuf>("bead")
         .cloned()
         .unwrap_or_else(|| PathBuf::from("bead"));
+    let timeout = matches
+        .get_one::<Duration>("timeout-ms")
+        .copied()
+        .unwrap_or(DEFAULT_TIMEOUT);
 
-    Ok(ParseOutcome::Run(Config::new(repo, bead, env)))
+    Ok(ParseOutcome::Run(
+        Config::new(repo, bead, env).with_timeout(timeout),
+    ))
 }
 
 /// Whether `error` indicates a closed stdout pipe or hung-up terminal, which exits 0 quietly.
@@ -153,11 +182,22 @@ mod tests {
     }
 
     #[test]
-    fn defaults_bind_to_startup_cwd_and_bead_on_path() {
+    fn defaults_bind_to_startup_cwd_and_scrub_git_and_bead_routing() {
         let env = vec![
             (OsString::from("PATH"), OsString::from("/usr/bin")),
             (OsString::from("GIT_DIR"), OsString::from("/other/.git")),
             (OsString::from("GIT_WORK_TREE"), OsString::from("/other")),
+            (OsString::from("GIT_CONFIG_COUNT"), OsString::from("1")),
+            (
+                OsString::from("GIT_CONFIG_KEY_0"),
+                OsString::from("remote.origin.pushurl"),
+            ),
+            (
+                OsString::from("GIT_CONFIG_VALUE_0"),
+                OsString::from("https://example.invalid/other.git"),
+            ),
+            (OsString::from("BEAD_WORKSPACE"), OsString::from("other-ws")),
+            (OsString::from("BEAD_REMOTE"), OsString::from("other-rem")),
             (OsString::from("BEAD_HOME"), OsString::from("/tmp/home")),
         ];
         let outcome = parse_args(os(&["beadroll-mcp"]), PathBuf::from("/work/repo"), env)
@@ -167,6 +207,7 @@ mod tests {
         };
         assert_eq!(config.repo, PathBuf::from("/work/repo"));
         assert_eq!(config.bead, PathBuf::from("bead"));
+        assert_eq!(config.timeout, DEFAULT_TIMEOUT);
         assert_eq!(
             config.env,
             vec![
@@ -177,9 +218,17 @@ mod tests {
     }
 
     #[test]
-    fn explicit_relative_repo_resolves_against_startup_cwd() {
+    fn explicit_relative_repo_and_timeout_parse_cleanly() {
         let outcome = parse_args(
-            os(&["beadroll-mcp", "--repo", "sub/wt", "--bead", "/opt/bead"]),
+            os(&[
+                "beadroll-mcp",
+                "--repo",
+                "sub/wt",
+                "--bead",
+                "/opt/bead",
+                "--timeout-ms",
+                "2500",
+            ]),
             PathBuf::from("/work"),
             Vec::new(),
         )
@@ -189,17 +238,26 @@ mod tests {
         };
         assert_eq!(config.repo, PathBuf::from("/work/sub/wt"));
         assert_eq!(config.bead, PathBuf::from("/opt/bead"));
+        assert_eq!(config.timeout, Duration::from_millis(2500));
     }
 
     #[test]
-    fn unknown_flag_returns_exit_code_2() {
-        let err = parse_args(
+    fn zero_timeout_and_unknown_flag_return_exit_code_2() {
+        let zero = parse_args(
+            os(&["beadroll-mcp", "--timeout-ms", "0"]),
+            PathBuf::from("/work"),
+            Vec::new(),
+        )
+        .expect_err("zero timeout");
+        assert_eq!(zero.exit_code, 2);
+
+        let unknown = parse_args(
             os(&["beadroll-mcp", "--bogus"]),
             PathBuf::from("/work"),
             Vec::new(),
         )
         .expect_err("unknown flag");
-        assert_eq!(err.exit_code, 2);
-        assert!(err.text.contains("--bogus"));
+        assert_eq!(unknown.exit_code, 2);
+        assert!(unknown.text.contains("--bogus"));
     }
 }

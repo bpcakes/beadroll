@@ -1,5 +1,9 @@
-//! Checkout session binding, isolation between two trackers sharing the same display key,
-//! workspace mismatch refusal, and scrubbing of ambient git routing environment variables.
+//! Checkout session binding, symlink canonicalization at startup, `info`-to-read workspace
+//! pinning, isolation between trackers sharing a display key, and scrubbing of inherited git and
+//! beadroll routing environment variables.
+
+use std::os::unix::fs::symlink;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use tempfile::tempdir;
@@ -7,12 +11,12 @@ use tempfile::tempdir;
 use crate::{McpClient, write_stateful_fake_bead};
 
 fn write_tracker_state(
-    dir: &std::path::Path,
+    dir: &Path,
     ws_id: &str,
     name: &str,
     uid: &str,
     title: &str,
-) -> (std::path::PathBuf, std::path::PathBuf) {
+) -> (PathBuf, PathBuf) {
     let state_file = dir.join("state.json");
     let log_file = dir.join("bead.log");
     let issue = json!({
@@ -64,7 +68,6 @@ fn two_trackers_with_same_display_key_stay_isolated_and_refuse_wrong_workspace()
     let (bead_b, log_b) =
         write_tracker_state(&repo_b, "ws-repo-b", "project-b", uid_b, "Issue in B");
 
-    // Session A binds via startup cwd; Session B binds via explicit `--repo`.
     let mut client_a = McpClient::spawn(&repo_a, &["--bead", bead_a.to_str().expect("utf8")], &[]);
     client_a.initialize();
 
@@ -95,7 +98,6 @@ fn two_trackers_with_same_display_key_stay_isolated_and_refuse_wrong_workspace()
         Some("Issue in B")
     );
 
-    // Looking up the same display key `dup-1` returns each bound checkout's own issue.
     let show_a = client_a.call_tool("bead_show", json!({ "id": "dup-1" }));
     let show_b = client_b.call_tool("bead_show", json!({ "id": "dup-1" }));
     assert_eq!(
@@ -111,7 +113,6 @@ fn two_trackers_with_same_display_key_stay_isolated_and_refuse_wrong_workspace()
         Some(uid_b)
     );
 
-    // Passing Session A's workspace ID into Session B is refused before `bead show` runs.
     let before_calls = std::fs::read_to_string(&log_b)
         .expect("log_b")
         .lines()
@@ -145,7 +146,7 @@ fn two_trackers_with_same_display_key_stay_isolated_and_refuse_wrong_workspace()
 }
 
 #[test]
-fn ambient_git_routing_vars_are_scrubbed_from_bead_subprocesses() {
+fn ambient_git_and_bead_routing_vars_are_scrubbed_and_reads_pin_info_workspace() {
     let dir = tempdir().expect("tempdir");
     let repo = dir.path().join("checkout");
     std::fs::create_dir(&repo).expect("repo");
@@ -170,6 +171,13 @@ fn ambient_git_routing_vars_are_scrubbed_from_bead_subprocesses() {
             ("GIT_WORK_TREE", "/elsewhere"),
             ("GIT_COMMON_DIR", "/elsewhere/.git"),
             ("GIT_INDEX_FILE", "/elsewhere/.git/index"),
+            ("GIT_CONFIG_COUNT", "1"),
+            ("GIT_CONFIG_KEY_0", "remote.origin.pushurl"),
+            ("GIT_CONFIG_VALUE_0", "https://example.invalid/hijack.git"),
+            ("GIT_CEILING_DIRECTORIES", "/"),
+            ("BEAD_WORKSPACE", "hijacked-workspace"),
+            ("BEAD_REMOTE", "hijacked-remote"),
+            ("BEAD_HOME", "/tmp/preserved-bead-home"),
         ],
     );
     client.initialize();
@@ -177,28 +185,109 @@ fn ambient_git_routing_vars_are_scrubbed_from_bead_subprocesses() {
     assert_ne!(res.get("isError").and_then(Value::as_bool), Some(true));
 
     let log = std::fs::read_to_string(&log_file).expect("read log");
+    let entries: Vec<Value> = log
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("log line"))
+        .collect();
+    assert_eq!(entries.len(), 2, "expected info then ready");
+
     let canonical_repo = std::fs::canonicalize(&repo).expect("canonicalize");
-    for line in log.lines() {
-        let entry: Value = serde_json::from_str(line).expect("log line");
+    for entry in &entries {
         let git_env = entry
             .get("git_env")
             .and_then(Value::as_object)
-            .expect("git_env object");
-        for routing in [
+            .expect("git_env");
+        for scrubbed in [
             "GIT_DIR",
             "GIT_WORK_TREE",
             "GIT_COMMON_DIR",
             "GIT_INDEX_FILE",
+            "GIT_CONFIG_COUNT",
+            "GIT_CONFIG_KEY_0",
+            "GIT_CONFIG_VALUE_0",
+            "GIT_CEILING_DIRECTORIES",
         ] {
             assert!(
-                !git_env.contains_key(routing),
-                "ambient {routing} must not reach bead: {entry}"
+                !git_env.contains_key(scrubbed),
+                "ambient {scrubbed} leaked to bead: {entry}"
             );
         }
+        let bead_env = entry
+            .get("bead_env")
+            .and_then(Value::as_object)
+            .expect("bead_env");
+        assert!(!bead_env.contains_key("BEAD_REMOTE"));
+        assert_eq!(
+            bead_env.get("BEAD_HOME").and_then(Value::as_str),
+            Some("/tmp/preserved-bead-home")
+        );
         let child_cwd =
             std::fs::canonicalize(entry.get("cwd").and_then(Value::as_str).expect("cwd"))
                 .expect("canonicalize child cwd");
         assert_eq!(child_cwd, canonical_repo);
+    }
+
+    // `bead info` must NOT receive inherited BEAD_WORKSPACE, whereas `bead ready` MUST be pinned
+    // to the exact workspace ID `bead info` returned.
+    assert!(entries[0].pointer("/bead_env/BEAD_WORKSPACE").is_none());
+    assert_eq!(
+        entries[1]
+            .pointer("/bead_env/BEAD_WORKSPACE")
+            .and_then(Value::as_str),
+        Some("ws-clean")
+    );
+
+    assert_eq!(client.close(), Some(0));
+}
+
+#[test]
+fn retargeting_a_repo_symlink_after_startup_cannot_redirect_session() {
+    let dir = tempdir().expect("tempdir");
+    let repo_a = dir.path().join("repo-a");
+    let repo_b = dir.path().join("repo-b");
+    std::fs::create_dir(&repo_a).expect("repo_a");
+    std::fs::create_dir(&repo_b).expect("repo_b");
+    let link = dir.path().join("active-checkout");
+    symlink(&repo_a, &link).expect("symlink to repo_a");
+
+    let (fake_bead, log_file) = write_tracker_state(
+        &repo_a,
+        "ws-a",
+        "proj-a",
+        "019a0000-0000-7000-8000-111111111111",
+        "Issue A",
+    );
+
+    let mut client = McpClient::spawn(
+        dir.path(),
+        &[
+            "--repo",
+            link.to_str().expect("utf8"),
+            "--bead",
+            fake_bead.to_str().expect("utf8"),
+        ],
+        &[],
+    );
+    client.initialize();
+
+    // Retarget the symlink to repo_b after the server started.
+    std::fs::remove_file(&link).expect("remove old symlink");
+    symlink(&repo_b, &link).expect("retarget symlink to repo_b");
+
+    let res = client.call_tool("bead_ready", json!({}));
+    assert_ne!(res.get("isError").and_then(Value::as_bool), Some(true));
+
+    let canonical_a = std::fs::canonicalize(&repo_a).expect("canonicalize repo_a");
+    let log = std::fs::read_to_string(&log_file).expect("read log");
+    for line in log.lines() {
+        let entry: Value = serde_json::from_str(line).expect("json");
+        let child_cwd =
+            std::fs::canonicalize(entry.get("cwd").and_then(Value::as_str).expect("cwd"))
+                .expect("canonicalize");
+        assert_eq!(
+            child_cwd, canonical_a,
+            "symlink retarget redirected bead subprocess to another directory"
+        );
     }
 
     assert_eq!(client.close(), Some(0));
