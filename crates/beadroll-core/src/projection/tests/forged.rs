@@ -4,6 +4,7 @@
 //! entries its table had when it was made anew beyond those it holds, which the write-back adds to.
 //! Each is refused, as a part that cannot be read is, and the journal is replayed.
 
+use super::super::codec::Unreadable;
 use super::super::{Encoded, Projection, Record, decode_state, project};
 use super::hostile::{HERE, event, fields, id, journal, record};
 use crate::id::EventId;
@@ -58,12 +59,18 @@ fn twice(state: &[u8], from: usize, to: usize) -> Vec<u8> {
     out
 }
 
-/// What decoding `encoded` is refused for, as its error reads: none where it is read.
-fn refusal(encoded: Encoded) -> Option<String> {
-    Projection::decode(encoded)
-        .err()
-        .map(|error| format!("{error:?}"))
+/// What decoding `encoded` is refused for: none where it is read.
+fn refusal(encoded: Encoded) -> Option<Unreadable> {
+    Projection::decode(encoded).err()
 }
+
+/// The refusal of a projection that names an event the journal does not hold, or one replay did
+/// not apply there.
+const UNHELD: Unreadable = Unreadable("the events the journal holds");
+
+/// The refusal of a projection that names another event a journal's last applicable than its
+/// knowledge places there, or none for a journal that has one.
+const ANOTHER_LAST: Unreadable = Unreadable("the journals' last applicable events");
 
 /// The parts of a projection: the state part of `state`, the index of `index`.
 fn paired(state: &Encoded, index: &Encoded) -> Encoded {
@@ -136,8 +143,9 @@ fn a_count_of_entries_made_anew_beyond_the_table_is_refused() {
 }
 
 /// An index part naming as a machine's last applicable event one that is not, an earlier event
-/// its knowledge holds, or naming none for a machine whose journal holds one, is refused: a write would build on it, and replay set the write aside as a
-/// broken chain where the frontier did not reach the last (AT102).
+/// its knowledge holds, or naming none for a machine whose journal holds one, is refused: a write
+/// would build on it, and replay set the write aside as a broken chain where the frontier did not
+/// reach the last (AT102).
 #[test]
 fn an_index_naming_another_event_last_in_a_journal_is_refused() {
     let (encoded, _) = project(journal(&three())).unwrap().encode(0);
@@ -154,8 +162,9 @@ fn an_index_naming_another_event_last_in_a_journal_is_refused() {
         index,
         texts: Vec::new(),
     };
-    assert!(
-        Projection::decode(whole(index)).is_err(),
+    assert_eq!(
+        refusal(whole(index)),
+        Some(ANOTHER_LAST),
         "another event last"
     );
     // no entry for the machine at all: its count, one byte before it, none
@@ -166,13 +175,7 @@ fn an_index_naming_another_event_last_in_a_journal_is_refused() {
     // the table's place, the part's first eight bytes, moved back past what was taken out
     let at = u64::from_le_bytes(index[..8].try_into().unwrap()) - entry.len() as u64;
     index[..8].copy_from_slice(&at.to_le_bytes());
-    let refused = refusal(whole(index));
-    assert!(
-        refused
-            .as_deref()
-            .is_some_and(|error| error.contains("last applicable")),
-        "no event last: {refused:?}"
-    );
+    assert_eq!(refusal(whole(index)), Some(ANOTHER_LAST), "no event last");
     assert!(
         Projection::decode(whole(encoded.index.clone())).is_ok(),
         "as written"
@@ -237,10 +240,7 @@ fn an_index_naming_an_event_its_ids_lack_is_refused() {
         !projection.heads.contains(&tail),
         "the tail off the frontier"
     );
-    let refused = |forged: Projection| {
-        let refused = refusal(forged.encode(0).0);
-        refused.is_some_and(|error| error.contains("the journal holds"))
-    };
+    let refused = |forged: Projection| refusal(forged.encode(0).0) == Some(UNHELD);
     let lacking = |n: u128| {
         let mut forged = projection.clone();
         assert!(forged.ids.remove(&EventId::parse(&id(n)).unwrap()), "{n}");
@@ -269,12 +269,10 @@ fn a_state_naming_an_event_the_index_lacks_is_refused() {
     let records = three();
     let (before, _) = project(journal(&records[..3])).unwrap().encode(0);
     let (after, _) = project(journal(&records)).unwrap().encode(0);
-    let refused = refusal(paired(&after, &before));
-    assert!(
-        refused
-            .as_deref()
-            .is_some_and(|error| error.contains("the journal holds")),
-        "an issue whose create the index lacks: {refused:?}"
+    assert_eq!(
+        refusal(paired(&after, &before)),
+        Some(UNHELD),
+        "an issue whose create the index lacks"
     );
     assert!(refusal(paired(&after, &after)).is_none(), "as written");
 }
@@ -313,12 +311,10 @@ fn a_state_naming_a_create_the_index_holds_pending_is_refused() {
         "the create applied once its cause came"
     );
     let (after, _) = after.encode(0);
-    let refused = refusal(paired(&after, &before));
-    assert!(
-        refused
-            .as_deref()
-            .is_some_and(|error| error.contains("the journal holds")),
-        "an issue whose create the index holds pending: {refused:?}"
+    assert_eq!(
+        refusal(paired(&after, &before)),
+        Some(UNHELD),
+        "an issue whose create the index holds pending"
     );
     assert!(refusal(paired(&after, &after)).is_none(), "as written");
 }

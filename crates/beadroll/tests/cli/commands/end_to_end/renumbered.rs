@@ -443,13 +443,14 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     files
 }
 
-/// A child's create carried by an older peer follows its parent's id on every upgraded machine:
-/// b, whichever bead `BEAD_UNDER_TEST` names (a released one ignores `parent`), relays a's child of
-/// a renumbered parent and publishes a write of its own after it, and alone to a second remote,
-/// which a fresh machine c of this build syncs from; c, and a, show the child under its parent's
-/// key now and its parent edge naming it (AT100).
+/// A child's create a peer relays follows its parent's id on every upgraded machine: b, whichever
+/// bead `BEAD_UNDER_TEST` names (this build's by default; an older peer only when it names a
+/// released one, which ignores `parent`), relays a's child of a renumbered parent and publishes a
+/// write of its own after it, and alone to a second remote, which a fresh machine c of this build
+/// syncs from; c, and a, show the child under its parent's key now and its parent edge naming it
+/// (AT100).
 #[test]
-fn a_child_follows_its_parent_after_an_older_peer_relays_it() {
+fn a_child_follows_its_parent_after_a_peer_relays_it() {
     let sandbox = crate::sandbox();
     let (a, b, x, _) = two_machines(&sandbox);
     let older = Machine::new(&sandbox, "older");

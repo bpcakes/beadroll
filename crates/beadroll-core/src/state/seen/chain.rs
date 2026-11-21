@@ -68,9 +68,11 @@ impl Knowledge {
         (self.chain_breaks.get(machine)).is_some_and(|breaks| breaks.contains(&(last as usize)))
     }
 
-    /// Whether replay observed the event `id` here, by a record this knowledge keeps of it: what an
-    /// event naming it as a cause beside the frontier may be applied after.
-    pub(crate) fn applied(&self, id: EventId) -> bool {
+    /// Whether replay observed the event `id` here, by a record this knowledge keeps of it: its
+    /// causes came before it, what an event naming it as a cause beside the frontier may be applied
+    /// after. Observed is not taken: replay observes an event it then sets aside, a break in its
+    /// journal's chain or one id of several contents, and keeps its clock all the same.
+    pub(crate) fn observed(&self, id: EventId) -> bool {
         (self.events.get_index_of(&id)).is_some_and(|at| self.ancestry.observed(at))
     }
 

@@ -3,8 +3,8 @@
 //! replay does not know, a placeholder (an operation that is no text), a record written with the
 //! clock turned back, in the store's own journal as in others. Machine 0 builds each write on what
 //! its projection names (`Projection::causes_for`), as a transaction builds it, and replay must
-//! apply it, or set it aside, exactly as those causes said it would; and every extension is still
-//! what projecting the whole journal makes, or declines.
+//! take it into its journal's chain, or not, exactly as those causes said it would; and every
+//! extension is still what projecting the whole journal makes, or declines.
 
 use super::taken::differential;
 use super::{MACHINES, Machine, World, load};
@@ -12,7 +12,7 @@ use crate::id::EventId;
 use crate::json::{Object, Value};
 use crate::projection::tests::HistoryKind;
 use crate::replay::replay;
-use crate::state::State;
+use crate::state::{Place, State};
 
 impl World {
     /// The world of `seed` of `kind`.
@@ -142,19 +142,29 @@ impl World {
     }
 }
 
-/// Whether replay applied the event `id` in `state`: observed, its causes before it, and not set
-/// aside as a break in its journal's chain.
-fn applied(state: &State, id: &str) -> bool {
-    let observed = EventId::parse(id).is_some_and(|id| state.knowledge.applied(id));
-    let broke = (state.integrity.iter())
-        .any(|entry| entry.event.as_deref() == Some(id) && entry.problem.contains("chain broken"));
+/// Whether replay took the event `id` in `state` into its journal's chain: observed, its causes
+/// before it, and its position not one replay recorded as a break in that chain (what a write
+/// built as a transaction builds it must be; that its operation then took effect is another
+/// question, which the differential tests ask of the state).
+fn in_chain(state: &State, id: &str) -> bool {
+    let knowledge = &state.knowledge;
+    let Some(at) = EventId::parse(id).and_then(|id| knowledge.events.get_index_of(&id)) else {
+        return false;
+    };
+    let observed = knowledge.ancestry.observed(at);
+    let broke = match knowledge.ancestry.place(at) {
+        Place::Sequenced(chain, number) => (knowledge.replicas.get(chain as usize))
+            .and_then(|machine| knowledge.chain_breaks.get(machine))
+            .is_some_and(|breaks| breaks.contains(&(number as usize))),
+        _ => false,
+    };
     observed && !broke
 }
 
 /// What [`judged`] saw: machine 0's writes judged; those built on its last record beside the
 /// frontier, that record's id sorting before another of its journal's (written with the clock
 /// turned back), on a frontier that waited, on a last record that waited, after a broken chain,
-/// and after a placeholder last in its journal; and those replay applied.
+/// and after a placeholder last in its journal; and those replay took into its chain.
 #[derive(Debug, Default)]
 struct Judged {
     writes: usize,
@@ -164,7 +174,7 @@ struct Judged {
     predecessor_waits: usize,
     broken: usize,
     after_placeholder: usize,
-    applied: usize,
+    in_chain: usize,
 }
 
 /// Machine 0's writes in each seed's chained world, each judged once its batch is written: replay
@@ -188,7 +198,7 @@ fn judged(seeds: impl IntoIterator<Item = u64>) -> Judged {
                 let id = world.id_of(at);
                 let held_back =
                     causes.waits || (sequenced && (causes.broken || causes.predecessor_waits));
-                let took = applied(&state, &id);
+                let took = in_chain(&state, &id);
                 assert_eq!(
                     took,
                     !held_back,
@@ -216,7 +226,7 @@ fn judged(seeds: impl IntoIterator<Item = u64>) -> Judged {
                 judged.waits += usize::from(causes.waits);
                 judged.predecessor_waits += usize::from(causes.predecessor_waits && sequenced);
                 judged.broken += usize::from(causes.broken && sequenced);
-                judged.applied += usize::from(took);
+                judged.in_chain += usize::from(took);
             }
         }
     }
@@ -224,10 +234,10 @@ fn judged(seeds: impl IntoIterator<Item = u64>) -> Judged {
 }
 
 #[test]
-fn every_write_built_on_what_the_projection_names_applies_as_it_said() {
+fn every_write_built_on_what_the_projection_names_joins_its_chain_as_it_said() {
     let judged = judged(0..40);
     assert!(judged.writes > 1_000, "{judged:?}");
-    assert!(judged.applied > judged.writes / 3, "{judged:?}");
+    assert!(judged.in_chain > judged.writes / 3, "{judged:?}");
     assert!(judged.predecessors > 20, "{judged:?}");
     assert!(judged.waits > 20, "{judged:?}");
     assert!(judged.predecessor_waits > 0, "{judged:?}");
