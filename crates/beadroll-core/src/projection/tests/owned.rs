@@ -24,7 +24,8 @@ use crate::state::{Ended, EndedClaim, LostClaim, Provisional, Stale, State, Text
 
 /// What `state` answers of each issue's ownership, a line each: its claim, its generation, the
 /// claims that ended, its offline claims, the claims that lost, the ends that came too late and its
-/// detail; then each export record.
+/// detail, without the ids it names issues by besides their keys, which it began to after these
+/// were pinned ([`super::without_uids`]); then each export record.
 pub(crate) fn answers(state: &State) -> String {
     let json = |value: Value| write(&value, Format::COMPACT).unwrap_or_default();
     let all = |items: Vec<Object>| json(Value::from(items));
@@ -50,7 +51,7 @@ pub(crate) fn answers(state: &State) -> String {
         say("stale", all(stale.collect()));
         say(
             "show",
-            json(Value::from(details.of(issue.hydrated().unwrap()))),
+            json(super::without_uids(details.of(issue.hydrated().unwrap()))),
         );
     }
     for record in state.export_records() {

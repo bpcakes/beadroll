@@ -13,6 +13,7 @@ mod format_policy;
 mod git_helper;
 mod help_and_prime;
 mod history;
+mod identity;
 mod input;
 mod list_filters;
 mod nested_agent_identity;

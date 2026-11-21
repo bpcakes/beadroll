@@ -353,9 +353,13 @@ pub(crate) fn counted(count: usize, one: &str, many: &str) -> String {
     format!("{count} {}", if count == 1 { one } else { many })
 }
 
-/// The issue a key (or a bare suffix) names.
+/// The issue a key, a bare suffix, or its id (`uid`, its create's event id, which no rename
+/// changes) names: what a command takes an issue by. Keys first, so that no key's meaning changes;
+/// the id only here, where a command reads its arguments, never where replay or an import binds a
+/// key, which every machine must judge alike.
 pub(crate) fn resolve<'s>(st: &'s State, key: &str) -> Result<&'s Issue, Failure> {
-    st.resolve(key)
+    (st.resolve(key))
+        .or_else(|| st.issue_named(key))
         .ok_or_else(|| issue_not_found(key.as_bytes()))
 }
 

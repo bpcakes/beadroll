@@ -32,6 +32,7 @@ use world::{MACHINES, Machine, World, Written, load, records, str_of};
 use super::parts::Copying;
 use super::{Causes, Projection, decode_state};
 use crate::id::EventId;
+use crate::json::{Object, Value};
 use crate::projection::parts::Compaction;
 use crate::state::State;
 
@@ -290,4 +291,24 @@ fn every_extension_is_replays_answer_or_declined() {
     assert!(tally.seen.more_than(5), "{:?}", tally.seen);
     assert_eq!(tally.owned, owned::DIFFERENTIAL, "{:#x}", tally.owned);
     tally.marked.enough();
+}
+
+/// `detail` without the members [`State::detail`] gained when it began to name issues by id too
+/// (`uid`, `parent_uid`, `parent_uids`, and `uid` on each dependency and dependent): what an
+/// answer pinned before that compares with, so that those pins still say every other member —
+/// comments, claims, conflicts and unresolved dependencies included — answers as it did.
+pub(crate) fn without_uids(mut detail: Object) -> Value {
+    for name in ["uid", "parent_uid", "parent_uids"] {
+        detail.shift_remove(name);
+    }
+    for list in ["dependencies", "dependents"] {
+        if let Some(Value::Array(items)) = detail.get_mut(list) {
+            for item in items {
+                if let Value::Object(dep) = item {
+                    dep.shift_remove("uid");
+                }
+            }
+        }
+    }
+    Value::from(detail)
 }

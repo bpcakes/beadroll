@@ -22,13 +22,18 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
             .read_field(Field::Title)?
             .cloned()
             .unwrap_or(Value::Null);
+        let head = |owner: Value| {
+            let mut item = Object::new();
+            item.insert("id".into(), Value::from(issue.key()));
+            item.insert("uid".into(), Value::from(issue.uid().to_string()));
+            item.insert("title".into(), title.clone());
+            item.insert("owner".into(), owner);
+            item
+        };
         let row = |owner: Value, since: Value| {
-            let mut row = Object::new();
-            row.insert("id".into(), Value::from(issue.key()));
-            row.insert("title".into(), title.clone());
-            row.insert("owner".into(), owner);
-            row.insert("since".into(), since);
-            row
+            let mut item = head(owner);
+            item.insert("since".into(), since);
+            item
         };
         if let Some(held) = issue.claim() {
             let thread = (
@@ -49,10 +54,7 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
                 .unwrap_or(Value::Null);
             // Elapsed minutes, truncating the floating-point result towards zero.
             let idle = ((now - millis as f64 / 1000.0) / 60.0).trunc();
-            let mut entry = Object::new();
-            entry.insert("id".into(), Value::from(issue.key()));
-            entry.insert("title".into(), title.clone());
-            entry.insert("owner".into(), Value::from(&*held.owner));
+            let mut entry = head(Value::from(&*held.owner));
             entry.insert("machine".into(), Value::from(machine));
             entry.insert("agent".into(), Value::from(held.agent.as_deref()));
             entry.insert("thread".into(), Value::from(held.thread.as_deref()));

@@ -111,6 +111,10 @@ fn logged_summary(
         Some(uid) => Value::from(st.key_of(uid)),
         None => Value::Null,
     };
+    // the issue by its id, which no rename changes, where it names one
+    let issue_uid = (event.issue.as_deref())
+        .and_then(|uid| st.issue_named(uid))
+        .map_or(Value::Null, |issue| Value::from(issue.uid().to_string()));
     let branch = event.branch.clone();
     let mut row = Object::new();
     row.insert("at".into(), Value::from(at.as_str()));
@@ -120,6 +124,7 @@ fn logged_summary(
     row.insert("name".into(), actor("name"));
     row.insert("op".into(), Value::from(event.operation.as_str()));
     row.insert("issue".into(), issue.clone());
+    row.insert("issue_uid".into(), issue_uid);
     row.insert("event".into(), Value::from(event.id.to_string()));
     row.insert("branch".into(), branch.clone());
     // the event is a claim, as the journal records it; that it took one over is said beside it

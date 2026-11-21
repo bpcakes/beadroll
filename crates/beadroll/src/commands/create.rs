@@ -61,7 +61,7 @@ pub(crate) fn create(ctx: &Context<'_>, args: &CreateArgs) -> Result<Outcome, Fa
         writing_spent(ctx.ws, ctx.actor, |tx| write_issue(tx, args, &fields))?;
     let child = args.fields.parent.as_deref().is_some_and(|p| !p.is_empty());
     if !child {
-        return Ok(answer(args, key, &title, result).wrote_in(spent));
+        return Ok(answer(args, (key, &uid), &title, result).wrote_in(spent));
     }
     // A child's key is the one a merge renumbers when another machine gave its parent a child of
     // the same number first: published here rather than after the answer, so that the answer
@@ -76,7 +76,7 @@ pub(crate) fn create(ctx: &Context<'_>, args: &CreateArgs) -> Result<Outcome, Fa
         // --json is told too, as `update` tells it: the other machines do not know yet
         result.insert("unpublished".into(), Value::from(warning.as_str()));
     }
-    let mut outcome = answer(args, key, &title, result);
+    let mut outcome = answer(args, (key, &uid), &title, result);
     if let (Some(warning), Some(lines)) = (&warning, &mut outcome.lines) {
         lines.push(Line::toned(Tone::Warning, warning.clone()));
     }
@@ -85,11 +85,13 @@ pub(crate) fn create(ctx: &Context<'_>, args: &CreateArgs) -> Result<Outcome, Fa
         .after_its_publish(ctx.ws, warning.as_deref())
 }
 
-/// What `create` answers of the issue it made, `key`: its key alone (`--silent`), or its detail.
-fn answer(args: &CreateArgs, key: String, title: &str, result: Object) -> Outcome {
+/// What `create` answers of the issue it made, `(key, uid)`: its key and id alone (`--silent` in
+/// `--json`, and its key on standard output), or its detail.
+fn answer(args: &CreateArgs, (key, uid): (String, &str), title: &str, result: Object) -> Outcome {
     if args.silent {
         let mut out = Object::new();
         out.insert("id".into(), Value::from(key.as_str()));
+        out.insert("uid".into(), Value::from(uid));
         return Outcome::new(out, vec![key]).first_line_alone();
     }
     Outcome::new(result, vec![format!("✓ Created {key}: {title}")])

@@ -108,6 +108,7 @@ fn reference(st: &State, issue: &Issue) -> Json {
             };
             found.push(json!({
                 "id": (other.key()),
+                "uid": (other.uid().to_string()),
                 "title": (field(Field::Title)),
                 "status": (field(Field::Status)),
                 "dependency_type": (kind.as_str())
