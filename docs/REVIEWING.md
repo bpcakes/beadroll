@@ -145,6 +145,21 @@ agents and tests match parts of them; `bead prime` lists the codes.
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
+- A projection's parts are trusted as far as the header's sums vouch for them: one that holds a
+  state part and an index part from different moments, with sums made for that pair, is outside
+  what bead guards against. Both parts are of one file, under one header with a 128-bit sum of
+  each, read through one open handle, and the file is replaced whole, so neither bead's own writes
+  nor a crash can pair them (a damaged file, every truncation and flipped byte, is no projection:
+  `projection::tests::a_damaged_projection_is_never_trusted`). Bytes forged with their sums can pair them however they like, and a
+  stamp binding the parts would be forged with them; so can a build whose copying write-back is
+  wrong, which the differential tests read back on every history. The maintainer chose this on
+  2026-11-21, after reviews of #307 found a stale index under a newer state in three ways (an
+  issue's create missing from it, pending in it, then quarantined in it). Decode still refuses,
+  cheaply, what it can tell no bead writes (an event the state names that the index does not keep
+  applied, one the index names that its ids lack, `projection/tests/forged.rs`), as hardening, not
+  as a boundary: a pairing those checks pass, such as an index from after a create was
+  quarantined, is not a finding.
+
 - A coordination remote that git fetches from one repository and pushes to another, through a
   `url.<base>.pushInsteadOf` rule when it has no push URL of its own (its own `pushurl` is used
   for both), is `CONFIG` when the link is made (`link::one_repository`), naming both places. bead
