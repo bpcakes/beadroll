@@ -28,6 +28,16 @@ fn keys(machine: &Machine) -> std::collections::BTreeMap<String, String> {
         .collect()
 }
 
+/// The renames a sync's report lists, each as the key it had and the key it has, in order.
+fn reported_renames(report: &Json) -> Vec<(String, String)> {
+    (report["renamed"].as_array().unwrap().iter())
+        .map(|row| {
+            let key = |name: &str| row[name].as_str().unwrap().to_owned();
+            (key("from"), key("to"))
+        })
+        .collect()
+}
+
 /// Checks on every one of `machines` that an issue keyed `A.n` is a child of `A`, and that all list
 /// the same keys; the keys, by title.
 fn keys_name_their_parents(machines: &[&Machine]) -> std::collections::BTreeMap<String, String> {
@@ -81,14 +91,7 @@ fn a_child_follows_its_parents_rename() {
     );
     assert_eq!(grand, format!("{first}.1"));
     let report = b.bead(["sync"]).unwrap();
-    let renamed: Vec<(String, String)> = (report["renamed"].as_array().unwrap().iter())
-        .map(|r| {
-            (
-                r["from"].as_str().unwrap().to_owned(),
-                r["to"].as_str().unwrap().to_owned(),
-            )
-        })
-        .collect();
+    let renamed: Vec<(String, String)> = reported_renames(&report);
     let second = format!("{x}.2");
     assert_eq!(
         renamed,
@@ -129,14 +132,8 @@ fn a_grandchild_follows_its_parent_that_followed() {
     assert_eq!(parent, format!("{x}.1.1.1"));
     settle(&[&a, &b]);
     for machine in [&a, &b] {
-        let listed = machine.bead(["list", "--all", "--limit", "0"]).unwrap();
-        let key_of = |title: &str| {
-            (listed["issues"].as_array().unwrap().iter())
-                .find(|issue| issue["title"] == Json::from(title))
-                .map(json_id)
-                .unwrap_or_else(|| panic!("no {title} in {listed:?}"))
-        };
-        let keys = ["B", "C", "G"].map(key_of);
+        let held = keys(machine);
+        let keys = ["B", "C", "G"].map(|title| held[title].clone());
         assert_eq!(
             keys,
             [".2", ".2.1", ".2.1.1"].map(|tail| format!("{x}{tail}"))
@@ -169,14 +166,8 @@ fn a_child_follows_the_parent_its_writer_meant_among_renames() {
     assert_eq!(json_id(&c.bead(under).unwrap()), format!("{x}.1.1"));
     settle(&[&a, &b, &c]);
     // b's child, by its title: its key is the one the merge gave it
-    let listed = a.bead(["list", "--all", "--limit", "0"]).unwrap();
-    let key_of = |title: &str| {
-        (listed["issues"].as_array().unwrap().iter())
-            .find(|issue| issue["title"] == Json::from(title))
-            .map(json_id)
-            .unwrap_or_else(|| panic!("no {title} in {listed:?}"))
-    };
-    let (parent, child) = (key_of("on b"), key_of("under b's"));
+    let held = keys(&a);
+    let (parent, child) = (held["on b"].clone(), held["under b's"].clone());
     assert_eq!(
         child,
         format!("{parent}.1"),
@@ -201,13 +192,7 @@ fn a_child_does_not_follow_a_rename_its_writer_saw_made() {
         crate::rust_only(&sandbox, "c"),
         crate::rust_only(&sandbox, "d"),
     );
-    let titled = |machine: &Machine, title: &str| {
-        let listed = machine.bead(["list", "--all", "--limit", "0"]).unwrap();
-        (listed["issues"].as_array().unwrap().iter())
-            .find(|issue| issue["title"] == Json::from(title))
-            .map(json_id)
-            .unwrap_or_else(|| panic!("no {title} in {listed:?}"))
-    };
+    let titled = |machine: &Machine, title: &str| keys(machine)[title].clone();
     a.bead(["create", "A", "--parent", &x]);
     let on_b = json_id(
         &b.bead(["create", "B", "--parent", &x, "--offline"])
@@ -324,14 +309,7 @@ fn a_sync_reports_a_key_renamed_again() {
     assert_eq!(had["C"], format!("{x}.2.1"));
     a.bead(["sync"]);
     let report = b.bead(["sync"]).unwrap();
-    let reported: Vec<(String, String)> = (report["renamed"].as_array().unwrap().iter())
-        .map(|r| {
-            (
-                r["from"].as_str().unwrap().to_owned(),
-                r["to"].as_str().unwrap().to_owned(),
-            )
-        })
-        .collect();
+    let reported: Vec<(String, String)> = reported_renames(&report);
     let now = keys(&b);
     for title in ["B", "C"] {
         // from the key the issue had before this sync, which the user saw last
@@ -381,14 +359,7 @@ fn a_sync_reports_a_key_held_again() {
     a.bead(["sync"]);
     let report = d.bead(["sync"]).unwrap();
     assert_eq!(keys(&d)["I"], imported);
-    let reported: Vec<(String, String)> = (report["renamed"].as_array().unwrap().iter())
-        .map(|r| {
-            (
-                r["from"].as_str().unwrap().to_owned(),
-                r["to"].as_str().unwrap().to_owned(),
-            )
-        })
-        .collect();
+    let reported: Vec<(String, String)> = reported_renames(&report);
     let back = (format!("{x}.2.2"), imported);
     assert!(reported.contains(&back), "{back:?} not in {reported:?}");
 }
@@ -407,14 +378,12 @@ fn a_childs_create_names_its_parent_among_its_causes() {
     let q_key = json_id(&a.bead(["create", "Q"]).unwrap());
     a.bead(["create", "C", "--parent", &parent, "--offline"]);
     let mut events = Vec::new();
-    for entry in walk(&a.store().join("events")) {
-        if entry.extension().is_some_and(|ext| ext == "jsonl") {
-            let text = std::fs::read_to_string(&entry).unwrap();
-            events.extend(
-                text.lines()
-                    .map(|line| beadroll_test_support::parse_json(line).unwrap()),
-            );
-        }
+    for segment in beadroll_test_support::segments(&a.store()) {
+        let text = std::fs::read_to_string(&segment).unwrap();
+        events.extend(
+            text.lines()
+                .map(|line| beadroll_test_support::parse_json(line).unwrap()),
+        );
     }
     let create_of = |key: &str| {
         (events.iter())
@@ -427,20 +396,6 @@ fn a_childs_create_names_its_parent_among_its_causes() {
     assert_eq!(child["data"]["parent"], parent_id);
     let q = create_of(&q_key);
     assert_eq!(child["deps"], Json::Array(vec![q["id"].clone(), parent_id]));
-}
-
-/// Every file under `dir`, at any depth.
-fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
-    let mut files = Vec::new();
-    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            files.extend(walk(&path));
-        } else {
-            files.push(path);
-        }
-    }
-    files
 }
 
 /// A child's create a peer relays follows its parent's id on every upgraded machine: b, whichever
