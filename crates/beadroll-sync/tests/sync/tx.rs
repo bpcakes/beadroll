@@ -257,16 +257,8 @@ fn a_create_whose_parent_is_no_issue_is_refused() {
     let key = text(&a.bead(["create", "x"]).expect("an issue")["id"]);
     let ws = workspace(&a, sandbox.origin(), &[]);
     let actor = actor(&a);
-    let create = |parent: &str| {
-        let mut fields = Object::new();
-        fields.insert("title".into(), Value::from("child"));
-        let mut data = Object::new();
-        data.insert("key".into(), Value::from(format!("{key}.1")));
-        data.insert("fields".into(), Value::from(fields));
-        data.insert("labels".into(), Value::Array(Vec::new()));
-        data.insert("parent".into(), Value::from(parent));
-        data
-    };
+    let child = format!("{key}.1");
+    let create = |parent: &str| create_of(&child, Some(parent));
     locked(&ws, || -> Result<(), Error> {
         let mut tx = Tx::new(&ws, &actor)?;
         let uid = tx.state()?.resolve(&key).expect("the issue").uid();
@@ -298,18 +290,6 @@ fn a_create_under_a_parent_is_judged_for_its_structure() {
     let key = text(&a.bead(["create", "x"]).expect("an issue")["id"]);
     let ws = workspace(&a, sandbox.origin(), &[]);
     let actor = actor(&a);
-    let create = |key: &str, parent: Option<&str>| {
-        let mut fields = Object::new();
-        fields.insert("title".into(), Value::from(key));
-        let mut data = Object::new();
-        data.insert("key".into(), Value::from(key));
-        data.insert("fields".into(), Value::from(fields));
-        data.insert("labels".into(), Value::Array(Vec::new()));
-        if let Some(parent) = parent {
-            data.insert("parent".into(), Value::from(parent));
-        }
-        data
-    };
     locked(&ws, || -> Result<(), Error> {
         let mut tx = Tx::new(&ws, &actor)?;
         let uid = tx
@@ -321,7 +301,7 @@ fn a_create_under_a_parent_is_judged_for_its_structure() {
         let unnumbered = tx.emit(
             OpName::Create,
             None,
-            create(&format!("{key}.x"), Some(&uid)),
+            create_of(&format!("{key}.x"), Some(&uid)),
             None,
         );
         assert!(
@@ -329,11 +309,11 @@ fn a_create_under_a_parent_is_judged_for_its_structure() {
             "{unnumbered:?}"
         );
         let (_, mut emitter) = tx.lend()?;
-        let parent = emitter.emit(OpName::Create, None, create("ex-made", None), None)?;
-        let child = create("ex-made.1", Some(&parent.to_string()));
+        let parent = emitter.emit(OpName::Create, None, create_of("ex-made", None), None)?;
+        let child = create_of("ex-made.1", Some(&parent.to_string()));
         emitter.emit(OpName::Create, None, child, None)?;
         for n in [7, 8] {
-            let sibling = create(&format!("{key}.{n}"), Some(&uid));
+            let sibling = create_of(&format!("{key}.{n}"), Some(&uid));
             emitter.emit(OpName::Create, None, sibling, None)?;
         }
         Ok(())
@@ -341,8 +321,9 @@ fn a_create_under_a_parent_is_judged_for_its_structure() {
     .expect("a transaction");
 }
 
-/// The data of a create of `key`, under `parent` where one is given.
-fn create_of(key: &str, parent: Option<EventId>) -> Object {
+/// The data of a create of `key`, naming `parent` as its parent where one is given: an id, or any
+/// text a test needs refused.
+fn create_of(key: &str, parent: Option<&str>) -> Object {
     let mut fields = Object::new();
     fields.insert("title".into(), Value::from(key));
     let mut data = Object::new();
@@ -350,7 +331,7 @@ fn create_of(key: &str, parent: Option<EventId>) -> Object {
     data.insert("fields".into(), Value::from(fields));
     data.insert("labels".into(), Value::Array(Vec::new()));
     if let Some(parent) = parent {
-        data.insert("parent".into(), Value::from(parent.to_string()));
+        data.insert("parent".into(), Value::from(parent));
     }
     data
 }
@@ -382,7 +363,7 @@ fn a_create_built_on_a_waiting_cause_is_no_parent_however_the_transaction_is_rea
                 let state = tx.state()?;
                 assert!(state.issue(parent).is_none(), "the parent waits");
             }
-            let child = create_of("ex-p.1", Some(parent));
+            let child = create_of("ex-p.1", Some(&parent.to_string()));
             let judged = tx.emit(OpName::Create, None, child, None);
             assert!(
                 matches!(judged, Err(Error::Validation(_))),
@@ -425,7 +406,7 @@ fn a_create_on_a_broken_chain_is_no_parent_however_the_transaction_is_read() {
             if read_between {
                 assert!(tx.state()?.issue(parent).is_none(), "set aside");
             }
-            let child = create_of("ex-p.1", Some(parent));
+            let child = create_of("ex-p.1", Some(&parent.to_string()));
             let judged = tx.emit(OpName::Create, None, child, None);
             assert!(
                 matches!(judged, Err(Error::Validation(_))),
@@ -443,7 +424,7 @@ fn a_create_on_a_broken_chain_is_no_parent_however_the_transaction_is_read() {
             if read_between {
                 assert!(tx.state()?.issue(parent).is_some(), "applied");
             }
-            let child = create_of("ex-q.1", Some(parent));
+            let child = create_of("ex-q.1", Some(&parent.to_string()));
             let judged = tx.attempt().emit(OpName::Create, None, child, None);
             assert!(judged.is_ok(), "read between: {read_between}: {judged:?}");
             Ok(())
@@ -480,7 +461,7 @@ fn a_create_after_a_placeholder_that_broke_the_chain_is_a_parent() {
             if read_between {
                 assert!(tx.state()?.issue(parent).is_some(), "applied");
             }
-            let child = create_of("ex-p.1", Some(parent));
+            let child = create_of("ex-p.1", Some(&parent.to_string()));
             let judged = tx.emit(OpName::Create, None, child, None);
             assert!(judged.is_ok(), "read between: {read_between}: {judged:?}");
             Ok(())

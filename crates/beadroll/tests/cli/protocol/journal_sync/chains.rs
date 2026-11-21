@@ -1,20 +1,22 @@
 //! A machine's journal chain beside events replay does not apply: each write builds on the
 //! machine's last record, which an event pending in a cycle of causes keeps off the frontier.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use beadroll_test_support::{Json, Machine, json, parse_json};
 
+/// The last segment of `machine`'s own journal, by name: where its next record goes.
+fn last_segment(machine: &Machine) -> PathBuf {
+    let folder = machine.store().join("events").join(machine.id());
+    let segments = (std::fs::read_dir(&folder).expect("the machine's journal"))
+        .map(|entry| entry.expect("a segment").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "jsonl"));
+    segments.max().expect("a segment")
+}
+
 /// The id of `machine`'s last record in its journal's order: the event its next write builds on.
 fn tail_of(machine: &Machine) -> String {
-    let folder = machine.store().join("events").join(machine.id());
-    let mut segments: Vec<_> = (std::fs::read_dir(&folder).expect("the machine's journal"))
-        .map(|entry| entry.expect("a segment").path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "jsonl"))
-        .collect();
-    segments.sort();
-    let last = segments.last().expect("a segment");
-    let read = std::fs::read_to_string(last).expect("the segment");
+    let read = std::fs::read_to_string(last_segment(machine)).expect("the segment");
     let line = read.lines().last().expect("a record");
     let event = parse_json(line).expect("an event");
     event["id"].as_str().expect("an id").to_owned()
@@ -109,16 +111,10 @@ fn append_waiting(machine: &Machine, issue: &str) -> String {
         "actor": {"agent": "test", "thread": "a"},
         "op": "comment", "issue": issue, "data": {"text": "waits"}
     });
-    let folder = machine.store().join("events").join(machine.id());
-    let mut segments: Vec<_> = (std::fs::read_dir(&folder).expect("the machine's journal"))
-        .map(|entry| entry.expect("a segment").path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "jsonl"))
-        .collect();
-    segments.sort();
-    let last = segments.last().expect("a segment");
-    let mut text = std::fs::read(last).expect("the segment");
+    let last = last_segment(machine);
+    let mut text = std::fs::read(&last).expect("the segment");
     text.extend(beadroll_store::encode_events([&event]).expect("a journal line"));
-    std::fs::write(last, text).expect("the segment, appended to");
+    std::fs::write(&last, text).expect("the segment, appended to");
     waiting
 }
 

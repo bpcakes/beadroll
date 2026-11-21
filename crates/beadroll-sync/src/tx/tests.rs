@@ -259,11 +259,6 @@ fn attempt_emission_is_scoped_even_after_an_error() {
     locked(&fixture.ws, || -> Result<(), Error> {
         let mut tx = Tx::new(&fixture.ws, &fixture.actor)?;
         let uid = tx.state()?.resolve(&fixture.key).unwrap().uid().to_string();
-        let comment = || {
-            let mut data = Object::new();
-            data.insert("text".into(), Value::from("comment"));
-            data
-        };
         tx.emit(OpName::Comment, Some(&uid), comment(), None)?;
         {
             let mut attempt = tx.attempt();
@@ -345,11 +340,6 @@ fn a_record_of_the_journal_after_the_attempt_began_is_refused() {
     locked(&fixture.ws, || -> Result<(), Error> {
         let mut tx = Tx::new(&fixture.ws, &fixture.actor)?;
         let uid = tx.state()?.resolve(&fixture.key).unwrap().uid().to_string();
-        let comment = || {
-            let mut data = Object::new();
-            data.insert("text".into(), Value::from("comment"));
-            data
-        };
         let labels = || {
             let mut data = Object::new();
             data.insert("labels".into(), Value::Array(vec![Value::from("ui")]));
@@ -388,4 +378,11 @@ fn a_record_of_the_journal_after_the_attempt_began_is_refused() {
         Ok(())
     })
     .unwrap();
+}
+
+/// The data of a comment.
+fn comment() -> Object {
+    let mut data = Object::new();
+    data.insert("text".into(), Value::from("comment"));
+    data
 }
