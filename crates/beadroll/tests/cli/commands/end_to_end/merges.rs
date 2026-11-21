@@ -365,6 +365,55 @@ fn a_child_follows_the_parent_its_writer_meant_among_renames() {
     }
 }
 
+/// A rename the writer saw made is no key its issue held for it. d saw A as `x.1`, b's B renamed
+/// to `x.2` with B's child R following it (`x.1.1` → `x.2.1`), and its own S under A as `x.1.1`; a
+/// child of `x.1.1` it made is S's. R's follow, first in replay order from `x.1.1`, was made in
+/// d's view too (it saw B's rename), so the child does not follow R, but S, renamed to `x.1.2` once
+/// c's child of A came first.
+#[test]
+fn a_child_does_not_follow_a_rename_its_writer_saw_made() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, _) = two_machines(&sandbox);
+    let (c, d) = (Machine::new(&sandbox, "c"), Machine::new(&sandbox, "d"));
+    let titled = |machine: &Machine, title: &str| {
+        let listed = machine.bead(["list", "--all", "--limit", "0"]).unwrap();
+        (listed["issues"].as_array().unwrap().iter())
+            .find(|issue| issue["title"] == Json::from(title))
+            .map(json_id)
+            .unwrap_or_else(|| panic!("no {title} in {listed:?}"))
+    };
+    a.bead(["create", "A", "--parent", &x]);
+    let on_b = json_id(
+        &b.bead(["create", "B", "--parent", &x, "--offline"])
+            .unwrap(),
+    );
+    b.bead(["create", "R", "--parent", &on_b, "--offline"]);
+    c.bead(["sync"]);
+    d.bead(["sync"]);
+    let a_key = format!("{x}.1");
+    c.bead(["create", "H", "--parent", &a_key, "--offline"]);
+    d.bead(["create", "S", "--parent", &a_key, "--offline"]);
+    b.bead(["sync"]);
+    d.bead(["sync"]);
+    assert_eq!(titled(&d, "R"), format!("{x}.2.1"));
+    assert_eq!(titled(&d, "S"), format!("{x}.1.1"));
+    let under = ["create", "W", "--parent", &format!("{x}.1.1"), "--offline"];
+    d.bead(under);
+    c.bead(["sync"]);
+    d.bead(["sync"]);
+    settle(&[&a, &b, &c, &d]);
+    for machine in [&a, &b, &c, &d] {
+        let (s_key, w_key) = (titled(machine, "S"), titled(machine, "W"));
+        assert_eq!(
+            w_key,
+            format!("{s_key}.1"),
+            "W follows another issue than S"
+        );
+        let shown = machine.show(&w_key);
+        assert_eq!(shown["parent"].as_str(), Some(s_key.as_str()), "{shown:?}");
+    }
+}
+
 /// Three machines syncing at the same moment all succeed, and converge on everything they made.
 #[test]
 fn concurrent_sync_from_three_machines_all_succeed() {

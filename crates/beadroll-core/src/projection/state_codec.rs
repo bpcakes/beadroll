@@ -104,6 +104,7 @@ pub(crate) fn write_state(
         w.text(&rename.to);
         w.text(&rename.replica);
         w.id(rename.uid);
+        w.id(rename.cause);
     }
     w.count(st.integrity.len());
     for entry in &st.integrity {
@@ -179,6 +180,7 @@ pub(crate) fn read_state(
             to: r.text()?,
             replica: r.text()?,
             uid: r.id()?,
+            cause: r.id()?,
         });
     }
     for _ in 0..r.count()? {

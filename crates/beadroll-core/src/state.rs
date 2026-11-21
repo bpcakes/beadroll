@@ -54,18 +54,22 @@ pub struct Integrity {
     pub origin: Option<String>,
 }
 
-/// A copy that kept its key under another name: two machines minted the same key before they
-/// synced, and the create that sorted second gave way.
+/// An issue created under another key than its create gave: two machines minted the same key
+/// before they synced, and the create that sorted second gave way; or a child minted under its
+/// parent's key followed that parent's rename.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rename {
-    /// The key both minted.
+    /// The key its create gave.
     pub from: String,
-    /// The key the second copy has.
+    /// The key it has.
     pub to: String,
-    /// The machine that wrote the second copy.
+    /// The machine that wrote its create.
     pub replica: String,
-    /// The second copy's issue.
+    /// The issue.
     pub uid: EventId,
+    /// Why it was renamed: the issue holding `from` that it gave way to, or, for a child that
+    /// followed its parent's rename, that parent. A writer that saw it saw the rename made too.
+    pub cause: EventId,
 }
 
 impl Integrity {
@@ -233,7 +237,8 @@ impl State {
         &self.by_key
     }
 
-    /// Copies that gave way to another with the same key.
+    /// Issues created under another key than their creates gave, in replay order: copies that gave
+    /// way to another with the same key, and children that followed their parent.
     pub fn renames(&self) -> &[Rename] {
         &self.renames
     }

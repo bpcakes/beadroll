@@ -25,11 +25,11 @@ Reviewers: propose new rows in your report using the next free id for your revie
 ## Weeding audit (2026-11-17, ids AT)
 
 Not reported by a review: an audit for workarounds and copied patterns that the next change would
-copy as the established way (PRs #143 to #304), each candidate checked against the code. Most of
+copy as the established way (PRs #143 to #305), each candidate checked against the code. Most of
 its slices changed no behaviour; these rows are the bugs it found on the way, each fixed with a
 test that fails without the fix. From AT13 on, many were found by fresh reviews run within the
 audit and by runs of the built bead in scratch repositories, the seven real Beads exports on the
-maintainer's machine among them (AT77), and AT78 to AT94 by reviews of the audit's own changes;
+maintainer's machine among them (AT77), and AT78 to AT95 by reviews of the audit's own changes;
 none of those runs left a report under `reviews/`.
 
 | Id | Severity | Finding | Status | Resolution | Tests |
@@ -128,6 +128,7 @@ none of those runs left a report under `reviews/`.
 | AT92 | Medium | `init --tracked --import bad.jsonl` refused the export as not UTF-8 but left a `.beadroll.json` with a new workspace id behind, and against a remote that publishes a tracker had joined it first: the export was read after the remote and the workspace were chosen | fixed | `init` reads the export before it chooses or writes anything (#304) | `beadroll`: `commands::input::a_refused_init_import_writes_nothing` |
 | AT93 | Low | AT91's rule kept an scp URL's colon, so `git@host:/srv/r.git` and `ssh://git@host/srv/r.git`, one repository, were refused as `CONFIG` | fixed | Scp's `host:PATH` is compared as `host/PATH`, the colon read as the slash (#304) | `beadroll-sync`: `link::tests::a_port_does_not_make_another_place` |
 | AT94 | Low | A `config.yaml` beginning with a byte order mark, or holding `issue-prefix : br`, had its prefix ignored, so a lone slug-keyed record gave its slug again (AT83) | fixed | A key is read after a byte order mark and with spaces before its colon, unindented (#304) | `beadroll`: `commands::input::init_import_takes_the_prefix_beads_keyed_the_records_under` |
+| AT95 | Medium | AT88's rule, the first rename of the key in replay order, took a rename its writer had seen made: a sibling's child following its renamed parent from the same key (`x.1.1` → `x.2.1`). The child took that subtree while its parent edge named the issue it meant, renamed later from the key (`x.1.1` → `x.1.2`); #301's last-rename rule handled this case | fixed | Each rename records its cause, the holder it gave way to or the parent it followed, and a child follows the first renamed issue it saw whose cause it had not seen: in its view that issue held the key (`ENCODING` 13) (#305) | `beadroll`: `commands::end_to_end::merges::a_child_does_not_follow_a_rename_its_writer_saw_made` |
 
 ## Published-count race (roll-byaq, 2026-11-12)
 

@@ -25,15 +25,16 @@ pub(super) fn create(
     let eid = event.id;
     let mut key = create.key.clone();
     // a child minted under its parent's key before a merge renamed that parent follows it
-    if let Some(followed) = followed(st, k, event, &key) {
+    if let Some((followed, parent)) = followed(st, k, event, &key) {
         st.renames.push(Rename {
             from: std::mem::replace(&mut key, followed.clone()),
             to: followed,
             replica: event.trace.replica().to_owned(),
             uid: eid,
+            cause: parent,
         });
     }
-    if st.by_key.contains_key(&key) {
+    if let Some(&holder) = st.by_key.get(&key) {
         // Two machines minted the same key before they synced.
         let free = st.free_key(&key, eid)?;
         st.renames.push(Rename {
@@ -41,6 +42,7 @@ pub(super) fn create(
             to: free,
             replica: event.trace.replica().to_owned(),
             uid: eid,
+            cause: holder,
         });
     }
     let mut issue = new_issue(event, create, key.clone(), who, when);
@@ -74,14 +76,21 @@ pub(super) fn create(
     Ok(())
 }
 
-/// The key a child minted as `minted` has once its parent's rename is followed: `minted`'s parent
+/// The key a child minted as `minted` has once its parent's rename is followed, with that parent: `minted`'s parent
 /// part (`t-x.15` of `t-x.15.1`) was the key of the parent its writer meant, which a merge renamed
 /// (another machine's child of that number came first), so that the child takes its parent's key
 /// now with its own number (`t-x.16.1`), where it would read as a child of the issue that holds
-/// `t-x.15`. Its writer meant the renamed issue when it had seen that issue's create and not the
-/// create of the one that holds the key now, which every machine judges alike. `None` for a key with
-/// no parent part, or when the parent was not renamed as its writer saw it.
-fn followed(st: &State, k: &Knowledge, event: &Doing<'_>, minted: &str) -> Option<String> {
+/// `t-x.15`. Its writer meant the issue that held the key as it saw the tracker: one it saw renamed
+/// from the key, whose rename's cause it had not seen (so that in its view the issue had kept the
+/// key), the first of those in replay order, and not the one that holds the key now; every machine
+/// judges that alike. `None` for a key with no parent part, or when the parent was not renamed as
+/// its writer saw it.
+fn followed(
+    st: &State,
+    k: &Knowledge,
+    event: &Doing<'_>,
+    minted: &str,
+) -> Option<(String, EventId)> {
     let (parent, number) = minted.rsplit_once('.')?;
     if number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
         return None;
@@ -89,12 +98,13 @@ fn followed(st: &State, k: &Knowledge, event: &Doing<'_>, minted: &str) -> Optio
     if (st.by_key.get(parent)).is_some_and(|holder| k.saw_at(event.at, *holder)) {
         return None;
     }
-    // the parent it meant held the key as its writer saw the tracker: of the issues it saw minted
-    // under that key, the first in replay order, which the others gave way to
-    let renamed = (st.renames.iter())
-        .find(|rename| rename.from == parent && k.saw_at(event.at, rename.uid))?;
+    // a rename whose cause the writer saw was made in its view too: the issue never held the key
+    // there, as a child that followed the same parent, or a copy that gave way to one it saw, did not
+    let renamed = (st.renames.iter()).find(|rename| {
+        rename.from == parent && k.saw_at(event.at, rename.uid) && !k.saw_at(event.at, rename.cause)
+    })?;
     let now = st.issues.get(&renamed.uid)?.key();
-    (now != parent).then(|| format!("{now}.{number}"))
+    (now != parent).then(|| (format!("{now}.{number}"), renamed.uid))
 }
 
 /// The issue a create makes, under `key`: a register for each field it carries, the status's

@@ -6,6 +6,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A child follows the parent whose key its writer saw, among renames of that key: a rename the
+  writer saw made (another child following the same parent, or a copy giving way to one the writer
+  saw) is no key its issue held for it. The first rename in replay order (#303) picked another
+  child's follow, a subtree the child's parent edge did not name. Each rename records its cause, so
+  projections are rebuilt once (`ENCODING` 13).
+
 - `init --import` of an export it refuses writes nothing: the export is read before a remote or a
   workspace is chosen, where a refused one left a `.beadroll.json` with a new id behind, or a
   published tracker joined.

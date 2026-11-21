@@ -113,6 +113,8 @@ fn key_numbers_are_ascii_digits() {
         to: renamed,
         replica: "b".into(),
         uid: uid(&second),
+        // it gave way to the first copy of the key
+        cause: uid(&first),
     };
     assert_eq!(state.renames(), [rename]);
     let parent = state.issue(uid(&parent)).unwrap();
