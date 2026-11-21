@@ -161,7 +161,7 @@ fn prime_matches_ready_and_help_outside_a_repository_is_silent() {
     let env: Vec<_> = std::env::vars_os()
         .filter(|(key, _)| {
             let key = key.as_encoded_bytes();
-            !["BEAD_", "GIT_", "CLAUDE", "CODEX"]
+            !["BEAD_", "GIT_", "CLAUDE", "CODEX", "CURSOR"]
                 .iter()
                 .any(|prefix| key.starts_with(prefix.as_bytes()))
         })

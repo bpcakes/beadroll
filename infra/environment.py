@@ -2,8 +2,8 @@
 import os
 
 # Variables that would route bead to another store or tracker (BEAD_), point git at another repository or
-# configuration (GIT_), or make bead take the caller's agent session for its own actor (CLAUDE, CODEX).
-INHERITED = ("BEAD_", "GIT_", "CLAUDE", "CODEX")
+# configuration (GIT_), or make bead take the caller's agent session for its own actor (CLAUDE, CODEX, CURSOR).
+INHERITED = ("BEAD_", "GIT_", "CLAUDE", "CODEX", "CURSOR")
 
 
 def scrubbed(*more):

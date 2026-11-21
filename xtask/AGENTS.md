@@ -145,7 +145,7 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   `bead` processes the black-box tests start, and when a profile was left out of it.
   `crates/beadroll/src/main.rs` can only be run by a `bead`, so a report where none of its lines
   ran lost the children (`beadroll-test-support` scrubs the environment `bead` runs in, `CLAUDE*`,
-  `CODEX*`, `BEAD_*` and `GIT_*`, and must keep `LLVM_PROFILE_FILE`, which the instrumented `bead`
+  `CODEX*`, `CURSOR*`, `BEAD_*` and `GIT_*`, and must keep `LLVM_PROFILE_FILE`, which the instrumented `bead`
   writes its counters by). The reports are made with `--failure-mode all`, so that one profile that
   cannot be merged (a `bead` cut short while it wrote, or a pool file a capped run left truncated:
   every later process that picks that file is lost with it) does not cost the whole report, and

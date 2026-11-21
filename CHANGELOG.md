@@ -6,6 +6,14 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Actor detection recognises Cursor sessions (`CURSOR_CONVERSATION_ID` and `CURSOR_AGENT`),
+  recording `agent: "cursor"` and the conversation id as the thread so concurrent Cursor threads
+  (including those hosted by T3 Code) hold distinct claims instead of falling back to `human`. When
+  more than one harness's session variables are present, the process-tree walk (`nearest_harness`)
+  matches Cursor beside Claude Code and Codex, ignoring any ancestor whose environment variables
+  are absent and falling back to Codex, then Claude, then Cursor when the walk finds none.
+  Test sandboxes and `infra/` drivers scrub `CURSOR*` alongside `CLAUDE*` and `CODEX*`.
+
 - A write builds on this machine's last applicable record, in its journal's order, where the
   frontier's clocks do not reach it, as replay judges a journal chain: a foreign event that replay
   does not apply (pending on a cause, or in a cycle of causes) and that builds on it kept it off the

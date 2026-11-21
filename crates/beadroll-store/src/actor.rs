@@ -14,8 +14,9 @@ use crate::settings::Settings;
 pub(crate) type Ps<'a> = dyn Fn(u32) -> Option<(i32, String)> + 'a;
 
 /// Walks up the process tree from `parent` (the caller's parent process) to the closest coding
-/// agent, at most 12 levels: `codex` or `claude`, or `None`. It settles nested harnesses, where an
-/// agent started from another agent's session inherits both sets of variables.
+/// agent, at most 12 levels: `codex`, `claude`, or `cursor`, or `None`. It settles nested
+/// harnesses, where an agent started from another agent's session inherits more than one set of
+/// variables.
 pub fn nearest_harness(parent: u32, ps: &Ps<'_>) -> Option<&'static str> {
     let mut pid = parent;
     for _ in 0..12 {
@@ -37,6 +38,14 @@ pub fn nearest_harness(parent: u32, ps: &Ps<'_>) -> Option<&'static str> {
         }
         if command == "claude" || (command == "node" && args.contains("claude")) {
             return Some("claude");
+        }
+        if command.starts_with("cursor")
+            || command == "Cursor"
+            || first.contains("/cursor")
+            || first.contains("/Cursor.app/")
+            || (command == "node" && args.contains("cursor"))
+        {
+            return Some("cursor");
         }
         let parent = parent.trim_matches(beadroll_core::text::is_space);
         if parent.is_empty() || !parent.bytes().all(|b| b.is_ascii_digit()) {
@@ -192,9 +201,11 @@ impl Label {
 }
 
 /// The caller's actor: `{"agent", "thread"?, "name"?}` in that order. `BEAD_AGENT` (with
-/// `BEAD_THREAD`) wins; with both a Claude and a Codex session in the environment, the nearest
-/// harness in the process tree decides (Codex when none is found); then Claude, then Codex, else
-/// `human`. `BEAD_THREAD` overrides the thread, and `name` (`--actor`) or `BEAD_ACTOR` names it.
+/// `BEAD_THREAD`) wins; when more than one harness's session variables are in the environment
+/// (Claude Code, Codex, Cursor), the nearest matching harness in the process tree decides
+/// (falling back to Codex, then Claude, then Cursor when none is found); otherwise the detected
+/// harness, else `human`. `BEAD_THREAD` overrides the thread, and `name` (`--actor`) or
+/// `BEAD_ACTOR` names it.
 pub fn detect_actor(
     settings: &Settings,
     name: Option<&OsStr>,
@@ -208,26 +219,35 @@ pub fn detect_actor(
     let raw = |key: &str| settings.var(key).map(OsStr::to_os_string);
     let claude_thread = raw("CLAUDE_CODE_SESSION_ID");
     let codex_thread = raw("CODEX_THREAD_ID").or_else(|| raw("CODEX_SESSION_ID"));
-    let (agent, thread): (Option<OsString>, Option<OsString>) =
-        if let Some(agent) = raw("BEAD_AGENT") {
-            (Some(agent), raw("BEAD_THREAD"))
-        } else if claude_thread.is_some() && codex_thread.is_some() {
-            let agent = nearest().unwrap_or("codex");
-            let thread = if agent == "codex" {
-                codex_thread
-            } else {
-                claude_thread
-            };
-            (Some(OsString::from(agent)), thread)
-        } else if claude_thread.is_some() || raw("CLAUDECODE").is_some() {
-            (Some(OsString::from("claude")), claude_thread)
-        } else if codex_thread.is_some() {
-            (Some(OsString::from("codex")), codex_thread)
-        } else {
-            (Some(OsString::from("human")), None)
+    let cursor_thread = raw("CURSOR_CONVERSATION_ID");
+    let (agent, thread): (OsString, Option<OsString>) = if let Some(agent) = raw("BEAD_AGENT") {
+        (agent, raw("BEAD_THREAD"))
+    } else {
+        // Fallback priority when more than one harness is present and the process tree does not
+        // decide: Codex, then Claude, then Cursor.
+        let mut detected: Vec<(&'static str, Option<OsString>)> = Vec::new();
+        if codex_thread.is_some() {
+            detected.push(("codex", codex_thread));
+        }
+        if claude_thread.is_some() || raw("CLAUDECODE").is_some() {
+            detected.push(("claude", claude_thread));
+        }
+        if cursor_thread.is_some() || raw("CURSOR_AGENT").is_some() {
+            detected.push(("cursor", cursor_thread));
+        }
+        let chosen = match detected.len() {
+            0 => ("human", None),
+            1 => detected.into_iter().next().unwrap_or(("human", None)),
+            _ => {
+                let index = nearest()
+                    .and_then(|agent| detected.iter().position(|(kind, _)| *kind == agent))
+                    .unwrap_or(0);
+                detected.into_iter().nth(index).unwrap_or(("human", None))
+            }
         };
+        (OsString::from(chosen.0), chosen.1)
+    };
     let thread = raw("BEAD_THREAD").or(thread);
-    let agent = agent.unwrap_or_default();
     let mut actor = Object::new();
     actor.insert("agent".into(), Value::from(text(&agent)));
     if let Some(thread) = &thread {
@@ -276,6 +296,14 @@ mod tests {
         assert_eq!(nearest_harness(10, &ps), Some("claude"));
         let ps = table(&[(10, "20 /opt/bin/codex --worker")]);
         assert_eq!(nearest_harness(10, &ps), Some("codex"));
+        let ps = table(&[(10, "20 /opt/bin/cursor-agent --worker")]);
+        assert_eq!(nearest_harness(10, &ps), Some("cursor"));
+        let ps = table(&[(10, "20 /opt/cursor-agent/versions/2026.11/node index.js")]);
+        assert_eq!(nearest_harness(10, &ps), Some("cursor"));
+        let ps = table(&[(10, "20 /Applications/Cursor.app/Contents/MacOS/Cursor")]);
+        assert_eq!(nearest_harness(10, &ps), Some("cursor"));
+        let ps = table(&[(10, "20 node /opt/cursor/cli.js")]);
+        assert_eq!(nearest_harness(10, &ps), Some("cursor"));
         let ps = table(&[(10, "1 /bin/sh")]);
         assert_eq!(nearest_harness(10, &ps), None);
         assert_eq!(nearest_harness(10, &|_| None), None);

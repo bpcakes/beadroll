@@ -25,7 +25,7 @@ pub(crate) fn settings(home: &Path, vars: &[(&str, &str)]) -> Arc<Settings> {
     let mut all: BTreeMap<OsString, OsString> = std::env::vars_os()
         .filter(|(name, _)| {
             let name = name.to_string_lossy();
-            !["BEAD_", "CLAUDE", "CODEX", "GIT_"]
+            !["BEAD_", "CLAUDE", "CODEX", "CURSOR", "GIT_"]
                 .iter()
                 .any(|prefix| name.starts_with(prefix))
         })

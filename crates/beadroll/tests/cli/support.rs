@@ -64,11 +64,12 @@ fn a_machine_runs_in_its_checkout_with_its_own_identity_and_nothing_inherited() 
     }
     let bead_vars: Vec<&&str> = vars.iter().filter(|v| v.starts_with("BEAD_")).collect();
     assert_eq!(bead_vars.len(), 4, "{bead_vars:?}");
-    assert!(
-        !vars
-            .iter()
-            .any(|v| v.starts_with("GIT_") || v.starts_with("CLAUDE") || v.starts_with("CODEX"))
-    );
+    assert!(!vars.iter().any(|v| {
+        v.starts_with("GIT_")
+            || v.starts_with("CLAUDE")
+            || v.starts_with("CODEX")
+            || v.starts_with("CURSOR")
+    }));
 }
 
 #[test]

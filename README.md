@@ -129,9 +129,9 @@ in the project specifics at the end of the generated block. Each agent then
 starts a session with `bead prime`, which reports its identity, held issues,
 workflow, and error codes.
 
-bead detects Claude Code and Codex session identities from their environments.
-A claim belongs to the agent thread that made it. To continue your own work
-in a new session:
+bead detects Claude Code, Codex, and Cursor session identities from their
+environments. A claim belongs to the agent thread that made it. To continue your
+own work in a new session:
 
 ```sh
 bead takeover ID -r "same task, new session"
@@ -247,7 +247,7 @@ All environment variables are optional:
 | `BEAD_WORKSPACE` | Override the derived workspace ID and its check; see the repository move guide above. |
 | `BEAD_REMOTE` | Coordination remote for this call: a remote name, URL, or path. |
 | `BEAD_AGENT`, `BEAD_THREAD`, `BEAD_ACTOR` | Override detected identity. `--actor` takes precedence. |
-| `CLAUDE_CODE_SESSION_ID`, `CLAUDECODE`, `CODEX_THREAD_ID`, `CODEX_SESSION_ID` | Agent harness and session detection. |
+| `CLAUDE_CODE_SESSION_ID`, `CLAUDECODE`, `CODEX_THREAD_ID`, `CODEX_SESSION_ID`, `CURSOR_CONVERSATION_ID`, `CURSOR_AGENT` | Agent harness and session detection. |
 | `BEAD_NET_TIMEOUT` | Fetch or push timeout in seconds, including decimals. Default: 45. |
 | `BEAD_ROTATE_BYTES` | Journal segment rotation size. Default: 262,144 bytes. |
 | `BEAD_REPACK_LOOSE`, `BEAD_REPACK_PACKS` | Repack thresholds for loose objects and packs. Defaults: 1,000 and 40. |

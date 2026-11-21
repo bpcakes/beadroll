@@ -1,6 +1,6 @@
-//! Who the caller is when an agent was started from inside another agent's session, so that both a
-//! Claude and a Codex session are in the environment. Tests of `detect_actor` as a function of the
-//! environment are the store's (`crates/beadroll-store/tests/store/commands.rs`).
+//! Who the caller is when an agent was started from inside another agent's session, so that more
+//! than one harness's session variables are in the environment. Tests of `detect_actor` as a
+//! function of the environment are the store's (`crates/beadroll-store/tests/store/commands.rs`).
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
@@ -11,12 +11,12 @@ use std::process::Command;
 
 use beadroll_test_support::{Run, Sandbox, executable, json, parse_json};
 
-/// The test's environment less every `BEAD_*`, `CLAUDE*`, `CODEX*` and `GIT_*` variable.
+/// The test's environment less every `BEAD_*`, `CLAUDE*`, `CODEX*`, `CURSOR*` and `GIT_*` variable.
 fn scrubbed() -> BTreeMap<OsString, OsString> {
     std::env::vars_os()
         .filter(|(key, _)| {
             let key = key.as_encoded_bytes();
-            !["BEAD_", "CLAUDE", "CODEX", "GIT_"]
+            !["BEAD_", "CLAUDE", "CODEX", "CURSOR", "GIT_"]
                 .iter()
                 .any(|prefix| key.starts_with(prefix.as_bytes()))
         })
@@ -51,25 +51,45 @@ fn which(name: &str) -> Option<PathBuf> {
 }
 
 /// `bead info --json` run in `root`, which is no repository, on workspace `audit-identity` with its
-/// store in `root/home`, `path` as PATH, and both a Claude and a Codex session in the environment.
-fn nested_info(sandbox: &Sandbox, root: &Path, path: &OsStr) -> Run {
-    let output = Command::new(sandbox.bead())
+/// store in `root/home`, `path` as PATH, and `sessions` in the environment.
+fn info_with_sessions(
+    sandbox: &Sandbox,
+    root: &Path,
+    path: &OsStr,
+    sessions: &[(&str, &str)],
+) -> Run {
+    let mut command = Command::new(sandbox.bead());
+    command
         .args(["info", "--json"])
         .current_dir(root)
         .env_clear()
         .envs(scrubbed())
         .env("BEAD_HOME", root.join("home"))
         .env("BEAD_WORKSPACE", "audit-identity")
-        .env("PATH", path)
-        .env("CLAUDE_CODE_SESSION_ID", "claude")
-        .env("CODEX_THREAD_ID", "codex")
-        .output()
-        .unwrap();
+        .env("PATH", path);
+    for (key, value) in sessions {
+        command.env(key, value);
+    }
+    let output = command.output().unwrap();
     Run {
         status: output.status,
         stdout: String::from_utf8(output.stdout).unwrap(),
         stderr: String::from_utf8(output.stderr).unwrap(),
     }
+}
+
+/// `bead info --json` with Claude, Codex and Cursor sessions all in the environment.
+fn nested_info(sandbox: &Sandbox, root: &Path, path: &OsStr) -> Run {
+    info_with_sessions(
+        sandbox,
+        root,
+        path,
+        &[
+            ("CLAUDE_CODE_SESSION_ID", "claude"),
+            ("CODEX_THREAD_ID", "codex"),
+            ("CURSOR_CONVERSATION_ID", "cursor"),
+        ],
+    )
 }
 
 /// The process-tree walk selects the nearest ancestor harness and its session. A fake `ps` first
@@ -87,6 +107,8 @@ fn nearest_harness_mocked_process_tree() {
         ("/opt/bin/claude --worker", "claude"),
         ("/opt/bin/codex --worker", "codex"),
         ("node /opt/claude/cli.js", "claude"),
+        ("/opt/bin/cursor-agent --worker", "cursor"),
+        ("/Applications/Cursor.app/Contents/MacOS/Cursor", "cursor"),
     ] {
         let ps = fake.join("ps");
         executable(&ps, format!("#!/bin/sh\nprintf '%s\\n' '1 {proc}'\n"));
@@ -98,6 +120,28 @@ fn nearest_harness_mocked_process_tree() {
             "{proc}"
         );
     }
+}
+
+#[test]
+fn cursor_session_is_detected_from_environment() {
+    let sandbox = crate::sandbox();
+    let root = sandbox.root().join("identity-cursor");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let p = info_with_sessions(
+        &sandbox,
+        &root,
+        &path,
+        &[
+            ("CURSOR_AGENT", "1"),
+            ("CURSOR_CONVERSATION_ID", "agent-1234"),
+        ],
+    );
+    assert_eq!(p.returncode(), 0, "{}", p.stderr);
+    assert_eq!(
+        parse_json(&p.stdout).unwrap()["actor"],
+        json!({"agent": "cursor", "thread": "agent-1234"})
+    );
 }
 
 #[test]

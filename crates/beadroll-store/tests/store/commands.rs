@@ -4,12 +4,20 @@ mod actor_detection {
     use beadroll_store::detect_actor;
     use beadroll_test_support::{Json, json};
 
-    fn actor(vars: &[(&str, &str)], name: Option<&str>) -> Json {
+    fn actor_with(
+        vars: &[(&str, &str)],
+        name: Option<&str>,
+        nearest: Option<&'static str>,
+    ) -> Json {
         let home = tempfile::tempdir().unwrap();
         let settings = crate::settings(home.path(), vars);
-        let actor = detect_actor(&settings, name.map(std::ffi::OsStr::new), &|| None);
+        let actor = detect_actor(&settings, name.map(std::ffi::OsStr::new), &|| nearest);
         assert!(actor.writable);
         actor.value
+    }
+
+    fn actor(vars: &[(&str, &str)], name: Option<&str>) -> Json {
+        actor_with(vars, name, None)
     }
 
     #[test]
@@ -32,6 +40,25 @@ mod actor_detection {
         assert_eq!(
             actor(&[("CODEX_SESSION_ID", "session")], None),
             json!({"agent": "codex", "thread": "session"})
+        );
+        assert_eq!(
+            actor(
+                &[
+                    ("CURSOR_AGENT", "1"),
+                    ("CURSOR_CONVERSATION_ID", "cursor-id")
+                ],
+                None
+            ),
+            json!({"agent": "cursor", "thread": "cursor-id"})
+        );
+        assert_eq!(
+            actor(&[("CURSOR_CONVERSATION_ID", "cursor-id")], None),
+            json!({"agent": "cursor", "thread": "cursor-id"})
+        );
+        // `CURSOR_AGENT` alone is Cursor with no conversation id to name a thread by
+        assert_eq!(
+            actor(&[("CURSOR_AGENT", "1")], None),
+            json!({"agent": "cursor"})
         );
         assert_eq!(
             actor(
@@ -64,6 +91,54 @@ mod actor_detection {
                 None
             ),
             json!({"agent": "codex", "thread": "override"})
+        );
+        assert_eq!(
+            actor(
+                &[
+                    ("BEAD_THREAD", "override"),
+                    ("CURSOR_CONVERSATION_ID", "detected")
+                ],
+                None
+            ),
+            json!({"agent": "cursor", "thread": "override"})
+        );
+    }
+
+    #[test]
+    fn nested_harnesses_pick_the_nearest_matching_ancestor_or_fallback() {
+        let claude_and_cursor = [
+            ("CLAUDE_CODE_SESSION_ID", "claude-id"),
+            ("CURSOR_CONVERSATION_ID", "cursor-id"),
+        ];
+        assert_eq!(
+            actor_with(&claude_and_cursor, None, Some("cursor")),
+            json!({"agent": "cursor", "thread": "cursor-id"})
+        );
+        assert_eq!(
+            actor_with(&claude_and_cursor, None, Some("claude")),
+            json!({"agent": "claude", "thread": "claude-id"})
+        );
+        // A harness absent from the environment is ignored; fallback prefers claude over cursor.
+        assert_eq!(
+            actor_with(&claude_and_cursor, None, Some("codex")),
+            json!({"agent": "claude", "thread": "claude-id"})
+        );
+        assert_eq!(
+            actor_with(&claude_and_cursor, None, None),
+            json!({"agent": "claude", "thread": "claude-id"})
+        );
+
+        let codex_and_cursor = [
+            ("CODEX_THREAD_ID", "codex-id"),
+            ("CURSOR_CONVERSATION_ID", "cursor-id"),
+        ];
+        assert_eq!(
+            actor_with(&codex_and_cursor, None, Some("cursor")),
+            json!({"agent": "cursor", "thread": "cursor-id"})
+        );
+        assert_eq!(
+            actor_with(&codex_and_cursor, None, None),
+            json!({"agent": "codex", "thread": "codex-id"})
         );
     }
 }
