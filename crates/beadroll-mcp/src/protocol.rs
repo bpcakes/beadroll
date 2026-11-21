@@ -39,7 +39,7 @@ struct Envelope {
     method: Option<Value>,
     params: Option<Value>,
     has_result: bool,
-    has_error: bool,
+    error: Option<Value>,
     duplicate_key: Option<String>,
 }
 
@@ -67,7 +67,7 @@ impl<'de> Deserialize<'de> for ParsedEnvelope {
                     method: None,
                     params: None,
                     has_result: false,
-                    has_error: false,
+                    error: None,
                     duplicate_key: None,
                 };
                 while let Some((key, value)) = map.next_entry::<String, Value>()? {
@@ -80,7 +80,7 @@ impl<'de> Deserialize<'de> for ParsedEnvelope {
                         "method" => env.method = Some(value),
                         "params" => env.params = Some(value),
                         "result" => env.has_result = true,
-                        "error" => env.has_error = true,
+                        "error" => env.error = Some(value),
                         _ => {}
                     }
                 }
@@ -219,7 +219,7 @@ impl Server {
         let Some(method_val) = env.method else {
             return validate_client_response(&env);
         };
-        if env.has_result || env.has_error {
+        if env.has_result || env.error.is_some() {
             return Some(error_response(
                 Value::Null,
                 ERR_INVALID_REQUEST,
@@ -309,16 +309,19 @@ impl Server {
     }
 }
 
-/// Validates a methodless JSON-RPC 2.0 object: a valid response (`result` XOR `error`, valid `id`
-/// or `null` for error responses, no `params`) is silently consumed; anything else returns -32600.
+/// Validates a methodless JSON-RPC 2.0 object: a valid response (`result` XOR valid error object
+/// with integer `code` and string `message`, valid `id` or `null` for error responses, no
+/// `params`) is silently consumed; anything else returns -32600.
 fn validate_client_response(env: &Envelope) -> Option<Value> {
-    let valid_outcome = env.has_result ^ env.has_error;
+    let has_error = env.error.is_some();
+    let valid_outcome = env.has_result ^ has_error;
+    let valid_error_shape = env.error.as_ref().is_none_or(is_valid_error_object);
     let valid_id = match env.id.as_ref() {
-        Some(Value::Null) => env.has_error,
+        Some(Value::Null) => has_error,
         Some(id) => is_valid_request_id(id),
         None => false,
     };
-    if valid_outcome && valid_id && env.params.is_none() {
+    if valid_outcome && valid_error_shape && valid_id && env.params.is_none() {
         None
     } else {
         Some(error_response(
@@ -327,6 +330,18 @@ fn validate_client_response(env: &Envelope) -> Option<Value> {
             "missing string `method` or malformed JSON-RPC response",
         ))
     }
+}
+
+fn is_valid_error_object(value: &Value) -> bool {
+    let Some(obj) = value.as_object() else {
+        return false;
+    };
+    let valid_code = obj
+        .get("code")
+        .and_then(Value::as_number)
+        .is_some_and(|n| n.is_i64() || n.is_u64());
+    let valid_message = obj.get("message").is_some_and(Value::is_string);
+    valid_code && valid_message
 }
 
 /// Reads bytes up to `\n` (or EOF) without allocating beyond `limit` payload bytes (the trailing

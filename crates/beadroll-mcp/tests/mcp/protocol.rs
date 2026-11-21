@@ -60,10 +60,11 @@ fn initialize_negotiates_supported_versions_and_survives_unknown_discover_method
         Some("2025-11-25")
     );
 
-    // Notifications and client responses produce no reply; string-id ping still works.
+    // Notifications and valid client responses (result or error) produce no reply.
     client.notify("notifications/initialized", json!({}));
     client.notify("notifications/cancelled", json!({ "requestId": 999 }));
     client.send_raw(r#"{"jsonrpc":"2.0","id":"ignored-response","result":{}}"#);
+    client.send_raw(r#"{"jsonrpc":"2.0","id":7,"error":{"code":-32000,"message":"ignored"}}"#);
     client.send_raw(r#"{"jsonrpc":"2.0","id":"str-id-1","method":"ping"}"#);
     let ping = client.read_json();
     assert_eq!(ping.get("id"), Some(&json!("str-id-1")));
@@ -219,6 +220,21 @@ fn malformed_envelopes_invalid_utf8_and_oversized_frames_do_not_kill_session() {
             Value::Null,
         ),
         (
+            r#"{"jsonrpc":"2.0","id":1,"error":null}"#,
+            -32600,
+            Value::Null,
+        ),
+        (
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":"bad","message":"x"}}"#,
+            -32600,
+            Value::Null,
+        ),
+        (
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32000}}"#,
+            -32600,
+            Value::Null,
+        ),
+        (
             r#"{"jsonrpc":"2.0","method":"notifications/progress","params":3}"#,
             -32600,
             Value::Null,
@@ -260,6 +276,19 @@ fn malformed_envelopes_invalid_utf8_and_oversized_frames_do_not_kill_session() {
         assert_eq!(err.get("id"), Some(&expected_id), "envelope {raw}");
     }
 
+    // Subsequent valid ping still succeeds.
+    let ping = client.request("ping", json!({}));
+    assert_eq!(ping.get("result"), Some(&json!({})));
+
+    assert_eq!(client.close(), Some(0));
+}
+
+#[test]
+fn invalid_utf8_exact_cap_crlf_and_oversized_frames_recover_cleanly() {
+    let dir = tempdir().expect("tempdir");
+    let mut client = McpClient::spawn(dir.path(), &[], &[]);
+    client.initialize();
+
     // Invalid UTF-8 line returns parse error and session resumes cleanly.
     client.send_bytes(&[0xff, 0xfe, b'{', b'}']);
     let utf8_err = client.read_json();
@@ -288,7 +317,6 @@ fn malformed_envelopes_invalid_utf8_and_oversized_frames_do_not_kill_session() {
         Some(-32600)
     );
 
-    // Subsequent valid ping still succeeds.
     let ping = client.request("ping", json!({}));
     assert_eq!(ping.get("result"), Some(&json!({})));
 

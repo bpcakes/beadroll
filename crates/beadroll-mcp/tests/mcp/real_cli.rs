@@ -363,12 +363,15 @@ fn real_bead_show_closed_issue_in_partial_clone_never_triggers_lazy_fetch() {
         None,
     );
 
-    // Sync tracker in the partial clone's own home BEFORE installing the sentinel.
-    let home = sb.root().join("home-partial");
-    let sync_status = std::process::Command::new(m.executable())
+    // Sync tracker in the partial clone using a scrubbed test-support machine environment so no
+    // ambient GIT_* or BEAD_* variables from the caller's shell can influence setup.
+    let reader = Machine::new(&sb, "partial-reader");
+    let reader_env = reader.env(None, "human");
+    let sync_status = std::process::Command::new(reader.executable())
         .args(["sync"])
         .current_dir(&partial)
-        .env("BEAD_HOME", &home)
+        .env_clear()
+        .envs(&reader_env)
         .status()
         .expect("sync partial");
     assert!(sync_status.success(), "bead sync in partial clone");
@@ -392,9 +395,9 @@ fn real_bead_show_closed_issue_in_partial_clone_never_triggers_lazy_fetch() {
             "--repo",
             path_text(&partial),
             "--bead",
-            path_text(m.executable()),
+            path_text(reader.executable()),
         ],
-        &[("BEAD_HOME", path_text(&home))],
+        &[("BEAD_HOME", path_text(reader.home()))],
     );
     client.initialize();
 
@@ -412,4 +415,21 @@ fn real_bead_show_closed_issue_in_partial_clone_never_triggers_lazy_fetch() {
     );
 
     assert_eq!(client.close(), Some(0));
+
+    // Positive control: running raw `bead show` in the same partial clone without beadroll-mcp's
+    // offline Git isolation DOES reach the uploadpack sentinel, proving the negative check above
+    // actively prevents lazy fetches.
+    let raw_status = std::process::Command::new(reader.executable())
+        .args(["show", "--json", "--", &uid])
+        .current_dir(&partial)
+        .env_clear()
+        .envs(&reader_env)
+        .stdout(std::process::Stdio::null())
+        .status()
+        .expect("raw bead show control");
+    assert!(raw_status.success(), "raw bead show control");
+    assert!(
+        marker.exists(),
+        "positive control failed: raw bead show did not exercise uploadpack sentinel"
+    );
 }
