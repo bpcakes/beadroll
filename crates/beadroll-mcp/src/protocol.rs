@@ -1,7 +1,9 @@
-//! MCP JSON-RPC 2.0 protocol loop and request dispatcher over stdio.
+//! MCP JSON-RPC 2.0 protocol loop and strict request envelope dispatcher over stdio.
 
+use std::fmt;
 use std::io::{self, BufRead, Write};
 
+use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
 use serde_json::{Map, Value, json};
 
 use crate::bead::BeadCli;
@@ -30,6 +32,98 @@ enum Frame {
     TooLarge,
 }
 
+/// Top-level JSON-RPC 2.0 envelope decoded with duplicate-key rejection.
+struct Envelope {
+    jsonrpc: Option<Value>,
+    id: Option<Value>,
+    method: Option<Value>,
+    params: Option<Value>,
+    has_result: bool,
+    has_error: bool,
+    duplicate_key: Option<String>,
+}
+
+enum ParsedEnvelope {
+    Object(Envelope),
+    NonObject,
+}
+
+impl<'de> Deserialize<'de> for ParsedEnvelope {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct EnvelopeVisitor;
+
+        impl<'de> Visitor<'de> for EnvelopeVisitor {
+            type Value = ParsedEnvelope;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a JSON value")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let mut seen = std::collections::BTreeSet::new();
+                let mut env = Envelope {
+                    jsonrpc: None,
+                    id: None,
+                    method: None,
+                    params: None,
+                    has_result: false,
+                    has_error: false,
+                    duplicate_key: None,
+                };
+                while let Some((key, value)) = map.next_entry::<String, Value>()? {
+                    if !seen.insert(key.clone()) && env.duplicate_key.is_none() {
+                        env.duplicate_key = Some(key.clone());
+                    }
+                    match key.as_str() {
+                        "jsonrpc" => env.jsonrpc = Some(value),
+                        "id" => env.id = Some(value),
+                        "method" => env.method = Some(value),
+                        "params" => env.params = Some(value),
+                        "result" => env.has_result = true,
+                        "error" => env.has_error = true,
+                        _ => {}
+                    }
+                }
+                Ok(ParsedEnvelope::Object(env))
+            }
+
+            fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E> {
+                Ok(ParsedEnvelope::NonObject)
+            }
+
+            fn visit_i64<E>(self, _: i64) -> Result<Self::Value, E> {
+                Ok(ParsedEnvelope::NonObject)
+            }
+
+            fn visit_u64<E>(self, _: u64) -> Result<Self::Value, E> {
+                Ok(ParsedEnvelope::NonObject)
+            }
+
+            fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E> {
+                Ok(ParsedEnvelope::NonObject)
+            }
+
+            fn visit_str<E>(self, _: &str) -> Result<Self::Value, E> {
+                Ok(ParsedEnvelope::NonObject)
+            }
+
+            fn visit_unit<E>(self) -> Result<Self::Value, E> {
+                Ok(ParsedEnvelope::NonObject)
+            }
+
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<Self::Value, A::Error> {
+                while seq.next_element::<Value>()?.is_some() {}
+                Ok(ParsedEnvelope::NonObject)
+            }
+        }
+
+        deserializer.deserialize_any(EnvelopeVisitor)
+    }
+}
+
 /// Stateful MCP server bound to one checkout [`Config`].
 pub struct Server {
     cli: BeadCli,
@@ -45,8 +139,8 @@ impl Server {
 
     /// Serves newline-delimited JSON-RPC 2.0 messages from `reader` onto `writer` until EOF.
     ///
-    /// Invalid UTF-8 frames and frames larger than [`MAX_FRAME_BYTES`] receive a JSON-RPC error
-    /// response without terminating the session.
+    /// Invalid UTF-8 frames and frames whose payload exceeds [`MAX_FRAME_BYTES`] receive a
+    /// JSON-RPC error response without terminating the session.
     pub fn serve(&mut self, mut reader: impl BufRead, mut writer: impl Write) -> io::Result<()> {
         loop {
             let response = match read_bounded_frame(&mut reader, MAX_FRAME_BYTES)? {
@@ -85,9 +179,9 @@ impl Server {
     }
 
     /// Processes a single JSON-RPC line and returns the response object, or `None` for valid
-    /// notifications and responses.
+    /// notifications and valid client responses.
     pub fn handle_line(&mut self, line: &str) -> Option<Value> {
-        let parsed: Value = match serde_json::from_str(line) {
+        let parsed: ParsedEnvelope = match serde_json::from_str(line) {
             Ok(value) => value,
             Err(error) => {
                 return Some(error_response(
@@ -97,32 +191,41 @@ impl Server {
                 ));
             }
         };
-        let Some(obj) = parsed.as_object() else {
+        let ParsedEnvelope::Object(env) = parsed else {
             return Some(error_response(
                 Value::Null,
                 ERR_INVALID_REQUEST,
                 "request must be a JSON object",
             ));
         };
-        if obj.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+        self.handle_envelope(env)
+    }
+
+    fn handle_envelope(&self, env: Envelope) -> Option<Value> {
+        if let Some(dup) = env.duplicate_key {
+            return Some(error_response(
+                Value::Null,
+                ERR_INVALID_REQUEST,
+                format!("duplicate key `{dup}` in JSON-RPC envelope"),
+            ));
+        }
+        if env.jsonrpc.as_ref().and_then(Value::as_str) != Some("2.0") {
             return Some(error_response(
                 Value::Null,
                 ERR_INVALID_REQUEST,
                 "missing or unsupported `jsonrpc` version (expected \"2.0\")",
             ));
         }
-        let Some(method_val) = obj.get("method") else {
-            // Valid JSON-RPC responses carry `result` or `error` without `method` and receive no
-            // reply; anything else is an invalid request.
-            if obj.contains_key("result") || obj.contains_key("error") {
-                return None;
-            }
+        let Some(method_val) = env.method else {
+            return validate_client_response(&env);
+        };
+        if env.has_result || env.has_error {
             return Some(error_response(
                 Value::Null,
                 ERR_INVALID_REQUEST,
-                "missing string `method`",
+                "request must not contain `result` or `error`",
             ));
-        };
+        }
         let Some(method) = method_val.as_str().filter(|name| !name.is_empty()) else {
             return Some(error_response(
                 Value::Null,
@@ -130,17 +233,22 @@ impl Server {
                 "`method` must be a non-empty string",
             ));
         };
-        // Notifications omit `id` entirely and must never receive a response.
-        let id_val = obj.get("id")?;
-        if !is_valid_request_id(id_val) {
+        // Notifications omit `id`: valid notifications stay silent; invalid non-object params are
+        // rejected as Invalid Request rather than silently ignored.
+        let Some(id) = env.id else {
+            return match validate_params(env.params.as_ref()) {
+                Ok(_) => None,
+                Err((code, message)) => Some(error_response(Value::Null, code, message)),
+            };
+        };
+        if !is_valid_request_id(&id) {
             return Some(error_response(
                 Value::Null,
                 ERR_INVALID_REQUEST,
                 "request `id` must be a string or integer",
             ));
         }
-        let id = id_val.clone();
-        let params = match validate_params(obj.get("params")) {
+        let params = match validate_params(env.params.as_ref()) {
             Ok(params) => params,
             Err((code, message)) => return Some(error_response(id, code, message)),
         };
@@ -201,15 +309,36 @@ impl Server {
     }
 }
 
-/// Reads bytes up to `\n` (or EOF) without allocating beyond `limit` bytes. When a line exceeds
-/// `limit`, drains the rest of the line so the next newline begins a fresh frame cleanly.
+/// Validates a methodless JSON-RPC 2.0 object: a valid response (`result` XOR `error`, valid `id`
+/// or `null` for error responses, no `params`) is silently consumed; anything else returns -32600.
+fn validate_client_response(env: &Envelope) -> Option<Value> {
+    let valid_outcome = env.has_result ^ env.has_error;
+    let valid_id = match env.id.as_ref() {
+        Some(Value::Null) => env.has_error,
+        Some(id) => is_valid_request_id(id),
+        None => false,
+    };
+    if valid_outcome && valid_id && env.params.is_none() {
+        None
+    } else {
+        Some(error_response(
+            Value::Null,
+            ERR_INVALID_REQUEST,
+            "missing string `method` or malformed JSON-RPC response",
+        ))
+    }
+}
+
+/// Reads bytes up to `\n` (or EOF) without allocating beyond `limit` payload bytes (the trailing
+/// `\n` or `\r\n` delimiter is not counted toward `limit`). When a line exceeds `limit`, drains
+/// through the next `\n` so the following line starts cleanly.
 fn read_bounded_frame(reader: &mut impl BufRead, limit: usize) -> io::Result<Frame> {
     let mut buf = Vec::new();
     let mut overflowed = false;
     loop {
         let chunk = reader.fill_buf()?;
         if chunk.is_empty() {
-            return Ok(if overflowed {
+            return Ok(if overflowed || buf.len() > limit {
                 Frame::TooLarge
             } else if buf.is_empty() {
                 Frame::Eof
@@ -218,18 +347,33 @@ fn read_bounded_frame(reader: &mut impl BufRead, limit: usize) -> io::Result<Fra
             });
         }
         let newline = chunk.iter().position(|byte| *byte == b'\n');
-        let take = newline.map_or(chunk.len(), |pos| pos + 1);
-        if !overflowed {
-            if buf.len().saturating_add(take) > limit {
+        let consumed = newline.map_or(chunk.len(), |pos| pos + 1);
+        let payload_len = newline.unwrap_or(chunk.len());
+        if !overflowed && let Some(slice) = chunk.get(..payload_len) {
+            let trimmed_len = if newline.is_some() && slice.ends_with(b"\r") {
+                slice.len() - 1
+            } else {
+                slice.len()
+            };
+            if newline == Some(0) && buf.ends_with(b"\r") {
+                buf.pop();
+            }
+            // Allow one extra byte before `\n` in case `\r\n` splits across buffer fills.
+            let max_buffered = if newline.is_some() {
+                limit
+            } else {
+                limit.saturating_add(1)
+            };
+            if buf.len().saturating_add(trimmed_len) > max_buffered {
                 overflowed = true;
                 buf.clear();
-            } else if let Some(slice) = chunk.get(..take) {
-                buf.extend_from_slice(slice);
+            } else if let Some(payload) = slice.get(..trimmed_len) {
+                buf.extend_from_slice(payload);
             }
         }
-        reader.consume(take);
+        reader.consume(consumed);
         if newline.is_some() {
-            return Ok(if overflowed {
+            return Ok(if overflowed || buf.len() > limit {
                 Frame::TooLarge
             } else {
                 Frame::Bytes(buf)

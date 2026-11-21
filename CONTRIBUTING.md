@@ -30,14 +30,14 @@ push test data anywhere but a throwaway remote of your own.
 
 ## Layout
 
-- `crates/` — six core crates that depend only downwards: `beadroll-core` (pure:
-  JSON, events, replay, queries, import and export) and `beadroll-git` (the
-  only code that starts git) → `beadroll-store` → `beadroll-sync` → `beadroll`
-  (the `bead` binary), `beadroll-test-support` (the sandbox the tests run
-  `bead` in), and the optional `beadroll-mcp` companion (read-only stdio MCP
-  App server calling the installed `bead` binary, `docs/MCP-APP.md`). A helper
-  two crates need moves down, never up. Each crate's `AGENTS.md` says what it
-  owns.
+- `crates/` — five core crates that depend only downwards: `beadroll-core`
+  (pure: JSON, events, replay, queries, import and export) and `beadroll-git`
+  (the only code that starts git) → `beadroll-store` → `beadroll-sync` →
+  `beadroll` (the `bead` binary); plus `beadroll-test-support` (the sandbox the
+  tests run `bead` in) and the optional `beadroll-mcp` companion (read-only
+  stdio MCP App server calling the installed `bead` binary, `docs/MCP-APP.md`).
+  A helper two crates need moves down, never up. Each crate's `AGENTS.md` says
+  what it owns.
 - Tests: unit tests beside the code, and one integration-test binary per crate
   but beadroll-test-support, a test library (`crates/<crate>/tests/<name>/`), by subject (`replay`, `storage`, `compat`,
   `commands`, `protocol`, `hardening`; the slow `stress` and `sweep`). The

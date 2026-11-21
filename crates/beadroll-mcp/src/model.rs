@@ -58,6 +58,9 @@ pub(crate) struct ClaimInfo {
 pub(crate) struct OwnershipNotice {
     pub(crate) op: String,
     pub(crate) by: String,
+    pub(crate) event: Option<String>,
+    pub(crate) at: Option<String>,
+    pub(crate) claim: Option<String>,
 }
 
 /// A claim attempt that lost an ownership race to another owner.
@@ -65,6 +68,8 @@ pub(crate) struct OwnershipNotice {
 pub(crate) struct LostClaim {
     pub(crate) by: String,
     pub(crate) held_by: String,
+    pub(crate) event: Option<String>,
+    pub(crate) at: Option<String>,
 }
 
 /// Whether a closed issue's closing commit has been merged into the default branch.
@@ -126,6 +131,7 @@ pub(crate) struct IssueDetail {
     pub(crate) notes: Option<String>,
     pub(crate) design: Option<String>,
     pub(crate) external_ref: Option<String>,
+    pub(crate) estimated_minutes: Option<i64>,
     pub(crate) close_reason: Option<String>,
     pub(crate) assignee: Option<String>,
     pub(crate) labels: Vec<String>,
@@ -288,6 +294,7 @@ impl IssueDetail {
             notes: non_empty_str(obj.get("notes")),
             design: non_empty_str(obj.get("design")),
             external_ref: non_empty_str(obj.get("external_ref")),
+            estimated_minutes: read_int(obj.get("estimated_minutes")),
             close_reason: non_empty_str(obj.get("close_reason")),
             assignee: non_empty_str(obj.get("assignee")),
             labels: string_list(obj.get("labels")),
@@ -352,6 +359,7 @@ impl IssueDetail {
             "notes": self.notes,
             "design": self.design,
             "external_ref": self.external_ref,
+            "estimated_minutes": self.estimated_minutes,
             "close_reason": self.close_reason,
             "assignee": self.assignee,
             "labels": self.labels,
@@ -410,6 +418,9 @@ impl OwnershipNotice {
         json!({
             "op": self.op,
             "by": self.by,
+            "event": self.event,
+            "at": self.at,
+            "claim": self.claim,
         })
     }
 }
@@ -419,6 +430,8 @@ impl LostClaim {
         json!({
             "by": self.by,
             "held_by": self.held_by,
+            "event": self.event,
+            "at": self.at,
         })
     }
 }
@@ -518,14 +531,25 @@ fn parse_ownership_notice(value: &Value) -> Option<OwnershipNotice> {
     let obj = value.as_object()?;
     let op = non_empty_str(obj.get("op"))?;
     let by = non_empty_str(obj.get("by")).unwrap_or_else(|| "unknown".to_owned());
-    Some(OwnershipNotice { op, by })
+    Some(OwnershipNotice {
+        op,
+        by,
+        event: non_empty_str(obj.get("event")),
+        at: non_empty_str(obj.get("at")),
+        claim: non_empty_str(obj.get("claim")),
+    })
 }
 
 fn parse_lost_claim(value: &Value) -> Option<LostClaim> {
     let obj = value.as_object()?;
     let by = non_empty_str(obj.get("by"))?;
     let held_by = non_empty_str(obj.get("held_by")).unwrap_or_else(|| "unknown".to_owned());
-    Some(LostClaim { by, held_by })
+    Some(LostClaim {
+        by,
+        held_by,
+        event: non_empty_str(obj.get("event")),
+        at: non_empty_str(obj.get("at")),
+    })
 }
 
 fn parse_related(value: &Value) -> Option<RelatedIssue> {

@@ -11,6 +11,18 @@ use crate::model::{DetailView, IssueDetail, ReadyIssue, ReadyView, WorkspaceInfo
 use crate::process::{ProcessError, run_bounded};
 use crate::{Config, MAX_OUTPUT_BYTES};
 
+/// Offline, repo-local-only Git environment variables injected on every `bead` child so external
+/// Git config files cannot redirect workspace derivation and partial clones cannot trigger lazy
+/// promisor fetches during `bead show`.
+const OFFLINE_GIT_ENV: [(&str, &str); 6] = [
+    ("GIT_CONFIG_GLOBAL", "/dev/null"),
+    ("GIT_CONFIG_SYSTEM", "/dev/null"),
+    ("GIT_CONFIG_NOSYSTEM", "1"),
+    ("GIT_NO_LAZY_FETCH", "1"),
+    ("GIT_ALLOW_PROTOCOL", ""),
+    ("GIT_TERMINAL_PROMPT", "0"),
+];
+
 /// Target for `bead_show`, keeping explicit stable `uid` lookups distinct from initial display-key
 /// lookups so a display key colliding with a UID can never open the wrong issue silently.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -332,9 +344,8 @@ impl BeadCli {
         WorkspaceInfo::from_info_json(&raw, checkout)
     }
 
-    /// Spawns `bead` in the bound checkout under the configured timeout and output bounds,
-    /// optionally pinning `BEAD_WORKSPACE` to `pinned_workspace` so a concurrent checkout config
-    /// change between `info` and `ready`/`show` cannot read a different store.
+    /// Spawns `bead` in the bound checkout under an offline, repo-local-only Git environment and
+    /// bounded capture/timeout limits, optionally pinning `BEAD_WORKSPACE` to `pinned_workspace`.
     fn run_json_pinned(
         &self,
         label: &'static str,
@@ -349,6 +360,9 @@ impl BeadCli {
             });
         }
         let mut env = self.config.env.clone();
+        for (key, value) in OFFLINE_GIT_ENV {
+            env.push((OsString::from(key), OsString::from(value)));
+        }
         if let Some(ws_id) = pinned_workspace {
             env.push((OsString::from("BEAD_WORKSPACE"), OsString::from(ws_id)));
         }

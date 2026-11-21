@@ -149,10 +149,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   installed `bead` executable for local reads only (`bead info`, `bead ready`, `bead show`) rather
   than linking `beadroll-store`/`beadroll-sync` or implementing writes; like any local `bead` read,
   those calls never contact a git remote or write tracker events, though `bead` may refresh its own
-  local derived caches. Each server process canonicalizes one checkout once at startup (`--repo`,
-  else startup working directory, with git repository/config overrides and `BEAD_WORKSPACE`/
-  `BEAD_REMOTE` scrubbed while preserving `BEAD_HOME`) and never accepts a repository path on tool
-  calls; `bead ready` and `bead show` pin `BEAD_WORKSPACE` to the ID resolved by `bead info`, and
+  local derived caches.   Each server process canonicalizes one checkout once at startup (`--repo`,
+  else startup working directory), strips inherited git routing/config overrides, `XDG_CONFIG_HOME`,
+  and every `BEAD_*` variable except `BEAD_HOME`, injects an offline repo-local-only Git
+  environment (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`,
+  `GIT_CONFIG_NOSYSTEM=1`, `GIT_NO_LAZY_FETCH=1`, `GIT_ALLOW_PROTOCOL=""`,
+  `GIT_TERMINAL_PROMPT=0`), and never accepts a repository path on tool calls; `bead ready` and `bead show` pin `BEAD_WORKSPACE` to the ID resolved by `bead info`, and
   `bead_show` enforces caller-supplied `workspace` IDs (`WORKSPACE_MISMATCH`), verifies explicit
   `uid` lookups against the returned issue's `uid` (`UID_MISMATCH`), and requires stable `uid`
   output from `bead` (`UPGRADE_REQUIRED` on older builds). Both tools advertise

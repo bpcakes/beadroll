@@ -101,6 +101,7 @@ dependencies = [
  "beadroll-test-support",
  "clap",
  "rustix",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror",

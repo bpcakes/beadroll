@@ -24,8 +24,10 @@ single self-contained HTML view at `ui://beadroll/issues.html`.
 - `src/tools.rs`: tool metadata for `bead_ready` and `bead_show` (both marked
   `annotations.readOnlyHint = true` and linked to `ui://beadroll/issues.html`), argument
   validation (returning MCP tool errors `INVALID_ARGUMENT` per MCP 2025-11-25), and dispatch.
-- `src/process.rs`: bounded subprocess runner in its own process group (`CommandExt::process_group(0)`)
-  with per-stream byte caps and `rustix::process::kill_process_group` cleanup on timeout/overflow.
+- `src/process.rs`: nonblocking `poll(2)` subprocess supervisor in its own process group
+  (`CommandExt::process_group(0)`) with per-stream byte caps and `rustix::process::kill_process_group`
+  cleanup while the leader PID is still unreaped, closing read ends cleanly even if an
+  escaped-session descendant retains a write end.
 - `src/bead.rs`: `BeadCli`, `ShowTarget`, and `AppError`; runs `bead` in the bound checkout,
   pins `BEAD_WORKSPACE` on `ready`/`show` to the workspace ID checked by `bead info`, enforces
   workspace ID matching and exact `uid` matching on explicit-UID `bead_show` lookups, parses
@@ -58,10 +60,13 @@ single self-contained HTML view at `ui://beadroll/issues.html`.
   It never runs `bead sync`, never contacts a git remote, and never mutates tracker events (though
   `bead` may refresh its own derived local projection/text caches).
 - Session-bound checkout: `Config.repo` is canonicalized once at startup (`--repo` or startup cwd),
-  git repository/config overrides (`REPO_LOCATION_ENV`, `GIT_CONFIG*`, `GIT_CEILING_DIRECTORIES`,
-  etc.) and `BEAD_WORKSPACE`/`BEAD_REMOTE` are scrubbed (while `BEAD_HOME` is preserved), `bead
-  ready` and `bead show` pin `BEAD_WORKSPACE` to the exact ID resolved by `bead info`, and tool
-  arguments never accept a repository path.
+  inherited git routing/config overrides, `XDG_CONFIG_HOME`, and all `BEAD_*` variables except
+  `BEAD_HOME` are scrubbed, an offline repo-local-only Git environment (`GIT_CONFIG_GLOBAL=/dev/null`,
+  `GIT_CONFIG_SYSTEM=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`, `GIT_NO_LAZY_FETCH=1`,
+  `GIT_ALLOW_PROTOCOL=""`, `GIT_TERMINAL_PROMPT=0`) is injected so external configs cannot redirect
+  workspace discovery and partial clones cannot lazily fetch on `bead show`, `bead ready` and `bead
+  show` pin `BEAD_WORKSPACE` to the exact ID resolved by `bead info`, and tool arguments never
+  accept a repository path.
 - Stable identity on reopen: once an issue is returned, callers keep its `workspace` ID and `uid`
   and pass both to `bead_show`. A mismatched `workspace` ID is refused (`WORKSPACE_MISMATCH`), an
   explicit `uid` whose response returns a different `uid` (key collision) is refused

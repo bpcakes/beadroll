@@ -1,5 +1,5 @@
-//! Contract and security invariants between the Rust server's `structuredContent` JSON and the
-//! bundled MCP App view in `ui/index.html`.
+//! Bidirectional contract and security invariants between the Rust server's `structuredContent`
+//! JSON and the bundled MCP App view in `ui/index.html`.
 
 use beadroll_mcp::UI_HTML;
 use serde_json::{Value, json};
@@ -18,7 +18,7 @@ const WORKSPACE_KEYS: [&str; 8] = [
     "checkout",
 ];
 
-const DETAIL_ISSUE_KEYS: [&str; 38] = [
+const DETAIL_ISSUE_KEYS: [&str; 39] = [
     "id",
     "uid",
     "title",
@@ -30,6 +30,7 @@ const DETAIL_ISSUE_KEYS: [&str; 38] = [
     "notes",
     "design",
     "external_ref",
+    "estimated_minutes",
     "close_reason",
     "assignee",
     "labels",
@@ -59,11 +60,46 @@ const DETAIL_ISSUE_KEYS: [&str; 38] = [
     "conflicts",
 ];
 
+/// Extracts identifier tokens immediately following `<prefix>.` in `source` (excluding occurrences
+/// embedded inside a longer identifier such as `my_issue.foo`).
+fn referenced_properties<'a>(source: &'a str, prefix: &str) -> Vec<&'a str> {
+    let needle = format!("{prefix}.");
+    let mut found = Vec::new();
+    let bytes = source.as_bytes();
+    let mut start = 0;
+    while let Some(rel) = source[start..].find(&needle) {
+        let at = start + rel;
+        let preceded_by_ident = at > 0
+            && bytes
+                .get(at - 1)
+                .is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'$');
+        let prop_start = at + needle.len();
+        if !preceded_by_ident {
+            let prop_end = source[prop_start..]
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .map_or(source.len(), |offset| prop_start + offset);
+            if prop_end > prop_start {
+                found.push(&source[prop_start..prop_end]);
+            }
+        }
+        start = prop_start;
+    }
+    found.sort_unstable();
+    found.dedup();
+    found
+}
+
 #[test]
-fn ui_html_enforces_csp_xss_accessibility_and_protocol_invariants() {
+fn ui_html_enforces_csp_xss_accessibility_version_and_protocol_invariants() {
     assert!(UI_HTML.starts_with("<!DOCTYPE html>"));
 
-    // Strict default CSP: no external URLs, no dangerous DOM sinks.
+    // Keep `APP_INFO.version` aligned with the Cargo workspace version.
+    let expected_version = format!(r#"version: "{}""#, env!("CARGO_PKG_VERSION"));
+    assert!(
+        UI_HTML.contains(&expected_version),
+        "ui/index.html APP_INFO version drifted from Cargo.toml ({expected_version})"
+    );
+
     for forbidden in [
         "http://",
         "https://",
@@ -78,11 +114,9 @@ fn ui_html_enforces_csp_xss_accessibility_and_protocol_invariants() {
         );
     }
 
-    // Dedicated polite live region outside `#app`; `#app` itself must not be `aria-live`.
     assert!(UI_HTML.contains(r#"<div id="live-status" class="sr-only" aria-live="polite""#));
     assert!(UI_HTML.contains(r#"<div id="app" role="main"></div>"#));
 
-    // Required MCP Apps postMessage protocol handlers & sizing rules.
     for required in [
         "ui/initialize",
         "ui/notifications/initialized",
@@ -106,7 +140,7 @@ fn ui_html_enforces_csp_xss_accessibility_and_protocol_invariants() {
 }
 
 #[test]
-fn structured_content_keys_match_every_field_consumed_by_ui() {
+fn structured_content_keys_match_ui_references_in_both_directions() {
     let dir = tempdir().expect("tempdir");
     let state_file = dir.path().join("state.json");
     let log_file = dir.path().join("bead.log");
@@ -182,6 +216,26 @@ fn structured_content_keys_match_every_field_consumed_by_ui() {
         .expect("detail issue");
     for key in DETAIL_ISSUE_KEYS {
         assert!(issue.contains_key(key), "issue detail missing key {key:?}");
+    }
+
+    // Reverse direction: every `ws.<prop>` and `issue.<prop>` read in `ui/index.html` must exist
+    // in the emitted JSON schema (allowing ready-row's `conflicted` key too).
+    let ws_refs = referenced_properties(UI_HTML, "ws");
+    assert!(!ws_refs.is_empty());
+    for prop in ws_refs {
+        assert!(
+            ready_ws.contains_key(prop),
+            "ui/index.html reads ws.{prop}, which server does not emit"
+        );
+    }
+
+    let issue_refs = referenced_properties(UI_HTML, "issue");
+    assert!(!issue_refs.is_empty());
+    for prop in issue_refs {
+        assert!(
+            issue.contains_key(prop) || prop == "conflicted",
+            "ui/index.html reads issue.{prop}, which server does not emit"
+        );
     }
 
     assert_eq!(client.close(), Some(0));

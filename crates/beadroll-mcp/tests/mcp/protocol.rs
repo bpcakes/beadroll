@@ -204,6 +204,26 @@ fn malformed_envelopes_invalid_utf8_and_oversized_frames_do_not_kill_session() {
             Value::Null,
         ),
         (
+            r#"{"jsonrpc":"1.0","jsonrpc":"2.0","id":1,"method":"ping"}"#,
+            -32600,
+            Value::Null,
+        ),
+        (
+            r#"{"jsonrpc":"2.0","id":1,"method":"ping","result":{}}"#,
+            -32600,
+            Value::Null,
+        ),
+        (
+            r#"{"jsonrpc":"2.0","result":{},"error":{"code":-1,"message":"x"}}"#,
+            -32600,
+            Value::Null,
+        ),
+        (
+            r#"{"jsonrpc":"2.0","method":"notifications/progress","params":3}"#,
+            -32600,
+            Value::Null,
+        ),
+        (
             r#"{"jsonrpc":"2.0","id":{},"method":"ping"}"#,
             -32600,
             Value::Null,
@@ -247,6 +267,17 @@ fn malformed_envelopes_invalid_utf8_and_oversized_frames_do_not_kill_session() {
         utf8_err.pointer("/error/code").and_then(Value::as_i64),
         Some(-32700)
     );
+
+    // Payload of exactly MAX_FRAME_BYTES followed by CRLF fits within the frame cap.
+    let prefix = br#"{"jsonrpc":"2.0","id":"exact-max","method":"ping"}"#;
+    let mut exact = Vec::with_capacity(MAX_FRAME_BYTES + 1);
+    exact.extend_from_slice(prefix);
+    exact.resize(MAX_FRAME_BYTES, b' ');
+    exact.push(b'\r');
+    client.send_bytes(&exact);
+    let exact_reply = client.read_json();
+    assert_eq!(exact_reply.get("id"), Some(&json!("exact-max")));
+    assert_eq!(exact_reply.get("result"), Some(&json!({})));
 
     // Oversized line beyond MAX_FRAME_BYTES returns -32600 and session resumes cleanly.
     let oversized = vec![b'a'; MAX_FRAME_BYTES + 64];

@@ -357,15 +357,16 @@ fn missing_binary_uninitialized_tracker_and_not_found_surface_actionable_errors(
 }
 
 #[test]
-fn stalled_bead_and_descendant_holding_pipes_time_out_and_session_recovers() {
+fn stalled_bead_and_escaped_session_descendant_time_out_promptly() {
     let dir = tempdir().expect("tempdir");
-    // Child spawns a background sleeper inheriting stdout/stderr and exits immediately,
-    // exercising process-group cleanup on open inherited pipes.
-    let stalled_bead = write_fake_bead(
+    // Spawn a descendant in a brand-new session (`start_new_session=True`) holding stdout open
+    // while the direct child exits immediately; nonblocking poll must time out and return
+    // promptly without blocking on the escaped descendant's open pipe.
+    let escaped_bead = write_fake_bead(
         dir.path(),
-        "stalled-bead",
+        "escaped-bead",
         r#"import subprocess, sys
-subprocess.Popen(["sleep", "30"], stdout=sys.stdout, stderr=sys.stderr)
+subprocess.Popen(["sleep", "5"], stdout=sys.stdout, stderr=sys.stderr, start_new_session=True)
 sys.exit(0)
 "#,
     );
@@ -376,7 +377,7 @@ sys.exit(0)
             "--repo",
             dir.path().to_str().expect("utf8"),
             "--bead",
-            stalled_bead.to_str().expect("utf8"),
+            escaped_bead.to_str().expect("utf8"),
             "--timeout-ms",
             "250",
         ],
@@ -384,7 +385,13 @@ sys.exit(0)
     );
     client.initialize();
 
+    let started = std::time::Instant::now();
     let res = client.call_tool("bead_ready", json!({}));
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(2),
+        "timeout blocked on escaped descendant pipe: {:?}",
+        started.elapsed()
+    );
     assert_eq!(res.get("isError").and_then(Value::as_bool), Some(true));
     assert_eq!(
         res.pointer("/structuredContent/error/code")
@@ -392,7 +399,60 @@ sys.exit(0)
         Some("BEAD_TIMEOUT")
     );
 
-    // Server remains healthy after cleaning up the timed-out process group.
+    let ping = client.request("ping", json!({}));
+    assert_eq!(ping.get("result"), Some(&json!({})));
+
+    assert_eq!(client.close(), Some(0));
+}
+
+#[test]
+fn oversized_bead_output_returns_output_too_large_immediately_instead_of_timeout() {
+    let dir = tempdir().expect("tempdir");
+    // Write > 16 MiB to stdout and then sleep 30s; the nonblocking supervisor must detect the
+    // overflow immediately, terminate the process group, and return BEAD_OUTPUT_TOO_LARGE.
+    let noisy_bead = write_fake_bead(
+        dir.path(),
+        "noisy-bead",
+        r#"import sys, time
+chunk = b"x" * (1024 * 1024)
+try:
+    for _ in range(18):
+        sys.stdout.buffer.write(chunk)
+        sys.stdout.buffer.flush()
+    time.sleep(30)
+except BrokenPipeError:
+    pass
+"#,
+    );
+
+    let mut client = McpClient::spawn(
+        dir.path(),
+        &[
+            "--repo",
+            dir.path().to_str().expect("utf8"),
+            "--bead",
+            noisy_bead.to_str().expect("utf8"),
+            "--timeout-ms",
+            "10000",
+        ],
+        &[],
+    );
+    client.initialize();
+
+    let started = std::time::Instant::now();
+    let res = client.call_tool("bead_ready", json!({}));
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(3),
+        "overflow waited for timeout instead of terminating early: {:?}",
+        started.elapsed()
+    );
+    assert_eq!(res.get("isError").and_then(Value::as_bool), Some(true));
+    assert_eq!(
+        res.pointer("/structuredContent/error/code")
+            .and_then(Value::as_str),
+        Some("BEAD_OUTPUT_TOO_LARGE")
+    );
+
     let ping = client.request("ping", json!({}));
     assert_eq!(ping.get("result"), Some(&json!({})));
 

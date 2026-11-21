@@ -254,9 +254,24 @@ fn real_bead_inherited_workspace_and_git_pushurl_cannot_hijack_bound_tracker() {
         .expect("ws_b")
         .to_owned();
     let origin_b = path_text(sb_b.origin()).to_owned();
+    let global_cfg = shared_home.path().join("evil-global.gitconfig");
+    std::fs::write(
+        &global_cfg,
+        format!("[remote \"origin\"]\n\tpushurl = {origin_b}\n"),
+    )
+    .expect("write global gitconfig");
+    let xdg_dir = shared_home.path().join("xdg");
+    let xdg_git = xdg_dir.join("git");
+    std::fs::create_dir_all(&xdg_git).expect("xdg git dir");
+    std::fs::write(
+        xdg_git.join("config"),
+        format!("[remote \"origin\"]\n\tpushurl = {origin_b}\n"),
+    )
+    .expect("write xdg gitconfig");
 
-    // Launch `beadroll-mcp` bound to checkout A with inherited BEAD_WORKSPACE and GIT_CONFIG
-    // pushurl overrides pointing at Tracker B (both living in the same BEAD_HOME!).
+    // Launch `beadroll-mcp` bound to checkout A with file-backed GIT_CONFIG_GLOBAL,
+    // XDG_CONFIG_HOME, GIT_CONFIG_COUNT pushurl, BEAD_WORKSPACE, malformed BEAD_NET_TIMEOUT, and
+    // BEAD_FAILPOINTS all trying to hijack or break reads of Tracker A.
     let mut client = McpClient::spawn(
         ma.checkout(),
         &[
@@ -268,6 +283,10 @@ fn real_bead_inherited_workspace_and_git_pushurl_cannot_hijack_bound_tracker() {
         &[
             ("BEAD_HOME", &home),
             ("BEAD_WORKSPACE", &ws_b),
+            ("BEAD_NET_TIMEOUT", "not-a-number"),
+            ("BEAD_FAILPOINTS", "projection.read=exit(99)"),
+            ("GIT_CONFIG_GLOBAL", path_text(&global_cfg)),
+            ("XDG_CONFIG_HOME", path_text(&xdg_dir)),
             ("GIT_CONFIG_COUNT", "1"),
             ("GIT_CONFIG_KEY_0", "remote.origin.pushurl"),
             ("GIT_CONFIG_VALUE_0", &origin_b),
@@ -292,6 +311,104 @@ fn real_bead_inherited_workspace_and_git_pushurl_cannot_hijack_bound_tracker() {
             .pointer("/structuredContent/error/code")
             .and_then(Value::as_str),
         Some("WORKSPACE_MISMATCH")
+    );
+
+    assert_eq!(client.close(), Some(0));
+}
+
+#[test]
+fn real_bead_show_closed_issue_in_partial_clone_never_triggers_lazy_fetch() {
+    let sb = sandbox();
+    let _ = git(
+        ["config", "uploadpack.allowFilter", "true"],
+        Some(sb.origin()),
+    );
+
+    let m = Machine::new(&sb, "writer");
+    m.bead(["init", "--prefix", "pcl"]);
+
+    // Close an issue on a separate branch commit that the partial clone will not fetch.
+    let _ = git(["checkout", "-b", "topic-close"], Some(m.checkout()));
+    std::fs::write(m.checkout().join("topic.txt"), "closed work\n").expect("write topic");
+    let _ = git(["add", "topic.txt"], Some(m.checkout()));
+    let _ = git(["commit", "-m", "topic work"], Some(m.checkout()));
+    let _ = git(
+        ["push", "origin", "HEAD:refs/heads/topic-close"],
+        Some(m.checkout()),
+    );
+
+    let created = m
+        .bead(["create", "Closed on topic branch"])
+        .expect("create");
+    let uid = created
+        .get("uid")
+        .and_then(Json::as_str)
+        .expect("uid")
+        .to_owned();
+    m.bead(["close", &uid, "-r", "done on topic"]);
+
+    // Partial clone (`--filter=tree:0 --single-branch --branch main`) lacks the closing commit.
+    let partial = sb.root().join("partial-clone");
+    let origin_url = format!("file://{}", path_text(sb.origin()));
+    let _ = git(
+        [
+            "clone",
+            "--filter=tree:0",
+            "--single-branch",
+            "--branch",
+            "main",
+            &origin_url,
+            path_text(&partial),
+        ],
+        None,
+    );
+
+    // Sync tracker in the partial clone's own home BEFORE installing the sentinel.
+    let home = sb.root().join("home-partial");
+    let sync_status = std::process::Command::new(m.executable())
+        .args(["sync"])
+        .current_dir(&partial)
+        .env("BEAD_HOME", &home)
+        .status()
+        .expect("sync partial");
+    assert!(sync_status.success(), "bead sync in partial clone");
+
+    // Install uploadpack sentinel: any lazy promisor fetch during `bead show` creates `marker`.
+    let marker = sb.root().join("partial-lazy-fetched");
+    let sentinel = sb.root().join("partial-uploadpack.sh");
+    let body = format!(
+        "#!/bin/sh\ntouch {}\nexec git-upload-pack \"$@\"\n",
+        shell_quoted(path_text(&marker))
+    );
+    executable(&sentinel, body);
+    let _ = git(
+        ["config", "remote.origin.uploadpack", path_text(&sentinel)],
+        Some(&partial),
+    );
+
+    let mut client = McpClient::spawn(
+        &partial,
+        &[
+            "--repo",
+            path_text(&partial),
+            "--bead",
+            path_text(m.executable()),
+        ],
+        &[("BEAD_HOME", path_text(&home))],
+    );
+    client.initialize();
+
+    let shown = client.call_tool("bead_show", json!({ "uid": uid }));
+    assert_ne!(shown.get("isError").and_then(Value::as_bool), Some(true));
+    assert_eq!(
+        shown
+            .pointer("/structuredContent/issue/status")
+            .and_then(Value::as_str),
+        Some("closed")
+    );
+    assert!(
+        !marker.exists(),
+        "bead_show triggered a lazy promisor fetch in a partial clone"
     );
 
     assert_eq!(client.close(), Some(0));

@@ -656,7 +656,7 @@
     workspace: null,
     ready: null,
     readyStale: false,
-    lastOpenedUid: null,
+    readyReturnUid: null,
     detail: null,
     detailStack: [],
     error: null,
@@ -666,11 +666,17 @@
   };
 
   let resizeRaf = 0;
+  let announceRaf = 0;
   let lastSentHeight = 0;
 
   function announce(message) {
     if (!liveEl || typeof message !== "string") return;
-    liveEl.textContent = message;
+    if (announceRaf) cancelAnimationFrame(announceRaf);
+    liveEl.textContent = "";
+    announceRaf = requestAnimationFrame(() => {
+      announceRaf = 0;
+      liveEl.textContent = message;
+    });
   }
 
   function initialColorScheme() {
@@ -879,7 +885,8 @@
     if (workspace) {
       state.ready.workspace = workspace;
     }
-    const stillReady = issue.status === "open" && !issue.blocked && !hasOwnershipUncertainty(issue);
+    const statusConflict = Boolean(issue.conflicts && issue.conflicts.status);
+    const stillReady = issue.status === "open" && !issue.claim && !issue.blocked && !statusConflict;
     if (!stillReady) {
       state.ready.issues = state.ready.issues.filter((row) => row.uid !== issue.uid);
       return;
@@ -896,6 +903,9 @@
   }
 
   function inferInitialCall() {
+    if (hostState.toolName === null && hostState.initialArguments === null) {
+      return null;
+    }
     const args = hostState.initialArguments && typeof hostState.initialArguments === "object"
       ? hostState.initialArguments
       : {};
@@ -940,12 +950,14 @@
       if (opts.isDetailRefresh) {
         state.readyStale = true;
       }
+      if (opts.fromReadyList) {
+        state.readyReturnUid = sc.issue.uid;
+      }
       state.detail = {
         workspace: sc.workspace || state.workspace,
         issue: sc.issue,
         clickedKey: opts.clickedKey || null,
       };
-      state.lastOpenedUid = sc.issue.uid;
       state.workspace = state.detail.workspace;
       updateCachedListFromDetail(sc.issue, state.detail.workspace);
       state.view = "detail";
@@ -1024,13 +1036,15 @@
       });
   }
 
-  function loadReady(preserveView, focusKey) {
+  function loadReady(preserveView, focusKey, explicitArgs) {
     const seq = ++requestSeq;
     state.busy = true;
     state.inlineError = null;
     render();
-    const limit = state.ready && typeof state.ready.limit === "number" ? state.ready.limit : 25;
-    const request = { tool: "bead_ready", args: { limit } };
+    const args = explicitArgs && typeof explicitArgs === "object"
+      ? explicitArgs
+      : { limit: state.ready && typeof state.ready.limit === "number" ? state.ready.limit : 25 };
+    const request = { tool: "bead_ready", args };
     callServerTool(request.tool, request.args)
       .then((res) => {
         if (seq !== requestSeq) return;
@@ -1057,7 +1071,7 @@
       });
   }
 
-  function openIssue(args, clickedKey, pushStack, isDetailRefresh, focusKey) {
+  function openIssue(args, clickedKey, pushStack, isDetailRefresh, focusKey, fromReadyList) {
     const request = { tool: "bead_show", args };
     const seq = ++requestSeq;
     state.busy = true;
@@ -1071,6 +1085,7 @@
           clickedKey,
           pushCurrentToStack: pushStack,
           isDetailRefresh,
+          fromReadyList,
           preserveCurrentView: state.view === "ready" || state.view === "detail",
           request,
           focusKey,
@@ -1095,32 +1110,32 @@
       });
   }
 
-  function openIssueByUid(uid, clickedKey, pushStack, isDetailRefresh, focusKey) {
+  function openIssueByUid(uid, clickedKey, pushStack, isDetailRefresh, focusKey, fromReadyList) {
     const ws = activeWorkspace();
     const args = { uid };
     if (ws && ws.id) {
       args.workspace = ws.id;
     }
-    openIssue(args, clickedKey, pushStack, isDetailRefresh, focusKey);
+    openIssue(args, clickedKey, pushStack, isDetailRefresh, focusKey, fromReadyList);
   }
 
   function retryLastFailed() {
     const failed = state.lastFailed;
     if (failed && failed.tool === "bead_show") {
-      openIssue(failed.args, null, false, false, "detail-title");
+      openIssue(failed.args, null, false, false, "detail-title", false);
       return;
     }
-    loadReady(false, "refresh");
+    loadReady(false, "refresh", failed && failed.tool === "bead_ready" ? failed.args : null);
   }
 
   function refreshCurrentView() {
     if (state.view === "detail" && state.detail && state.detail.issue) {
       const issue = state.detail.issue;
-      openIssueByUid(issue.uid, issue.id, false, true, "refresh");
+      openIssueByUid(issue.uid, issue.id, false, true, "refresh", false);
     } else if (state.view === "error" && state.lastFailed) {
       retryLastFailed();
     } else {
-      loadReady(state.view === "ready", "refresh");
+      loadReady(state.view === "ready", "refresh", null);
     }
   }
 
@@ -1134,7 +1149,7 @@
       syncModelContext();
       return;
     }
-    const rowFocus = state.lastOpenedUid ? "row:" + state.lastOpenedUid : "refresh";
+    const rowFocus = state.readyReturnUid ? "row:" + state.readyReturnUid : "refresh";
     if (state.ready && !state.readyStale) {
       state.view = "ready";
       announce("Returned to ready issues.");
@@ -1142,7 +1157,7 @@
       syncModelContext();
       return;
     }
-    loadReady(false, rowFocus);
+    loadReady(false, rowFocus, null);
   }
 
   function toggleFullscreen() {
@@ -1321,7 +1336,7 @@
         "data-uid": issue.uid,
         "data-key": issue.id,
         "data-focus-key": "row:" + issue.uid,
-        onClick: () => openIssueByUid(issue.uid, issue.id, false, false, "detail-title"),
+        onClick: () => openIssueByUid(issue.uid, issue.id, false, false, "detail-title", true),
       }, [
         priorityBadge(issue.priority),
         el("span", { className: "issue-row-main" }, [
@@ -1372,8 +1387,9 @@
               el("button", {
                 type: "button",
                 className: "rel-btn",
+                "data-focus-key": "rel:" + item.uid,
                 disabled: state.busy,
-                onClick: () => openIssueByUid(item.uid, item.id, true, false, "detail-title"),
+                onClick: () => openIssueByUid(item.uid, item.id, true, false, "detail-title", false),
               }, inner),
             ])
           );
@@ -1430,9 +1446,10 @@
           el("button", {
             type: "button",
             className: "inline-link",
+            "data-focus-key": "parent:" + uid,
             disabled: state.busy,
             text: key,
-            onClick: () => openIssueByUid(uid, key, true, false, "detail-title"),
+            onClick: () => openIssueByUid(uid, key, true, false, "detail-title", false),
           })
         );
       } else {
@@ -1458,11 +1475,12 @@
 
     if (Array.isArray(issue.unconfirmed) && issue.unconfirmed.length > 0) {
       for (const pending of issue.unconfirmed) {
+        const when = pending.at ? " · " + formatTimestamp(pending.at) : "";
         content.appendChild(
           el("div", { className: "claim-card" }, [
             el("div", {
               className: "claim-card-title",
-              text: "Ownership pending: " + pending.op + " by " + pending.by,
+              text: "Ownership pending: " + pending.op + " by " + pending.by + when,
             }),
             el("div", { text: "Awaiting the remote's acknowledgement; run `bead sync` to settle." }),
           ])
@@ -1486,10 +1504,11 @@
 
     if (Array.isArray(issue.lost_claims) && issue.lost_claims.length > 0) {
       for (const lost of issue.lost_claims) {
+        const when = lost.at ? " (" + formatTimestamp(lost.at) + ")" : "";
         content.appendChild(
           el("div", { className: "claim-card claim-card-neutral" }, [
             el("div", {
-              text: "Claim by " + lost.by + " lost to " + lost.held_by,
+              text: "Claim by " + lost.by + " lost to " + lost.held_by + when,
             }),
           ])
         );
@@ -1498,10 +1517,11 @@
 
     if (Array.isArray(issue.stale) && issue.stale.length > 0) {
       for (const old of issue.stale) {
+        const when = old.at ? " (" + formatTimestamp(old.at) + ")" : "";
         content.appendChild(
           el("div", { className: "claim-card claim-card-neutral" }, [
             el("div", {
-              text: "Ignored stale " + old.op + " by " + old.by + ": named a claim that is no longer current",
+              text: "Ignored stale " + old.op + " by " + old.by + when + ": named a claim that is no longer current",
             }),
           ])
         );
@@ -1602,12 +1622,16 @@
     if (issue.external_ref) {
       submeta.push(el("span", { text: "Ref: " + issue.external_ref }));
     }
-    if (issue.where_branch) {
+    if (typeof issue.estimated_minutes === "number") {
+      submeta.push(el("span", { text: "Estimate: " + issue.estimated_minutes + "m" }));
+    }
+    if (issue.where_branch || issue.where_commit) {
+      const branchLabel = issue.where_branch || "detached HEAD";
       const commitShort = issue.where_commit ? " (" + issue.where_commit.slice(0, 12) + ")" : "";
       submeta.push(
         el("span", {
           title: issue.where_commit || "",
-          text: "Branch: " + issue.where_branch + commitShort,
+          text: "Branch: " + branchLabel + commitShort,
         })
       );
     }
@@ -1726,9 +1750,10 @@
         el("button", {
           type: "button",
           className: "btn btn-ghost",
+          "data-focus-key": "show-ready",
           disabled: state.busy,
           text: "Show ready issues",
-          onClick: () => loadReady(false, "refresh"),
+          onClick: () => loadReady(false, "refresh", null),
         })
       );
     }
@@ -1750,9 +1775,10 @@
         el("button", {
           type: "button",
           className: "btn",
+          "data-focus-key": "load-ready",
           disabled: state.busy,
           text: "Load ready issues",
-          onClick: () => loadReady(false, "refresh"),
+          onClick: () => loadReady(false, "refresh", null),
         }),
       ]),
     ]);
@@ -1801,7 +1827,8 @@
     rootEl.appendChild(body);
 
     const targetKey = explicitFocusKey || preservedFocusKey;
-    const targetNode = findFocusTarget(targetKey);
+    const targetNode = findFocusTarget(targetKey)
+      || (explicitFocusKey ? findFocusTarget("refresh") : null);
     if (targetNode && typeof targetNode.focus === "function" && !targetNode.disabled) {
       targetNode.focus();
     }

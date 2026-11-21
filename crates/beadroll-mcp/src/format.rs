@@ -101,7 +101,11 @@ fn write_issue_summary(out: &mut String, issue: &IssueDetail) {
     if let Some(ext) = &issue.external_ref {
         let _ = writeln!(out, "External ref: {ext}");
     }
-    if let Some(branch) = &issue.where_branch {
+    if let Some(minutes) = issue.estimated_minutes {
+        let _ = writeln!(out, "Estimated minutes: {minutes}");
+    }
+    if issue.where_branch.is_some() || issue.where_commit.is_some() {
+        let branch = issue.where_branch.as_deref().unwrap_or("detached HEAD");
         let _ = write!(out, "Last worked on branch: {branch}");
         if let Some(commit) = &issue.where_commit {
             let short: String = commit.chars().take(12).collect();

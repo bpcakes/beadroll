@@ -30,7 +30,7 @@ pub const UI_RESOURCE_MIME_TYPE: &str = "text/html;profile=mcp-app";
 /// Maximum number of ready issues returned by `bead_ready`.
 pub const MAX_READY_LIMIT: usize = 25;
 
-/// Maximum incoming JSON-RPC stdio frame size in bytes (1 MiB).
+/// Maximum incoming JSON-RPC stdio frame payload size in bytes (1 MiB, excluding line endings).
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 
 /// Default wall-clock timeout for each local `bead` subprocess invocation.
@@ -53,17 +53,17 @@ pub struct Config {
     pub repo: PathBuf,
     /// Path or executable name of the `bead` CLI binary.
     pub bead: PathBuf,
-    /// Environment passed to `bead` child processes, with git and beadroll routing overrides
-    /// scrubbed.
+    /// Environment passed to `bead` child processes, with git and beadroll routing/config
+    /// overrides scrubbed.
     pub env: Vec<(OsString, OsString)>,
     /// Wall-clock deadline for each `bead` subprocess invocation.
     pub timeout: Duration,
 }
 
 impl Config {
-    /// Builds a `Config` for `repo` and `bead`, scrubbing git and beadroll routing variables from
-    /// `env` so inherited `GIT_*` or `BEAD_WORKSPACE` settings cannot redirect reads away from the
-    /// bound checkout.
+    /// Builds a `Config` for `repo` and `bead`, scrubbing git routing/config overrides and all
+    /// `BEAD_*` variables except `BEAD_HOME` from `env` so inherited settings cannot redirect or
+    /// alter reads of the bound checkout.
     pub fn new(
         repo: PathBuf,
         bead: PathBuf,
@@ -84,9 +84,10 @@ impl Config {
     }
 }
 
-/// Exact environment variable names stripped from `bead` children so ambient git or beadroll
-/// routing overrides cannot silently point reads at a different repository or tracker.
-const SCRUBBED_EXACT: [&str; 22] = [
+/// Exact environment variable names stripped from `bead` children so ambient git discovery,
+/// external git config files, or transport settings cannot redirect or network-fetch during local
+/// reads.
+const SCRUBBED_EXACT: [&str; 27] = [
     // `git rev-parse --local-env-vars` (same 14 as `beadroll_git::REPO_LOCATION_ENV`)
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
     "GIT_OBJECT_DIRECTORY",
@@ -102,30 +103,37 @@ const SCRUBBED_EXACT: [&str; 22] = [
     "GIT_COMMON_DIR",
     "GIT_NAMESPACE",
     "GIT_QUARANTINE_PATH",
-    // Additional git discovery & config overrides that can override `remote.origin.(push)url`
+    // Git discovery, external config files, and transport/lazy-fetch settings
     "GIT_SUPER_PREFIX",
     "GIT_CEILING_DIRECTORIES",
     "GIT_DISCOVERY_ACROSS_FILESYSTEM",
     "GIT_CONFIG",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_SYSTEM",
+    "GIT_CONFIG_NOSYSTEM",
     "GIT_CONFIG_PARAMETERS",
     "GIT_CONFIG_COUNT",
-    // Beadroll routing overrides; `BEAD_HOME` is deliberately preserved
-    "BEAD_WORKSPACE",
-    "BEAD_REMOTE",
+    "GIT_NO_LAZY_FETCH",
+    "GIT_ALLOW_PROTOCOL",
+    "GIT_TERMINAL_PROMPT",
+    // Can supply `$XDG_CONFIG_HOME/git/config`
+    "XDG_CONFIG_HOME",
 ];
 
-/// Prefixes of indexed git config environment variables (`GIT_CONFIG_KEY_N`, `GIT_CONFIG_VALUE_N`).
+/// Prefixes of indexed git config overrides (`GIT_CONFIG_KEY_N`, `GIT_CONFIG_VALUE_N`).
 const SCRUBBED_PREFIXES: [&str; 2] = ["GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"];
 
-/// Drops git and beadroll routing overrides from `env` while preserving `PATH`, `HOME`,
-/// `BEAD_HOME`, `TMPDIR`, `LLVM_PROFILE_FILE`, and other runtime environment variables.
+/// Drops git routing/config variables and all `BEAD_*` variables except `BEAD_HOME` from `env`,
+/// preserving `PATH`, `HOME`, `BEAD_HOME`, `TMPDIR`, `LLVM_PROFILE_FILE`, and other runtime vars.
 pub(crate) fn scrub_routing_env(
     env: impl IntoIterator<Item = (OsString, OsString)>,
 ) -> Vec<(OsString, OsString)> {
     env.into_iter()
         .filter(|(key, _)| {
             key.to_str().is_none_or(|name| {
-                !SCRUBBED_EXACT.contains(&name)
+                let is_non_home_bead = name.starts_with("BEAD_") && name != "BEAD_HOME";
+                !is_non_home_bead
+                    && !SCRUBBED_EXACT.contains(&name)
                     && !SCRUBBED_PREFIXES
                         .iter()
                         .any(|prefix| name.starts_with(prefix))

@@ -355,16 +355,10 @@ fn show_returns_full_detail_sections_and_readable_text_fallback() {
     assert_eq!(client.close(), Some(0));
 }
 
-#[test]
-fn show_preserves_unconfirmed_lost_stale_and_closure_metadata() {
-    let dir = tempdir().expect("tempdir");
-    let state_file = dir.path().join("state.json");
-    let log_file = dir.path().join("bead.log");
-
+fn ownership_and_closure_fixture() -> Value {
     let mut info = sample_info(Some("2026-11-21T16:30:00Z"));
     info["tracked_config_warning"] = json!(".beadroll.json is untracked on this branch");
-
-    let fixture = json!({
+    json!({
         "info": info,
         "ready": [],
         "details": {
@@ -377,18 +371,44 @@ fn show_preserves_unconfirmed_lost_stale_and_closure_metadata() {
                 "issue_type": "task",
                 "closed_at": "2026-11-21T16:20:00Z",
                 "close_reason": "Landed on topic branch",
+                "estimated_minutes": 45,
+                "where": { "branch": null, "commit": "abcdef1234567890" },
                 "closed_on": { "branch": "feat/topic", "commit": "1234567890abcdef" },
                 "merged": false,
-                "unconfirmed": [{ "op": "claim", "by": "codex:t9@cccc3333" }],
-                "lost_claims": [{ "by": "claude:s1@dddd4444", "held_by": "codex:t9@cccc3333" }],
-                "stale": [{ "op": "release", "by": "claude:s1@dddd4444" }],
+                "unconfirmed": [{
+                    "event": "019a0000-0000-7000-8000-000000000901",
+                    "op": "claim",
+                    "by": "codex:t9@cccc3333",
+                    "at": "2026-11-21T16:15:00Z"
+                }],
+                "lost_claims": [{
+                    "event": "019a0000-0000-7000-8000-000000000902",
+                    "by": "claude:s1@dddd4444",
+                    "held_by": "codex:t9@cccc3333",
+                    "at": "2026-11-21T16:16:00Z"
+                }],
+                "stale": [{
+                    "op": "release",
+                    "by": "claude:s1@dddd4444",
+                    "at": "2026-11-21T16:17:00Z",
+                    "claim": "019a0000-0000-7000-8000-000000000900"
+                }],
                 "dependencies": [],
                 "dependents": [],
                 "comments": [],
                 "blocked": false,
             }
         }
-    });
+    })
+}
+
+#[test]
+fn show_preserves_unconfirmed_lost_stale_and_closure_metadata() {
+    let dir = tempdir().expect("tempdir");
+    let state_file = dir.path().join("state.json");
+    let log_file = dir.path().join("bead.log");
+
+    let fixture = ownership_and_closure_fixture();
     std::fs::write(&state_file, serde_json::to_string(&fixture).expect("json"))
         .expect("write state");
 
@@ -412,19 +432,24 @@ fn show_preserves_unconfirmed_lost_stale_and_closure_metadata() {
         Some(".beadroll.json is untracked on this branch")
     );
     assert_eq!(
-        res.pointer("/structuredContent/issue/unconfirmed/0/by")
+        res.pointer("/structuredContent/issue/unconfirmed/0/event")
             .and_then(Value::as_str),
-        Some("codex:t9@cccc3333")
+        Some("019a0000-0000-7000-8000-000000000901")
     );
     assert_eq!(
-        res.pointer("/structuredContent/issue/lost_claims/0/held_by")
+        res.pointer("/structuredContent/issue/lost_claims/0/at")
             .and_then(Value::as_str),
-        Some("codex:t9@cccc3333")
+        Some("2026-11-21T16:16:00Z")
     );
     assert_eq!(
-        res.pointer("/structuredContent/issue/stale/0/op")
+        res.pointer("/structuredContent/issue/stale/0/claim")
             .and_then(Value::as_str),
-        Some("release")
+        Some("019a0000-0000-7000-8000-000000000900")
+    );
+    assert_eq!(
+        res.pointer("/structuredContent/issue/estimated_minutes")
+            .and_then(Value::as_i64),
+        Some(45)
     );
     assert_eq!(
         res.pointer("/structuredContent/issue/closed_on_branch")
@@ -443,6 +468,8 @@ fn show_preserves_unconfirmed_lost_stale_and_closure_metadata() {
         .expect("text");
     for needle in [
         "untracked on this branch",
+        "Estimated minutes: 45",
+        "Last worked on branch: detached HEAD (abcdef123456)",
         "Unconfirmed: claim by codex:t9@cccc3333",
         "Lost claim: claude:s1@dddd4444 lost to codex:t9@cccc3333",
         "Ignored stale release by claude:s1@dddd4444",
