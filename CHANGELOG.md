@@ -7,9 +7,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 ## [Unreleased]
 
 - An issue's `uid`, the id of its create event, which no rename changes, is in `--json` output
-  beside every key: each issue (`list`, `ready`, `show`, `create`, `claims` and the rest), `show`'s
-  parent (`parent_uid`, `parent_uids`), dependencies and dependents, `dep` (`issue_uid`,
-  `depends_on_uid`; none for a key that is no issue yet), `comments add` and `log` (`issue_uid`).
+  beside its key: each issue listed or shown (`list`, `ready`, `blocked`, `show`, `create`,
+  `claims`, `lint` and the rest), `show`'s parents (`parent_uid`, `parent_uids`), dependencies and
+  dependents, `blocked`'s blockers (`blocked_by_uids`), `dep` (`issue_uid`, `depends_on_uid`; none
+  for a key that is no issue yet), `comments add` and `log` (`issue_uid`). `dep cycles`, `recap`,
+  integrity notes and the Beads export keep naming issues by key alone.
   Every command takes a `uid` where it takes a key, keys first, so that a tool can keep an issue
   across the renumbering a sync makes of keys two machines minted offline. The Beads export is
   unchanged.

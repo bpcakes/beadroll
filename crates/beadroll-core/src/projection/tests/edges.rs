@@ -1,14 +1,15 @@
 //! What every issue's dependency edges answer (roll-lqjj.39), pinned to what the code that held
-//! each edge as two strings with a metadata value per addition answered: each issue's edges and
-//! the additions behind them with their metadata, in order, readiness, blockers, parents,
-//! children, descendants, dependents, cycles, `ready` beneath every issue, and the bytes of every
-//! issue's detail (what `bead show` prints) and of the export. Written and recorded before the
+//! each edge as two strings with a metadata value per addition answered: each issue's edges and the
+//! additions behind them with their metadata, in order, readiness, blockers, parents, children,
+//! descendants, dependents, cycles, `ready` beneath every issue, and the bytes of every issue's
+//! detail (what `bead show` prints, without the ids it names issues by besides their keys, which it
+//! began to after: [`super::without_uids`]) and of the export. Written and recorded before the
 //! edges were held typed, and green on the code that held them as strings; checked on every state
 //! the differential tests replay (every batch of every seed of their plain, flawed and awaiting
-//! histories, as digests in [`ANSWERS`]), on every history the delivery-order property replays,
-//! and in full on the journals of stores bead built ([`FIXTURES`]). What a command that reads no
-//! texts answers of the edges ([`outline`]) is compared besides between a state read alone and the
-//! state it was written from, every time the differential tests read one back.
+//! histories, as digests in [`ANSWERS`]), on every history the delivery-order property replays, and
+//! in full on the journals of stores bead built ([`FIXTURES`]). What a command that reads no texts
+//! answers of the edges ([`outline`]) is compared besides between a state read alone and the state
+//! it was written from, every time the differential tests read one back.
 
 pub(super) mod drawn;
 

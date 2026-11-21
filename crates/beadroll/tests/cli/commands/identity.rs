@@ -52,12 +52,13 @@ fn an_issues_uid_names_it_on_every_machine_whatever_its_key_becomes() {
 }
 
 /// Every command takes an issue's uid where it takes its key, and names the issues it answers of by
-/// uid beside their keys: `show`'s parent, dependencies and dependents, `dep`, a comment, `log`; a
-/// uid that names no issue (a comment's) is `ISSUE_NOT_FOUND`.
+/// uid beside their keys: `show`'s parents, dependencies and dependents, `dep`, a comment, `log`,
+/// `blocked`'s blockers, `claims`, `lint` and a silent `create`; a uid that names no issue (a
+/// comment's) is `ISSUE_NOT_FOUND`.
 #[test]
 fn every_command_takes_an_issues_uid_and_names_issues_by_it() {
     let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
+    let a = crate::rust_only(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
     let parent = uid_of(&a.bead(["create", "Parent"]).unwrap());
     let child = uid_of(&a.bead(["create", "Child", "--parent", &parent]).unwrap());
@@ -92,6 +93,42 @@ fn every_command_takes_an_issues_uid_and_names_issues_by_it() {
         (rows.iter()).all(|row| row["issue_uid"].as_str() == Some(child.as_str())),
         "{logged:?}"
     );
+    // a second parent, and what lists issues: blocked, claims, lint, a create told to be silent
+    let second = uid_of(&a.bead(["create", "Second"]).unwrap());
+    a.bead(["dep", "add", &child, &second, "--type", "parent-child"]);
+    let parents = &a.show(&child)["parent_uids"];
+    let parents: Vec<&str> = parents
+        .as_array()
+        .expect("parent uids")
+        .iter()
+        .filter_map(Json::as_str)
+        .collect();
+    assert!(
+        parents.contains(&parent.as_str()) && parents.contains(&second.as_str()),
+        "{parents:?}"
+    );
+    let blocked = a.bead(["blocked"]).unwrap();
+    let held = (blocked.as_array().unwrap().iter())
+        .find(|item| item["uid"].as_str() == Some(child.as_str()))
+        .unwrap_or_else(|| panic!("the child blocked: {blocked:?}"));
+    assert_eq!(
+        held["blocked_by_uids"][0].as_str(),
+        Some(other.as_str()),
+        "{held:?}"
+    );
+    a.bead(["claim", &other]);
+    let claims = a.bead(["claims"]).unwrap();
+    assert_eq!(
+        claims["claims"][0]["uid"].as_str(),
+        Some(other.as_str()),
+        "{claims:?}"
+    );
+    let findings = a.bead(["lint"]).unwrap();
+    let linted = (findings["findings"].as_array().unwrap().iter())
+        .any(|item| item["uid"].as_str() == Some(parent.as_str()));
+    assert!(linted, "{findings:?}");
+    let silent = a.bead(["create", "Quiet", "--silent"]).unwrap();
+    assert_eq!(uid_of(&silent), uid_of(&a.show(&json_id(&silent))));
     let not_an_issue = comment["id"].as_str().expect("a comment's id");
     let run = a.run(["show", not_an_issue, "--json"]);
     assert_eq!(code(&run), "ISSUE_NOT_FOUND", "{}", run.stderr);

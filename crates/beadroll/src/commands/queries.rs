@@ -28,6 +28,9 @@ pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     let mut result = Vec::new();
     let mut lines: Vec<Line> = Vec::new();
     for (issue, blockers) in items {
+        let uids: Vec<Value> = (blockers.iter())
+            .map(|b| Value::from(b.uid().to_string()))
+            .collect();
         let blockers: Vec<String> = blockers.iter().map(|b| b.key().to_owned()).collect();
         lines.push(
             row(&st, issue)
@@ -36,6 +39,7 @@ pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
         );
         let mut item = st.brief(issue);
         item.insert("blocked_by".into(), Value::from(blockers));
+        item.insert("blocked_by_uids".into(), Value::Array(uids));
         result.push(Value::from(item));
     }
     if lines.is_empty() {
