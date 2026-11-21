@@ -145,6 +145,21 @@ agents and tests match parts of them; `bead prime` lists the codes.
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
+- `beadroll-mcp` (`crates/beadroll-mcp`) is an optional companion binary that shells out to the
+  installed `bead` executable for local reads only (`bead info`, `bead ready`, `bead show`) rather
+  than linking `beadroll-store`/`beadroll-sync` or implementing writes. Each server process binds
+  one checkout once at startup (`--repo`, else startup working directory, with `GIT_*` routing
+  variables scrubbed) and never accepts a repository path on tool calls; `bead_show` enforces any
+  caller-supplied `workspace` ID and requires stable `uid` output from `bead` (returning
+  `UPGRADE_REQUIRED` on older builds). Both tools advertise `annotations.readOnlyHint = true` (so
+  T3 Code runs clicks and refreshes without approval prompts) and unconditionally attach
+  `_meta.ui.resourceUri = "ui://beadroll/issues.html"` rather than gating on client `initialize`
+  extension capabilities, because Claude Code 2.1.330 omits `io.modelcontextprotocol/ui` during
+  `initialize` and still renders MCP Apps from tool metadata, while text-only hosts read `content`.
+  `ui/index.html` is a single self-contained HTML5 file with no external network origins or JS
+  build toolchain, keeping `Cargo.lock` free of new dependencies and satisfying MCP Apps' strict
+  default CSP.
+
 - A projection's parts are trusted as far as the header's sums vouch for them: one that holds a
   state part and an index part from different moments, with sums made for that pair, is outside
   what bead guards against. Both parts are of one file, under one header with a 128-bit sum of
