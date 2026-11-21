@@ -330,3 +330,71 @@ fn a_create_the_state_applies_is_a_parent_only_if_replay_made_it() {
     };
     assert!(parent_problem(none, &created, OpName::Create, &data).is_ok());
 }
+
+/// A record of the journal after an attempt's event builds on the journal's frontier alone: the
+/// journal is appended before the attempt is published, and an attempt the remote refused left a
+/// record naming its event waiting for one no journal holds, with every write built on it. An
+/// attempt's event after the record builds on both. And a create the attempt made is no parent of
+/// a create in the journal, whether or not the state was read between, while it is one of a
+/// create in the attempt (AT100).
+#[test]
+fn a_record_of_the_journal_builds_on_no_event_of_the_attempt() {
+    let fixture = Fixture::new("");
+    locked(&fixture.ws, || -> Result<(), Error> {
+        let mut tx = Tx::new(&fixture.ws, &fixture.actor)?;
+        let uid = tx.state()?.resolve(&fixture.key).unwrap().uid().to_string();
+        let comment = || {
+            let mut data = Object::new();
+            data.insert("text".into(), Value::from("comment"));
+            data
+        };
+        let journal = tx.emit(OpName::Comment, Some(&uid), comment(), None)?;
+        let attempted = tx
+            .attempt()
+            .emit(OpName::Comment, Some(&uid), comment(), None)?;
+        let after = tx.emit(OpName::Comment, Some(&uid), comment(), None)?;
+        tx.attempt()
+            .emit(OpName::Comment, Some(&uid), comment(), None)?;
+        let deps = |tx: &Tx<'_>, at: usize| -> Vec<String> {
+            match &tx.emitted[at].value["deps"] {
+                Value::Array(deps) => deps
+                    .iter()
+                    .map(|dep| dep.as_str().unwrap().into())
+                    .collect(),
+                _ => Vec::new(),
+            }
+        };
+        assert_eq!(deps(&tx, 2), [journal.to_string()], "the journal's alone");
+        assert_eq!(deps(&tx, 3), [attempted.to_string(), after.to_string()]);
+        let create = |key: &str, parent: Option<beadroll_core::id::EventId>| {
+            let mut fields = Object::new();
+            fields.insert("title".into(), Value::from(key));
+            let mut data = Object::new();
+            data.insert("key".into(), Value::from(key));
+            data.insert("fields".into(), Value::from(fields));
+            data.insert("labels".into(), Value::Array(Vec::new()));
+            if let Some(parent) = parent {
+                data.insert("parent".into(), Value::from(parent.to_string()));
+            }
+            data
+        };
+        let parent = tx
+            .attempt()
+            .emit(OpName::Create, None, create("ex-q", None), None)?;
+        for read_between in [false, true] {
+            if read_between {
+                assert!(tx.state()?.issue(parent).is_some(), "applied");
+            }
+            let child = create("ex-q.1", Some(parent));
+            let judged = tx.emit(OpName::Create, None, child, None);
+            assert!(
+                matches!(&judged, Err(Error::Validation(problem)) if problem.contains("attempt")),
+                "read between: {read_between}: {judged:?}"
+            );
+        }
+        let child = create("ex-q.1", Some(parent));
+        tx.attempt().emit(OpName::Create, None, child, None)?;
+        Ok(())
+    })
+    .unwrap();
+}

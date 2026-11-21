@@ -3,6 +3,7 @@
 //! hand back of it, are in `tx/writes.rs`.
 
 mod attempt;
+mod heads;
 mod materialized;
 mod minted;
 mod prepared;
@@ -28,6 +29,7 @@ use beadroll_store::{
 use crate::error::Error;
 pub use attempt::Attempt;
 use attempt::Route;
+use heads::Heads;
 use materialized::Materialized;
 pub use minted::Minted;
 
@@ -45,15 +47,16 @@ pub(crate) const OWNERSHIP: [OpName; 2] = [OpName::Claim, OpName::Release];
 pub struct Tx<'a> {
     /// The workspace written to: what the causes below were read from.
     ws: &'a Workspace,
-    /// Who writes.
-    pub actor: Value,
+    /// Who writes: fixed once it is begun, as whether its text can be written is judged then
+    /// (`writable`).
+    actor: Value,
     /// This machine's id: the journal written to, whose last record the causes below were chosen
     /// for, fixed once they are ([`Tx::replica`]).
     replica: String,
     /// The projection or replay, with the prefix of emitted events it contains.
     materialized: Materialized,
-    /// The frontier, with the events emitted so far: what a new event builds on.
-    heads: Vec<EventId>,
+    /// The frontier, with the events emitted so far, by route: what a new event builds on.
+    heads: Heads,
     /// Whether a cause an event emitted built on waits for one of its own: replay applies none of
     /// the events emitted after it until it comes, and a create among them is no parent.
     waits: bool,
@@ -74,7 +77,7 @@ pub struct Tx<'a> {
     /// the state is of fewer events than make it.
     created: HashMap<EventId, usize>,
     /// The checkout's branch and commit, recorded on each event.
-    pub place: Option<Value>,
+    place: Option<Value>,
     /// The attempt's events emitted, to settle with the remote: those a create among them was
     /// judged a parent by, written as they are ([`Tx::ownership`]).
     ownership: Vec<Value>,
@@ -112,7 +115,7 @@ impl<'a> Tx<'a> {
             ws,
             actor: actor.value.clone(),
             replica,
-            heads: causes.ids,
+            heads: Heads::new(causes.ids),
             waits: causes.waits,
             broken: causes.broken,
             predecessor: causes.predecessor,
@@ -311,7 +314,7 @@ pub struct Emitter<'t> {
     ws: &'t Workspace,
     actor: &'t Value,
     replica: &'t str,
-    heads: &'t mut Vec<EventId>,
+    heads: &'t mut Heads,
     emitted: &'t mut Vec<Record>,
     created: &'t mut HashMap<EventId, usize>,
     /// Whether replay applies nothing emitted from here until a cause comes ([`Tx`]'s `waits`).
@@ -401,22 +404,37 @@ impl Emitter<'_> {
         // a create's parent among its causes, however it is emitted (siblings of one parent each
         // name it, the head before them being the sibling before): replay follows only a parent
         // named there. This event's alone: the heads change only once it is emitted
+        let sequenced = !OWNERSHIP.contains(&op) && self.route == Route::Journal;
         let parent = (names_parent(op, &data))
             .then(|| {
                 data.get("parent")
                     .and_then(Value::as_str)
                     .and_then(EventId::parse)
             })
-            .flatten()
-            .filter(|parent| !self.heads.contains(parent));
-        let sequenced = !OWNERSHIP.contains(&op) && self.route == Route::Journal;
+            .flatten();
+        // a create the attempt made is no parent of one in the journal, appended before the
+        // attempt is published: refused at the remote, it left the child waiting for it
+        if sequenced && parent.is_some_and(|parent| self.heads.attempted(parent)) {
+            return Err(Error::Validation(
+                "a create in the journal cannot be the child of one its ownership attempt makes"
+                    .to_owned(),
+            ));
+        }
+        // the route the event takes: a claim or a release is an attempt's, wherever it is emitted
+        let lane = if sequenced {
+            Route::Journal
+        } else {
+            Route::Attempt
+        };
+        let heads = self.heads.of(lane);
+        let parent = parent.filter(|parent| !heads.contains(parent));
         // this machine's last applicable event, where the frontier does not reach it, among the
         // causes of the transaction's first record of the journal: replay sets aside a record that
         // does not build on it. An attempt's event is in no journal's chain
         let predecessor =
             (*self.predecessor).filter(|predecessor| sequenced && parent != Some(*predecessor));
         let id = event_id.map_or_else(|| uuid7(&self.ws.settings.clock), |minted| minted.0);
-        let deps: Vec<Value> = (self.heads.iter().chain(&predecessor).chain(&parent))
+        let deps: Vec<Value> = (heads.iter().chain(&predecessor).chain(&parent))
             .map(|dep| Value::from(dep.to_string()))
             .collect();
         let mut event = Object::new();
@@ -459,7 +477,7 @@ impl Emitter<'_> {
         // the id passed validation above; later emits build on it
         let emitted = EventId::parse(&id)
             .ok_or_else(|| Error::Validation(format!("{id} is not an event id")))?;
-        *self.heads = vec![emitted];
+        self.heads.emitted(emitted, lane);
         self.emitted.push(Record {
             value: event,
             replica: self.replica.to_owned(),

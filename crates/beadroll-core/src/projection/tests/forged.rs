@@ -248,9 +248,10 @@ fn an_index_naming_an_event_its_ids_lack_is_refused() {
     assert!(Projection::decode(encoded).is_ok(), "as written");
 }
 
-/// A state part read with an index from before an issue it holds was made, as parts written by
-/// two commands could pair, is refused: the issue's create, which a child's create names among its
-/// causes, would otherwise be a parent no journal holds, and the child wait for it (AT100).
+/// A state part read with an index from before an issue it holds was made, as only bytes forged
+/// with their sums, or a buggy build, could pair (both parts are of one file, under one header's
+/// sums), is refused: the issue's create, which a child's create names among its causes, would
+/// otherwise be a parent no journal holds, and the child wait for it (AT100).
 #[test]
 fn a_state_naming_an_event_the_index_lacks_is_refused() {
     let records = three();
@@ -277,9 +278,9 @@ fn a_state_naming_an_event_the_index_lacks_is_refused() {
 }
 
 /// A state part read with an index from before the cause an issue's create waited for came, as
-/// parts written by two commands could pair, is refused though the index keeps that create: it was
-/// pending there, and the issue a parent replay of that journal never made (AT100). The cause, a
-/// machine's `init`, adds nothing else the state names.
+/// only bytes forged with their sums, or a buggy build, could pair, is refused though the index
+/// keeps that create: it was pending there, and the issue a parent replay of that journal never
+/// made (AT100). The cause, a machine's `init`, adds nothing else the state names.
 #[test]
 fn a_state_naming_a_create_the_index_holds_pending_is_refused() {
     let mut data = fields("issue 4");

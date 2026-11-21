@@ -393,8 +393,10 @@ fn a_create_built_on_a_waiting_cause_is_no_parent_however_the_transaction_is_rea
 
 /// A transaction on a journal whose chain is broken already, every record of it set aside by
 /// replay, takes none of the creates it records there for a parent, and takes those of an attempt,
-/// in no journal's chain and applied, whether or not the state was read between, as the state says
-/// once read; `writing` refuses such a journal before its body runs (AT100).
+/// in no journal's chain and applied, for a parent of the attempt's own creates (not of the
+/// journal's, appended before the attempt is published), whether or not the state was read
+/// between, as the state says once read; `writing` refuses such a journal before its body runs
+/// (AT100).
 #[test]
 fn a_create_on_a_broken_chain_is_no_parent_however_the_transaction_is_read() {
     let sandbox = sandbox();
