@@ -323,6 +323,7 @@ storage. Raw `about`, `extend` and `placed` are now internal.
 ## Documentation and support
 
 - [Migration guide](MIGRATING.md): move a Beads tracker to beadroll or export it back.
+- [T3 Code MCP App guide](docs/MCP-APP.md): browse ready issues and details inside a T3 Code thread.
 - [Guarantees](docs/GUARANTEES.md): behavior, recovery, configuration, and known limits.
 - [Design and review guide](docs/REVIEWING.md): architecture, format, and design decisions.
 - [Review findings](docs/FINDINGS.md): findings and their resolutions.

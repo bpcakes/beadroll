@@ -95,6 +95,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "beadroll-mcp"
+version = "0.2.0"
+dependencies = [
+ "beadroll-test-support",
+ "clap",
+ "rustix",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "beadroll-store"
 version = "0.2.0"
 dependencies = [

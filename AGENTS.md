@@ -12,16 +12,18 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
 
 ## Layout
 
-- `crates/` — six crates that depend only downwards, which the compiler enforces:
+- `crates/` — five core crates that depend only downwards, which the compiler enforces:
   `beadroll-core` (strict JSON and text, event validation, journals, replay into state, the
   dependency graph and readiness, views, Beads import planning and export; no I/O, processes,
   clock or environment), `beadroll-git` (the only code that starts git: the runner, its
   environments, remote URLs, push outcomes), `beadroll-store` (this machine: the store and its
   files, the workspace a checkout resolves to, identity, failpoints), `beadroll-sync` (local
   transactions, the link to the coordination remote, the ownership protocol) and `beadroll` (the
-  `bead` binary: `commands`, `cli`); and `beadroll-test-support`, the sandbox and machines the
-  black-box tests run `bead` on. Each has its own `AGENTS.md`. `Cargo.toml`, `Cargo.lock`,
-  `rust-toolchain.toml`, `clippy.toml`, `deny.toml` and `.config/nextest.toml` are at the root.
+  `bead` binary: `commands`, `cli`); plus `beadroll-test-support`, the sandbox and machines the
+  black-box tests run `bead` on, and the optional `beadroll-mcp` companion (read-only stdio MCP App
+  server calling the installed `bead` binary, `docs/MCP-APP.md`). Each has its own `AGENTS.md`.
+  `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `clippy.toml`, `deny.toml` and
+  `.config/nextest.toml` are at the root.
 - Tests — each crate's unit tests beside its code, and one integration-test binary per crate
   (beadroll-test-support, a test library, has none), `crates/<crate>/tests/<name>/main.rs`,
   organized by subject:

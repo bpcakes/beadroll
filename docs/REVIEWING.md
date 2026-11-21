@@ -145,6 +145,27 @@ agents and tests match parts of them; `bead prime` lists the codes.
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
+- `beadroll-mcp` (`crates/beadroll-mcp`) is an optional companion binary that shells out to the
+  installed `bead` executable for local reads only (`bead info`, `bead ready`, `bead show`) rather
+  than linking `beadroll-store`/`beadroll-sync` or implementing writes; like any local `bead` read,
+  those calls never contact a git remote or write tracker events, though `bead` may refresh its own
+  local derived caches.   Each server process canonicalizes one checkout once at startup (`--repo`,
+  else startup working directory), strips inherited git routing/config overrides, `XDG_CONFIG_HOME`,
+  and every `BEAD_*` variable except `BEAD_HOME`, injects an offline repo-local-only Git
+  environment (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`,
+  `GIT_CONFIG_NOSYSTEM=1`, `GIT_NO_LAZY_FETCH=1`, `GIT_ALLOW_PROTOCOL=""`,
+  `GIT_TERMINAL_PROMPT=0`), and never accepts a repository path on tool calls; `bead ready` and `bead show` pin `BEAD_WORKSPACE` to the ID resolved by `bead info`, and
+  `bead_show` enforces caller-supplied `workspace` IDs (`WORKSPACE_MISMATCH`), verifies explicit
+  `uid` lookups against the returned issue's `uid` (`UID_MISMATCH`), and requires stable `uid`
+  output from `bead` (`UPGRADE_REQUIRED` on older builds). Both tools advertise
+  `annotations.readOnlyHint = true` (so T3 Code runs clicks and refreshes without approval prompts)
+  and unconditionally attach `_meta.ui.resourceUri = "ui://beadroll/issues.html"` rather than
+  gating on client `initialize` extension capabilities, because Claude Code (2.1.301+, verified on
+  2.1.330) omits `io.modelcontextprotocol/ui` during `initialize` while still rendering MCP Apps
+  from tool metadata, and text-only hosts read `content`. `ui/index.html` is a single
+  self-contained HTML5 file with no external network origins or JS build toolchain, keeping
+  `Cargo.lock` free of new third-party dependencies and satisfying MCP Apps' strict default CSP.
+
 - A projection's parts are trusted as far as the header's sums vouch for them: one that holds a
   state part and an index part from different moments, with sums made for that pair, is outside
   what bead guards against. Both parts are of one file, under one header with a 128-bit sum of

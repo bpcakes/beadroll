@@ -1,0 +1,1944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Beadroll Issues</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --color-background-primary: light-dark(#ffffff, #141416);
+    --color-background-secondary: light-dark(#f8f8fa, #1c1c20);
+    --color-background-tertiary: light-dark(#f0f1f4, #25262c);
+    --color-background-info: light-dark(#eef4ff, #1b2842);
+    --color-background-danger: light-dark(#fef2f2, #381d20);
+    --color-background-warning: light-dark(#fffbeb, #362a16);
+    --color-background-success: light-dark(#ecfdf5, #153126);
+    --color-text-primary: light-dark(#141518, #f2f3f5);
+    --color-text-secondary: light-dark(#565b66, #a1a6b3);
+    --color-text-tertiary: light-dark(#767c89, #7e8492);
+    --color-text-info: light-dark(#1d4ed8, #93c5fd);
+    --color-text-danger: light-dark(#b91c1c, #fca5a5);
+    --color-text-warning: light-dark(#a16207, #fcd34d);
+    --color-text-success: light-dark(#15803d, #86efac);
+    --color-border-primary: light-dark(#e3e5ea, #2d2f36);
+    --color-border-secondary: light-dark(#d4d7df, #3b3e47);
+    --color-border-danger: light-dark(#fecaca, #7f1d1d);
+    --color-ring-primary: light-dark(#2563eb, #60a5fa);
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --border-radius-md: 8px;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--color-background-primary);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  html[data-display-mode="fullscreen"],
+  html[data-display-mode="fullscreen"] body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  #app {
+    display: flex;
+    flex-direction: column;
+    min-height: 120px;
+    background: var(--color-background-primary);
+  }
+
+  html[data-display-mode="fullscreen"] #app {
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--color-border-primary);
+    background: var(--color-background-secondary);
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+
+  .workspace-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .workspace-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 240px;
+  }
+
+  .prefix-pill {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--color-background-tertiary);
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-border-primary);
+  }
+
+  .sync-meta {
+    font-size: 11.5px;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  button:focus-visible,
+  [tabindex="-1"]:focus-visible {
+    outline: 2px solid var(--color-ring-primary);
+    outline-offset: 1px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border-radius: 6px;
+    border: 1px solid var(--color-border-primary);
+    background: var(--color-background-primary);
+    color: var(--color-text-primary);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.3;
+    transition: background-color 120ms ease, border-color 120ms ease;
+  }
+
+  .btn:hover:not(:disabled) {
+    background: var(--color-background-tertiary);
+    border-color: var(--color-border-secondary);
+  }
+
+  .btn:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  .btn-ghost {
+    border-color: transparent;
+    background: transparent;
+    color: var(--color-text-secondary);
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--color-background-tertiary);
+    color: var(--color-text-primary);
+  }
+
+  .action-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .body {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  html[data-display-mode="fullscreen"] .body {
+    overflow-y: auto;
+  }
+
+  .banner {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--color-border-danger);
+    background: var(--color-background-danger);
+    color: var(--color-text-danger);
+    font-size: 12px;
+  }
+
+  .banner-info {
+    border-bottom-color: var(--color-border-primary);
+    background: var(--color-background-info);
+    color: var(--color-text-info);
+  }
+
+  .banner-warning {
+    border-bottom-color: var(--color-border-primary);
+    background: var(--color-background-warning);
+    color: var(--color-text-warning);
+  }
+
+  .banner-body {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .banner-code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--color-border-primary);
+    font-size: 12px;
+    color: var(--color-text-secondary);
+  }
+
+  .issue-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .issue-row-item {
+    border-bottom: 1px solid var(--color-border-primary);
+  }
+
+  .issue-row-item:last-child {
+    border-bottom: none;
+  }
+
+  .issue-row {
+    width: 100%;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    background: var(--color-background-primary);
+    transition: background-color 100ms ease;
+  }
+
+  .issue-row:hover {
+    background: var(--color-background-secondary);
+  }
+
+  .issue-row-main {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+    flex-wrap: wrap;
+  }
+
+  .issue-key {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .issue-title {
+    color: var(--color-text-primary);
+    font-weight: 500;
+    min-width: 140px;
+    flex: 1;
+    word-break: break-word;
+  }
+
+  .issue-tags {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.4;
+    border: 1px solid var(--color-border-primary);
+    background: var(--color-background-tertiary);
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+  }
+
+  .pill-mono {
+    font-family: var(--font-mono);
+  }
+
+  .prio {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 5px;
+    flex-shrink: 0;
+    border: 1px solid transparent;
+  }
+
+  .prio-0 {
+    background: var(--color-background-danger);
+    color: var(--color-text-danger);
+    border-color: var(--color-border-danger);
+  }
+
+  .prio-1 {
+    background: var(--color-background-warning);
+    color: var(--color-text-warning);
+  }
+
+  .prio-2 {
+    background: var(--color-background-info);
+    color: var(--color-text-info);
+  }
+
+  .prio-3, .prio-4, .prio-unknown {
+    background: var(--color-background-tertiary);
+    color: var(--color-text-secondary);
+  }
+
+  .status-open {
+    background: var(--color-background-info);
+    color: var(--color-text-info);
+  }
+
+  .status-in_progress {
+    background: var(--color-background-warning);
+    color: var(--color-text-warning);
+  }
+
+  .status-closed {
+    background: var(--color-background-success);
+    color: var(--color-text-success);
+  }
+
+  .status-blocked, .status-tombstone {
+    background: var(--color-background-danger);
+    color: var(--color-text-danger);
+  }
+
+  .status-deferred {
+    background: var(--color-background-tertiary);
+    color: var(--color-text-secondary);
+  }
+
+  .chevron {
+    color: var(--color-text-tertiary);
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .detail-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--color-border-primary);
+    background: var(--color-background-primary);
+  }
+
+  .detail-content {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .detail-head {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .detail-badges {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .detail-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--color-text-primary);
+    word-break: break-word;
+  }
+
+  .detail-submeta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+  }
+
+  .claim-card {
+    padding: 9px 12px;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--color-border-primary);
+    background: var(--color-background-warning);
+    color: var(--color-text-warning);
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .claim-card-neutral {
+    background: var(--color-background-secondary);
+    color: var(--color-text-secondary);
+  }
+
+  .claim-card-title {
+    font-weight: 600;
+  }
+
+  .section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .section-title {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-secondary);
+  }
+
+  .prose {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--color-border-primary);
+    background: var(--color-background-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .rel-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--color-border-primary);
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+  }
+
+  .rel-item {
+    border-bottom: 1px solid var(--color-border-primary);
+  }
+
+  .rel-item:last-child {
+    border-bottom: none;
+  }
+
+  .rel-btn, .rel-static {
+    width: 100%;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    font-size: 12.5px;
+    background: var(--color-background-primary);
+  }
+
+  .rel-btn:hover {
+    background: var(--color-background-secondary);
+  }
+
+  .rel-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .comment-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .comment-card {
+    padding: 9px 12px;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--color-border-primary);
+    background: var(--color-background-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .comment-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 11.5px;
+    color: var(--color-text-secondary);
+  }
+
+  .comment-author {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .comment-text {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .empty-state, .error-state, .loading-state {
+    padding: 28px 18px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .state-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .state-desc {
+    margin: 0;
+    max-width: 460px;
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    word-break: break-word;
+  }
+
+  .error-box {
+    max-width: 520px;
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--color-border-danger);
+    background: var(--color-background-danger);
+    color: var(--color-text-danger);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .inline-link {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-info);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .footer-note {
+    padding: 8px 14px;
+    border-top: 1px solid var(--color-border-primary);
+    font-size: 11.5px;
+    color: var(--color-text-secondary);
+    background: var(--color-background-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.92em;
+  }
+</style>
+</head>
+<body>
+<div id="live-status" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+<div id="app" role="main"></div>
+<script>
+(() => {
+  "use strict";
+
+  const PROTOCOL_VERSION = "2026-01-26";
+  const APP_INFO = { name: "beadroll", version: "0.2.0" };
+
+  const rootEl = document.getElementById("app");
+  const liveEl = document.getElementById("live-status");
+  let nextRpcId = 1;
+  const pendingRpc = new Map();
+  let requestSeq = 0;
+
+  const hostState = {
+    theme: initialColorScheme(),
+    displayMode: "inline",
+    availableDisplayModes: ["inline"],
+    toolName: null,
+    initialArguments: null,
+    hydratedFromText: false,
+  };
+
+  const state = {
+    view: "loading",
+    busy: false,
+    workspace: null,
+    ready: null,
+    readyStale: false,
+    readyReturnUid: null,
+    detail: null,
+    detailStack: [],
+    error: null,
+    inlineError: null,
+    lastFailed: null,
+    fallbackText: null,
+  };
+
+  let resizeRaf = 0;
+  let announceRaf = 0;
+  let lastSentHeight = 0;
+
+  function announce(message) {
+    if (!liveEl || typeof message !== "string") return;
+    if (announceRaf) cancelAnimationFrame(announceRaf);
+    liveEl.textContent = "";
+    announceRaf = requestAnimationFrame(() => {
+      announceRaf = 0;
+      liveEl.textContent = message;
+    });
+  }
+
+  function initialColorScheme() {
+    try {
+      const value = new URLSearchParams(window.location.search).get("t3-color-scheme");
+      if (value === "light" || value === "dark") return value;
+    } catch (_) {}
+    return null;
+  }
+
+  function applyTheme(theme) {
+    if (theme !== "light" && theme !== "dark") return;
+    hostState.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    document.documentElement.dataset.theme = theme;
+  }
+
+  function setDisplayMode(mode) {
+    if (typeof mode !== "string") return;
+    const changed = hostState.displayMode !== mode;
+    hostState.displayMode = mode;
+    document.documentElement.dataset.displayMode = mode;
+    if (changed) {
+      // Force the next inline layout to report its height even if it matches the pre-fullscreen height.
+      lastSentHeight = 0;
+    }
+  }
+
+  function applyHostContext(ctx) {
+    if (!ctx || typeof ctx !== "object") return;
+    if (ctx.theme === "light" || ctx.theme === "dark") {
+      applyTheme(ctx.theme);
+    }
+    if (ctx.styles && typeof ctx.styles === "object") {
+      const vars = ctx.styles.variables;
+      if (vars && typeof vars === "object") {
+        for (const [key, value] of Object.entries(vars)) {
+          if (typeof key === "string" && key.startsWith("--") && typeof value === "string") {
+            document.documentElement.style.setProperty(key, value);
+          }
+        }
+      }
+      if (ctx.styles.css && typeof ctx.styles.css.fonts === "string" && ctx.styles.css.fonts.trim()) {
+        let fontStyle = document.getElementById("mcp-host-fonts");
+        if (!fontStyle) {
+          fontStyle = document.createElement("style");
+          fontStyle.id = "mcp-host-fonts";
+          document.head.appendChild(fontStyle);
+        }
+        fontStyle.textContent = ctx.styles.css.fonts;
+      }
+    }
+    if (typeof ctx.displayMode === "string") {
+      setDisplayMode(ctx.displayMode);
+    }
+    if (Array.isArray(ctx.availableDisplayModes)) {
+      hostState.availableDisplayModes = ctx.availableDisplayModes.filter((m) => typeof m === "string");
+    }
+    if (ctx.toolInfo && ctx.toolInfo.tool && typeof ctx.toolInfo.tool.name === "string") {
+      hostState.toolName = ctx.toolInfo.tool.name;
+    }
+    render();
+  }
+
+  function postMessage(msg) {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(msg, "*");
+    }
+  }
+
+  function sendRequest(method, params) {
+    const id = nextRpcId++;
+    return new Promise((resolve, reject) => {
+      pendingRpc.set(id, { resolve, reject });
+      postMessage({ jsonrpc: "2.0", id, method, params });
+    });
+  }
+
+  function sendNotification(method, params) {
+    postMessage({ jsonrpc: "2.0", method, params });
+  }
+
+  function sendResponse(id, result) {
+    postMessage({ jsonrpc: "2.0", id, result });
+  }
+
+  function sendErrorResponse(id, code, message) {
+    postMessage({ jsonrpc: "2.0", id, error: { code, message } });
+  }
+
+  function callServerTool(name, args) {
+    return sendRequest("tools/call", { name, arguments: args });
+  }
+
+  function syncModelContext() {
+    let text = null;
+    let structured = null;
+    const ws = activeWorkspace();
+    if (state.view === "detail" && state.detail && state.detail.issue) {
+      const issue = state.detail.issue;
+      text = "User is viewing beadroll issue " + issue.id + " (" + issue.status + "): " + issue.title;
+      structured = {
+        view: "detail",
+        workspace: ws ? ws.id : null,
+        id: issue.id,
+        uid: issue.uid,
+        status: issue.status,
+      };
+    } else if (state.view === "ready" && state.ready) {
+      const count = Array.isArray(state.ready.issues) ? state.ready.issues.length : 0;
+      text = "User is browsing " + count + " ready beadroll issues" + (ws ? " in " + workspaceLabel(ws) : "") + ".";
+      structured = {
+        view: "ready",
+        workspace: ws ? ws.id : null,
+        shown: count,
+      };
+    }
+    if (!text) return;
+    sendRequest("ui/update-model-context", {
+      content: [{ type: "text", text }],
+      structuredContent: structured,
+    }).catch(() => {});
+  }
+
+  function activeWorkspace() {
+    if (state.view === "detail" && state.detail && state.detail.workspace) {
+      return state.detail.workspace;
+    }
+    if (state.ready && state.ready.workspace) {
+      return state.ready.workspace;
+    }
+    return state.workspace;
+  }
+
+  function workspaceLabel(ws) {
+    if (!ws) return "beadroll";
+    return ws.name || ws.prefix || ws.id || "beadroll";
+  }
+
+  function shortId(value) {
+    if (typeof value !== "string" || value.length <= 12) return value || "";
+    return value.slice(0, 8) + "…" + value.slice(-4);
+  }
+
+  function formatTimestamp(iso) {
+    if (!iso || typeof iso !== "string") return "";
+    const parsed = Date.parse(iso);
+    if (Number.isNaN(parsed)) return iso;
+    const diffSec = Math.round((Date.now() - parsed) / 1000);
+    if (Math.abs(diffSec) < 45) return "just now";
+    const absMin = Math.round(Math.abs(diffSec) / 60);
+    if (absMin < 60) return diffSec >= 0 ? absMin + "m ago" : "in " + absMin + "m";
+    const absHr = Math.round(absMin / 60);
+    if (absHr < 24) return diffSec >= 0 ? absHr + "h ago" : "in " + absHr + "h";
+    const absDay = Math.round(absHr / 24);
+    if (absDay < 14) return diffSec >= 0 ? absDay + "d ago" : "in " + absDay + "d";
+    return iso.slice(0, 10);
+  }
+
+  function el(tag, attrs, children) {
+    const node = document.createElement(tag);
+    if (attrs) {
+      for (const [k, v] of Object.entries(attrs)) {
+        if (v === undefined || v === null || v === false) continue;
+        if (k === "className") {
+          node.className = v;
+        } else if (k === "text") {
+          node.textContent = String(v);
+        } else if (k.startsWith("on") && typeof v === "function") {
+          node.addEventListener(k.slice(2).toLowerCase(), v);
+        } else if (k === "disabled") {
+          node.disabled = Boolean(v);
+        } else {
+          node.setAttribute(k, String(v));
+        }
+      }
+    }
+    if (Array.isArray(children)) {
+      for (const child of children) {
+        if (child === undefined || child === null || child === false) continue;
+        node.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
+      }
+    }
+    return node;
+  }
+
+  function extractTextContent(result) {
+    if (!result || !Array.isArray(result.content)) return "";
+    return result.content
+      .filter((block) => block && block.type === "text" && typeof block.text === "string")
+      .map((block) => block.text)
+      .join("\n")
+      .trim();
+  }
+
+  function hasOwnershipUncertainty(issue) {
+    return Boolean(
+      issue.claim
+        || (Array.isArray(issue.provisional_claims) && issue.provisional_claims.length > 0)
+        || (Array.isArray(issue.unconfirmed) && issue.unconfirmed.length > 0)
+    );
+  }
+
+  function updateCachedListFromDetail(issue, workspace) {
+    if (!state.ready || !Array.isArray(state.ready.issues) || !issue || !issue.uid) return;
+    if (workspace) {
+      state.ready.workspace = workspace;
+    }
+    const statusConflict = Boolean(issue.conflicts && issue.conflicts.status);
+    const stillReady = issue.status === "open" && !issue.claim && !issue.blocked && !statusConflict;
+    if (!stillReady) {
+      state.ready.issues = state.ready.issues.filter((row) => row.uid !== issue.uid);
+      return;
+    }
+    for (const row of state.ready.issues) {
+      if (row.uid === issue.uid) {
+        row.id = issue.id;
+        row.title = issue.title;
+        row.priority = issue.priority;
+        row.status = issue.status;
+        row.issue_type = issue.issue_type;
+      }
+    }
+  }
+
+  function inferInitialCall() {
+    if (hostState.toolName === null && hostState.initialArguments === null) {
+      return null;
+    }
+    const args = hostState.initialArguments && typeof hostState.initialArguments === "object"
+      ? hostState.initialArguments
+      : {};
+    const hasLookup = typeof args.uid === "string" || typeof args.id === "string";
+    if (hostState.toolName === "bead_show" || hasLookup) {
+      return hasLookup ? { tool: "bead_show", args } : null;
+    }
+    return { tool: "bead_ready", args };
+  }
+
+  function applyToolPayload(result, options) {
+    const opts = options || {};
+    const sc = result && typeof result.structuredContent === "object" && result.structuredContent !== null
+      ? result.structuredContent
+      : null;
+
+    if (sc && sc.workspace) {
+      state.workspace = sc.workspace;
+    }
+
+    if (sc && sc.view === "ready") {
+      state.ready = sc;
+      state.readyStale = false;
+      state.detailStack = [];
+      state.workspace = sc.workspace || state.workspace;
+      state.view = "ready";
+      state.error = null;
+      state.inlineError = null;
+      state.lastFailed = null;
+      state.fallbackText = null;
+      const count = Array.isArray(sc.issues) ? sc.issues.length : 0;
+      announce("Loaded " + count + (count === 1 ? " ready issue." : " ready issues."));
+      render(opts.focusKey || null);
+      syncModelContext();
+      return;
+    }
+
+    if (sc && sc.view === "detail" && sc.issue) {
+      if (opts.pushCurrentToStack && state.view === "detail" && state.detail) {
+        state.detailStack.push(state.detail);
+      }
+      if (opts.isDetailRefresh) {
+        state.readyStale = true;
+      }
+      if (opts.fromReadyList) {
+        state.readyReturnUid = sc.issue.uid;
+      }
+      state.detail = {
+        workspace: sc.workspace || state.workspace,
+        issue: sc.issue,
+        clickedKey: opts.clickedKey || null,
+      };
+      state.workspace = state.detail.workspace;
+      updateCachedListFromDetail(sc.issue, state.detail.workspace);
+      state.view = "detail";
+      state.error = null;
+      state.inlineError = null;
+      state.lastFailed = null;
+      state.fallbackText = null;
+      announce("Showing issue " + sc.issue.id + ": " + (sc.issue.title || ""));
+      render(opts.focusKey || "detail-title");
+      syncModelContext();
+      return;
+    }
+
+    if (sc && sc.view === "error" && sc.error) {
+      state.lastFailed = opts.request || inferInitialCall();
+      announce("Error " + (sc.error.code || "") + ": " + (sc.error.message || "Request failed."));
+      if (opts.preserveCurrentView && (state.view === "ready" || state.view === "detail")) {
+        state.inlineError = sc.error;
+        render(opts.focusKey || null);
+        return;
+      }
+      state.error = sc.error;
+      state.view = "error";
+      state.inlineError = null;
+      render(opts.focusKey || null);
+      return;
+    }
+
+    const text = extractTextContent(result);
+    if (result && result.isError) {
+      const errObj = { code: "ERROR", message: text || "Tool call failed." };
+      state.lastFailed = opts.request || inferInitialCall();
+      announce(errObj.message);
+      if (opts.preserveCurrentView && (state.view === "ready" || state.view === "detail")) {
+        state.inlineError = errObj;
+      } else {
+        state.error = errObj;
+        state.view = "error";
+      }
+      render(opts.focusKey || null);
+      return;
+    }
+
+    // Some hosts flatten the initial model-turn tool result to text only; hydrate once via a
+    // read-only app tool call when the call's arguments can be inferred safely.
+    if (opts.fromInitialNotification && !hostState.hydratedFromText) {
+      hostState.hydratedFromText = true;
+      state.fallbackText = text || "No output returned.";
+      const inferred = inferInitialCall();
+      if (inferred) {
+        hydrateFromInitialCall(inferred);
+        return;
+      }
+    }
+
+    state.fallbackText = text || "No output returned.";
+    state.view = "text-fallback";
+    render(opts.focusKey || null);
+  }
+
+  function hydrateFromInitialCall(call) {
+    const seq = ++requestSeq;
+    state.busy = true;
+    render();
+    callServerTool(call.tool, call.args)
+      .then((res) => {
+        if (seq !== requestSeq) return;
+        state.busy = false;
+        applyToolPayload(res, { fromInitialNotification: false, request: call });
+      })
+      .catch(() => {
+        if (seq !== requestSeq) return;
+        state.busy = false;
+        state.view = "text-fallback";
+        render();
+      });
+  }
+
+  function loadReady(preserveView, focusKey, explicitArgs) {
+    const seq = ++requestSeq;
+    state.busy = true;
+    state.inlineError = null;
+    render();
+    const args = explicitArgs && typeof explicitArgs === "object"
+      ? explicitArgs
+      : { limit: state.ready && typeof state.ready.limit === "number" ? state.ready.limit : 25 };
+    const request = { tool: "bead_ready", args };
+    callServerTool(request.tool, request.args)
+      .then((res) => {
+        if (seq !== requestSeq) return;
+        state.busy = false;
+        applyToolPayload(res, {
+          preserveCurrentView: preserveView,
+          request,
+          focusKey,
+        });
+      })
+      .catch((error) => {
+        if (seq !== requestSeq) return;
+        state.busy = false;
+        state.lastFailed = request;
+        const err = { code: "HOST_ERROR", message: error.message || "Unable to refresh ready issues." };
+        announce(err.message);
+        if (preserveView && (state.view === "ready" || state.view === "detail")) {
+          state.inlineError = err;
+        } else {
+          state.error = err;
+          state.view = "error";
+        }
+        render(focusKey || null);
+      });
+  }
+
+  function openIssue(args, clickedKey, pushStack, isDetailRefresh, focusKey, fromReadyList) {
+    const request = { tool: "bead_show", args };
+    const seq = ++requestSeq;
+    state.busy = true;
+    state.inlineError = null;
+    render();
+    callServerTool(request.tool, request.args)
+      .then((res) => {
+        if (seq !== requestSeq) return;
+        state.busy = false;
+        applyToolPayload(res, {
+          clickedKey,
+          pushCurrentToStack: pushStack,
+          isDetailRefresh,
+          fromReadyList,
+          preserveCurrentView: state.view === "ready" || state.view === "detail",
+          request,
+          focusKey,
+        });
+      })
+      .catch((error) => {
+        if (seq !== requestSeq) return;
+        state.busy = false;
+        state.lastFailed = request;
+        const err = {
+          code: "HOST_ERROR",
+          message: error.message || "Unable to load issue details.",
+        };
+        announce(err.message);
+        if (state.view === "ready" || state.view === "detail") {
+          state.inlineError = err;
+        } else {
+          state.error = err;
+          state.view = "error";
+        }
+        render(focusKey || null);
+      });
+  }
+
+  function openIssueByUid(uid, clickedKey, pushStack, isDetailRefresh, focusKey, fromReadyList) {
+    const ws = activeWorkspace();
+    const args = { uid };
+    if (ws && ws.id) {
+      args.workspace = ws.id;
+    }
+    openIssue(args, clickedKey, pushStack, isDetailRefresh, focusKey, fromReadyList);
+  }
+
+  function retryLastFailed() {
+    const failed = state.lastFailed;
+    if (failed && failed.tool === "bead_show") {
+      openIssue(failed.args, null, false, false, "detail-title", false);
+      return;
+    }
+    loadReady(false, "refresh", failed && failed.tool === "bead_ready" ? failed.args : null);
+  }
+
+  function refreshCurrentView() {
+    if (state.view === "detail" && state.detail && state.detail.issue) {
+      const issue = state.detail.issue;
+      openIssueByUid(issue.uid, issue.id, false, true, "refresh", false);
+    } else if (state.view === "error" && state.lastFailed) {
+      retryLastFailed();
+    } else {
+      loadReady(state.view === "ready", "refresh", null);
+    }
+  }
+
+  function navigateBack() {
+    state.inlineError = null;
+    if (state.detailStack.length > 0) {
+      state.detail = state.detailStack.pop();
+      state.view = "detail";
+      announce("Returned to issue " + state.detail.issue.id + ".");
+      render("detail-title");
+      syncModelContext();
+      return;
+    }
+    const rowFocus = state.readyReturnUid ? "row:" + state.readyReturnUid : "refresh";
+    if (state.ready && !state.readyStale) {
+      state.view = "ready";
+      announce("Returned to ready issues.");
+      render(rowFocus);
+      syncModelContext();
+      return;
+    }
+    loadReady(false, rowFocus, null);
+  }
+
+  function toggleFullscreen() {
+    const target = hostState.displayMode === "fullscreen" ? "inline" : "fullscreen";
+    sendRequest("ui/request-display-mode", { mode: target })
+      .then((res) => {
+        if (res && typeof res.mode === "string") {
+          setDisplayMode(res.mode);
+          render("fullscreen");
+        }
+      })
+      .catch(() => {});
+  }
+
+  function renderHeader() {
+    const ws = activeWorkspace();
+    const label = workspaceLabel(ws);
+    const wsTooltip = ws
+      ? [
+          ws.name ? "Name: " + ws.name : null,
+          ws.prefix ? "Prefix: " + ws.prefix : null,
+          ws.id ? "Workspace ID: " + ws.id : null,
+          ws.source ? "Source: " + ws.source : null,
+          ws.checkout ? "Checkout: " + ws.checkout : null,
+        ].filter(Boolean).join("\n")
+      : "";
+
+    const left = el("div", { className: "workspace-meta" }, [
+      el("span", { className: "workspace-name", title: wsTooltip, text: label }),
+      ws && ws.prefix && ws.prefix !== label
+        ? el("span", { className: "prefix-pill", title: wsTooltip, text: ws.prefix })
+        : null,
+      ws && ws.id
+        ? el("span", {
+            className: "sync-meta",
+            title: ws.last_sync
+              ? "Last sync: " + ws.last_sync + " (local reads only; run `bead sync` in CLI to publish or fetch)"
+              : "Never synced (local reads only; run `bead sync` in CLI)",
+            text: ws.last_sync ? "Synced " + formatTimestamp(ws.last_sync) : "Local only",
+          })
+        : null,
+    ]);
+
+    const canFullscreen = hostState.availableDisplayModes.includes("fullscreen");
+    const right = el("div", { className: "header-actions" }, [
+      el("button", {
+        type: "button",
+        className: "btn",
+        "data-focus-key": "refresh",
+        disabled: state.busy,
+        title: "Reread the local tracker (does not run bead sync)",
+        text: state.busy ? "Refreshing…" : "Refresh",
+        onClick: refreshCurrentView,
+      }),
+      canFullscreen
+        ? el("button", {
+            type: "button",
+            className: "btn btn-ghost",
+            "data-focus-key": "fullscreen",
+            title: hostState.displayMode === "fullscreen" ? "Exit full screen" : "Expand full screen",
+            text: hostState.displayMode === "fullscreen" ? "Inline" : "Expand",
+            onClick: toggleFullscreen,
+          })
+        : null,
+    ]);
+
+    return el("header", { className: "header" }, [left, right]);
+  }
+
+  function renderWorkspaceWarning() {
+    const ws = activeWorkspace();
+    if (!ws || !ws.tracked_config_warning) return null;
+    return el("div", { className: "banner banner-warning" }, [
+      el("div", { className: "banner-body", text: ws.tracked_config_warning }),
+    ]);
+  }
+
+  function renderInlineError() {
+    if (!state.inlineError) return null;
+    return el("div", { className: "banner", role: "alert" }, [
+      el("div", { className: "banner-body" }, [
+        state.inlineError.code
+          ? el("span", { className: "banner-code", text: state.inlineError.code })
+          : null,
+        el("span", { text: state.inlineError.message || "Request failed." }),
+      ]),
+      el("button", {
+        type: "button",
+        className: "btn btn-ghost",
+        "data-focus-key": "dismiss-error",
+        text: "Dismiss",
+        onClick: () => {
+          state.inlineError = null;
+          render("refresh");
+        },
+      }),
+    ]);
+  }
+
+  function priorityBadge(priority) {
+    const valid = typeof priority === "number" && priority >= 0 && priority <= 4;
+    return el("span", {
+      className: "prio prio-" + (valid ? priority : "unknown"),
+      text: valid ? "P" + priority : "P?",
+    });
+  }
+
+  function statusBadge(status) {
+    const clean = typeof status === "string" ? status : "open";
+    return el("span", {
+      className: "pill status-" + clean,
+      text: clean.replace(/_/g, " "),
+    });
+  }
+
+  function renderReadyView() {
+    const data = state.ready;
+    const issues = data && Array.isArray(data.issues) ? data.issues : [];
+    const ws = data ? data.workspace : null;
+    const frag = document.createDocumentFragment();
+
+    const countText = issues.length === 0
+      ? "0 ready"
+      : data && data.has_more
+        ? "Showing first " + issues.length + " ready"
+        : issues.length + (issues.length === 1 ? " ready issue" : " ready issues");
+
+    frag.appendChild(
+      el("div", { className: "toolbar" }, [
+        el("span", { text: countText }),
+        ws && ws.id
+          ? el("span", {
+              className: "pill-mono",
+              title: "Workspace ID: " + ws.id,
+              text: shortId(ws.id),
+            })
+          : null,
+      ])
+    );
+
+    if (issues.length === 0) {
+      frag.appendChild(
+        el("div", { className: "empty-state" }, [
+          el("p", { className: "state-title", text: "No ready issues" }),
+          el("p", {
+            className: "state-desc",
+            text: "Nothing is currently open and unblocked in this local tracker. Run `bead sync` in the CLI to pull new work from the remote.",
+          }),
+        ])
+      );
+      return frag;
+    }
+
+    const list = el("ul", { className: "issue-list" });
+    for (const issue of issues) {
+      const tags = [];
+      if (issue.issue_type && issue.issue_type !== "task") {
+        tags.push(el("span", { className: "pill", text: issue.issue_type }));
+      }
+      if (Array.isArray(issue.labels)) {
+        for (const label of issue.labels.slice(0, 3)) {
+          tags.push(el("span", { className: "pill", text: label }));
+        }
+        if (issue.labels.length > 3) {
+          tags.push(el("span", { className: "pill", text: "+" + (issue.labels.length - 3) }));
+        }
+      }
+      if (Array.isArray(issue.conflicted) && issue.conflicted.length > 0) {
+        tags.push(el("span", { className: "pill status-in_progress", text: "conflict" }));
+      }
+
+      const rowButton = el("button", {
+        type: "button",
+        className: "issue-row",
+        disabled: state.busy,
+        "data-uid": issue.uid,
+        "data-key": issue.id,
+        "data-focus-key": "row:" + issue.uid,
+        onClick: () => openIssueByUid(issue.uid, issue.id, false, false, "detail-title", true),
+      }, [
+        priorityBadge(issue.priority),
+        el("span", { className: "issue-row-main" }, [
+          el("span", { className: "issue-key", text: issue.id }),
+          el("span", { className: "issue-title", text: issue.title || "(untitled)" }),
+        ]),
+        tags.length > 0 ? el("span", { className: "issue-tags" }, tags) : null,
+        el("span", { className: "chevron", "aria-hidden": "true", text: "›" }),
+      ]);
+
+      list.appendChild(el("li", { className: "issue-row-item" }, [rowButton]));
+    }
+    frag.appendChild(list);
+
+    if (data && data.has_more) {
+      frag.appendChild(
+        el("div", { className: "footer-note" }, [
+          el("span", { text: "Showing the first " + issues.length + " ready issues in beadroll's order." }),
+          el("span", { text: "Run `bead ready` in CLI for the full list." }),
+        ])
+      );
+    }
+    return frag;
+  }
+
+  function renderRelatedSection(title, items, unresolved) {
+    const hasItems = Array.isArray(items) && items.length > 0;
+    const hasUnresolved = Array.isArray(unresolved) && unresolved.length > 0;
+    if (!hasItems && !hasUnresolved) return null;
+
+    const ul = el("ul", { className: "rel-list" });
+    if (hasItems) {
+      for (const item of items) {
+        const inner = [
+          el("span", { className: "pill", text: item.dependency_type || "blocks" }),
+          el("span", { className: "issue-key", text: item.id }),
+          statusBadge(item.status || "unknown"),
+          el("span", {
+            className: "rel-title",
+            title: item.title || "",
+            text: item.title || "",
+          }),
+        ];
+        if (item.uid) {
+          inner.push(el("span", { className: "chevron", "aria-hidden": "true", text: "›" }));
+          ul.appendChild(
+            el("li", { className: "rel-item" }, [
+              el("button", {
+                type: "button",
+                className: "rel-btn",
+                "data-focus-key": "rel:" + item.uid,
+                disabled: state.busy,
+                onClick: () => openIssueByUid(item.uid, item.id, true, false, "detail-title", false),
+              }, inner),
+            ])
+          );
+        } else {
+          ul.appendChild(
+            el("li", { className: "rel-item" }, [
+              el("div", { className: "rel-static" }, inner),
+            ])
+          );
+        }
+      }
+    }
+    if (hasUnresolved) {
+      for (const item of unresolved) {
+        ul.appendChild(
+          el("li", { className: "rel-item" }, [
+            el("div", { className: "rel-static" }, [
+              el("span", { className: "pill", text: item.dependency_type || "blocks" }),
+              el("span", { className: "issue-key", text: item.id }),
+              el("span", { className: "pill", text: "not an issue yet" }),
+            ]),
+          ])
+        );
+      }
+    }
+
+    return el("section", { className: "section" }, [
+      el("h3", { className: "section-title", text: title }),
+      ul,
+    ]);
+  }
+
+  function renderParentsMeta(issue) {
+    const keys = Array.isArray(issue.parents) && issue.parents.length > 0
+      ? issue.parents
+      : issue.parent
+        ? [issue.parent]
+        : [];
+    if (keys.length === 0) return null;
+
+    const uids = Array.isArray(issue.parent_uids) && issue.parent_uids.length > 0
+      ? issue.parent_uids
+      : issue.parent_uid
+        ? [issue.parent_uid]
+        : [];
+
+    const nodes = [keys.length > 1 ? "Parents: " : "Parent: "];
+    for (let i = 0; i < keys.length; i++) {
+      if (i > 0) nodes.push(", ");
+      const key = keys[i];
+      const uid = uids[i];
+      if (typeof uid === "string" && uid) {
+        nodes.push(
+          el("button", {
+            type: "button",
+            className: "inline-link",
+            "data-focus-key": "parent:" + uid,
+            disabled: state.busy,
+            text: key,
+            onClick: () => openIssueByUid(uid, key, true, false, "detail-title", false),
+          })
+        );
+      } else {
+        nodes.push(key);
+      }
+    }
+    return el("span", null, nodes);
+  }
+
+  function renderOwnershipCards(issue, content) {
+    if (issue.claim) {
+      const details = [];
+      if (issue.claim.since) details.push("since " + formatTimestamp(issue.claim.since) + " (" + issue.claim.since + ")");
+      if (issue.claim.branch) details.push("branch " + issue.claim.branch);
+      if (typeof issue.claim.generation === "number") details.push("gen " + issue.claim.generation);
+      content.appendChild(
+        el("div", { className: "claim-card" }, [
+          el("div", { className: "claim-card-title", text: "Claimed by " + issue.claim.owner }),
+          details.length > 0 ? el("div", { text: details.join(" · ") }) : null,
+        ])
+      );
+    }
+
+    if (Array.isArray(issue.unconfirmed) && issue.unconfirmed.length > 0) {
+      for (const pending of issue.unconfirmed) {
+        const when = pending.at ? " · " + formatTimestamp(pending.at) : "";
+        content.appendChild(
+          el("div", { className: "claim-card" }, [
+            el("div", {
+              className: "claim-card-title",
+              text: "Ownership pending: " + pending.op + " by " + pending.by + when,
+            }),
+            el("div", { text: "Awaiting the remote's acknowledgement; run `bead sync` to settle." }),
+          ])
+        );
+      }
+    }
+
+    if (Array.isArray(issue.provisional_claims) && issue.provisional_claims.length > 0) {
+      for (const claim of issue.provisional_claims) {
+        content.appendChild(
+          el("div", { className: "claim-card" }, [
+            el("div", {
+              className: "claim-card-title",
+              text: "Provisional offline claim by " + claim.owner + " (not exclusive)",
+            }),
+            claim.since ? el("div", { text: "since " + claim.since }) : null,
+          ])
+        );
+      }
+    }
+
+    if (Array.isArray(issue.lost_claims) && issue.lost_claims.length > 0) {
+      for (const lost of issue.lost_claims) {
+        const when = lost.at ? " (" + formatTimestamp(lost.at) + ")" : "";
+        content.appendChild(
+          el("div", { className: "claim-card claim-card-neutral" }, [
+            el("div", {
+              text: "Claim by " + lost.by + " lost to " + lost.held_by + when,
+            }),
+          ])
+        );
+      }
+    }
+
+    if (Array.isArray(issue.stale) && issue.stale.length > 0) {
+      for (const old of issue.stale) {
+        const when = old.at ? " (" + formatTimestamp(old.at) + ")" : "";
+        content.appendChild(
+          el("div", { className: "claim-card claim-card-neutral" }, [
+            el("div", {
+              text: "Ignored stale " + old.op + " by " + old.by + when + ": named a claim that is no longer current",
+            }),
+          ])
+        );
+      }
+    }
+  }
+
+  function renderDetailView() {
+    const entry = state.detail;
+    const issue = entry.issue;
+    const frag = document.createDocumentFragment();
+
+    const backLabel = state.detailStack.length > 0
+      ? "← Back to " + state.detailStack[state.detailStack.length - 1].issue.id
+      : state.ready
+        ? "← Ready issues"
+        : "Browse ready issues";
+
+    frag.appendChild(
+      el("div", { className: "detail-nav" }, [
+        el("button", {
+          type: "button",
+          className: "btn",
+          "data-focus-key": "back",
+          disabled: state.busy,
+          text: backLabel,
+          onClick: navigateBack,
+        }),
+        el("span", {
+          className: "pill pill-mono",
+          title: "Stable UID: " + issue.uid,
+          text: "uid " + shortId(issue.uid),
+        }),
+      ])
+    );
+
+    if (entry.clickedKey && entry.clickedKey !== issue.id) {
+      frag.appendChild(
+        el("div", { className: "banner banner-info" }, [
+          el("div", { className: "banner-body" }, [
+            el("span", {
+              text: "Display key changed from " + entry.clickedKey + " to " + issue.id + "; reopened by stable UID.",
+            }),
+          ]),
+        ])
+      );
+    }
+
+    const content = el("div", { className: "detail-content" });
+
+    const badges = [
+      statusBadge(issue.status),
+      priorityBadge(issue.priority),
+      el("span", { className: "pill", text: issue.issue_type || "task" }),
+      el("span", { className: "pill pill-mono", text: issue.id }),
+    ];
+    if (issue.blocked) {
+      badges.push(el("span", { className: "pill status-blocked", text: "blocked" }));
+    }
+    if (Array.isArray(issue.labels)) {
+      for (const label of issue.labels) {
+        badges.push(el("span", { className: "pill", text: label }));
+      }
+    }
+
+    const submeta = [];
+    if (issue.created_at) {
+      submeta.push(
+        el("span", {
+          title: issue.created_at,
+          text: "Created " + formatTimestamp(issue.created_at) + (issue.created_by ? " by " + issue.created_by : ""),
+        })
+      );
+    }
+    if (issue.updated_at && issue.updated_at !== issue.created_at) {
+      submeta.push(el("span", { title: issue.updated_at, text: "Updated " + formatTimestamp(issue.updated_at) }));
+    }
+    if (issue.closed_at) {
+      submeta.push(el("span", { title: issue.closed_at, text: "Closed " + formatTimestamp(issue.closed_at) }));
+    }
+    if (issue.closed_on_branch || issue.closed_on_commit) {
+      const commitShort = issue.closed_on_commit ? issue.closed_on_commit.slice(0, 12) : "";
+      const mergedNote = issue.merged === true
+        ? " · merged"
+        : issue.merged === false
+          ? " · not merged"
+          : "";
+      submeta.push(
+        el("span", {
+          title: issue.closed_on_commit || "",
+          text: "Closed on " + (issue.closed_on_branch || "detached HEAD") + (commitShort ? " (" + commitShort + ")" : "") + mergedNote,
+        })
+      );
+    }
+    if (issue.assignee) {
+      submeta.push(el("span", { text: "Assignee: " + issue.assignee }));
+    }
+    if (issue.external_ref) {
+      submeta.push(el("span", { text: "Ref: " + issue.external_ref }));
+    }
+    if (typeof issue.estimated_minutes === "number") {
+      submeta.push(el("span", { text: "Estimate: " + issue.estimated_minutes + "m" }));
+    }
+    if (issue.where_branch || issue.where_commit) {
+      const branchLabel = issue.where_branch || "detached HEAD";
+      const commitShort = issue.where_commit ? " (" + issue.where_commit.slice(0, 12) + ")" : "";
+      submeta.push(
+        el("span", {
+          title: issue.where_commit || "",
+          text: "Branch: " + branchLabel + commitShort,
+        })
+      );
+    }
+    if (!hasOwnershipUncertainty(issue)) {
+      submeta.push(el("span", { text: "Claim: unclaimed" }));
+    }
+    const parentsNode = renderParentsMeta(issue);
+    if (parentsNode) {
+      submeta.push(parentsNode);
+    }
+
+    content.appendChild(
+      el("div", { className: "detail-head" }, [
+        el("div", { className: "detail-badges" }, badges),
+        el("h2", {
+          className: "detail-title",
+          tabindex: "-1",
+          "data-focus-key": "detail-title",
+          text: issue.title || "(untitled)",
+        }),
+        submeta.length > 0 ? el("div", { className: "detail-submeta" }, submeta) : null,
+      ])
+    );
+
+    renderOwnershipCards(issue, content);
+
+    if (issue.conflicts && typeof issue.conflicts === "object" && Object.keys(issue.conflicts).length > 0) {
+      content.appendChild(
+        el("div", { className: "claim-card" }, [
+          el("div", {
+            className: "claim-card-title",
+            text: "Concurrent edit conflict on: " + Object.keys(issue.conflicts).join(", "),
+          }),
+          el("div", { text: "Inspect with `bead show " + issue.id + "` in the CLI to settle." }),
+        ])
+      );
+    }
+
+    const textSections = [
+      ["Description", issue.description],
+      ["Acceptance criteria", issue.acceptance_criteria],
+      ["Notes", issue.notes],
+      ["Design", issue.design],
+      ["Close reason", issue.close_reason],
+    ];
+    for (const [heading, value] of textSections) {
+      if (typeof value === "string" && value.trim() !== "") {
+        content.appendChild(
+          el("section", { className: "section" }, [
+            el("h3", { className: "section-title", text: heading }),
+            el("pre", { className: "prose", text: value }),
+          ])
+        );
+      }
+    }
+
+    const depsSection = renderRelatedSection(
+      "Dependencies",
+      issue.dependencies,
+      issue.unresolved_dependencies
+    );
+    if (depsSection) content.appendChild(depsSection);
+
+    const dependentsSection = renderRelatedSection("Dependents", issue.dependents, null);
+    if (dependentsSection) content.appendChild(dependentsSection);
+
+    const comments = Array.isArray(issue.comments) ? issue.comments : [];
+    const commentsSection = el("section", { className: "section" }, [
+      el("h3", { className: "section-title", text: "Comments (" + comments.length + ")" }),
+    ]);
+    if (comments.length === 0) {
+      commentsSection.appendChild(
+        el("p", { className: "state-desc", text: "No comments yet." })
+      );
+    } else {
+      const list = el("div", { className: "comment-list" });
+      for (const comment of comments) {
+        list.appendChild(
+          el("article", { className: "comment-card" }, [
+            el("div", { className: "comment-meta" }, [
+              el("span", { className: "comment-author", text: comment.author || "unknown" }),
+              el("span", {
+                title: comment.created_at || "",
+                text: [
+                  comment.created_at ? formatTimestamp(comment.created_at) : null,
+                  comment.branch ? "on " + comment.branch : null,
+                ].filter(Boolean).join(" · "),
+              }),
+            ]),
+            el("p", { className: "comment-text", text: comment.text || "" }),
+          ])
+        );
+      }
+      commentsSection.appendChild(list);
+    }
+    content.appendChild(commentsSection);
+
+    frag.appendChild(content);
+    return frag;
+  }
+
+  function renderErrorView() {
+    const err = state.error || { code: "ERROR", message: "Unable to read the beadroll tracker." };
+    const buttons = [
+      el("button", {
+        type: "button",
+        className: "btn",
+        "data-focus-key": "retry",
+        disabled: state.busy,
+        text: "Try again",
+        onClick: retryLastFailed,
+      }),
+    ];
+    if (state.lastFailed && state.lastFailed.tool === "bead_show") {
+      buttons.push(
+        el("button", {
+          type: "button",
+          className: "btn btn-ghost",
+          "data-focus-key": "show-ready",
+          disabled: state.busy,
+          text: "Show ready issues",
+          onClick: () => loadReady(false, "refresh", null),
+        })
+      );
+    }
+    return el("div", { className: "error-state", role: "alert" }, [
+      el("div", { className: "error-box" }, [
+        el("div", null, [
+          el("span", { className: "banner-code", text: err.code || "ERROR" }),
+        ]),
+        el("div", { text: err.message || "Unable to read the beadroll tracker." }),
+      ]),
+      el("div", { className: "action-row" }, buttons),
+    ]);
+  }
+
+  function renderFallbackTextView() {
+    return el("div", { className: "detail-content" }, [
+      el("pre", { className: "prose", text: state.fallbackText || "" }),
+      el("div", { className: "action-row" }, [
+        el("button", {
+          type: "button",
+          className: "btn",
+          "data-focus-key": "load-ready",
+          disabled: state.busy,
+          text: "Load ready issues",
+          onClick: () => loadReady(false, "refresh", null),
+        }),
+      ]),
+    ]);
+  }
+
+  function findFocusTarget(focusKey) {
+    if (!focusKey || typeof rootEl.querySelector !== "function") return null;
+    const buttons = rootEl.querySelectorAll("[data-focus-key]");
+    for (const node of buttons) {
+      if (node.getAttribute("data-focus-key") === focusKey) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  function render(explicitFocusKey) {
+    const active = document.activeElement;
+    const preservedFocusKey = !explicitFocusKey && active && typeof active.getAttribute === "function"
+      ? active.getAttribute("data-focus-key")
+      : null;
+
+    rootEl.textContent = "";
+    rootEl.appendChild(renderHeader());
+    const wsWarning = renderWorkspaceWarning();
+    if (wsWarning) rootEl.appendChild(wsWarning);
+    const banner = renderInlineError();
+    if (banner) rootEl.appendChild(banner);
+
+    const body = el("div", { className: "body" });
+    if (state.view === "loading") {
+      body.appendChild(
+        el("div", { className: "loading-state" }, [
+          el("p", { className: "state-desc", text: "Loading beadroll tracker…" }),
+        ])
+      );
+    } else if (state.view === "ready") {
+      body.appendChild(renderReadyView());
+    } else if (state.view === "detail") {
+      body.appendChild(renderDetailView());
+    } else if (state.view === "error") {
+      body.appendChild(renderErrorView());
+    } else if (state.view === "text-fallback") {
+      body.appendChild(renderFallbackTextView());
+    }
+    rootEl.appendChild(body);
+
+    const targetKey = explicitFocusKey || preservedFocusKey;
+    const targetNode = findFocusTarget(targetKey)
+      || (explicitFocusKey ? findFocusTarget("refresh") : null);
+    if (targetNode && typeof targetNode.focus === "function" && !targetNode.disabled) {
+      targetNode.focus();
+    }
+    scheduleResize();
+  }
+
+  function scheduleResize() {
+    if (hostState.displayMode === "fullscreen") return;
+    if (resizeRaf) cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(() => {
+      resizeRaf = 0;
+      const rect = rootEl.getBoundingClientRect();
+      const height = Math.ceil(Math.max(rect.height, document.body.scrollHeight));
+      if (height > 0 && height !== lastSentHeight) {
+        lastSentHeight = height;
+        sendNotification("ui/notifications/size-changed", { height });
+      }
+    });
+  }
+
+  if (typeof ResizeObserver === "function") {
+    const observer = new ResizeObserver(() => scheduleResize());
+    observer.observe(rootEl);
+  }
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window.parent) return;
+    const msg = event.data;
+    if (!msg || typeof msg !== "object" || msg.jsonrpc !== "2.0") return;
+
+    // Response to an app-initiated request
+    if (msg.id !== undefined && msg.method === undefined) {
+      const entry = pendingRpc.get(msg.id);
+      if (!entry) return;
+      pendingRpc.delete(msg.id);
+      if (msg.error) {
+        entry.reject(new Error(msg.error.message || "Host request failed."));
+      } else {
+        entry.resolve(msg.result);
+      }
+      return;
+    }
+
+    // Host-initiated request requiring a response
+    if (msg.id !== undefined && typeof msg.method === "string") {
+      if (msg.method === "ping" || msg.method === "ui/resource-teardown") {
+        sendResponse(msg.id, {});
+      } else {
+        sendErrorResponse(msg.id, -32601, "Method not found: " + msg.method);
+      }
+      return;
+    }
+
+    // Host-initiated notification
+    if (typeof msg.method === "string") {
+      const params = msg.params && typeof msg.params === "object" ? msg.params : {};
+      if (msg.method === "ui/notifications/tool-input") {
+        hostState.initialArguments = params.arguments && typeof params.arguments === "object"
+          ? params.arguments
+          : {};
+      } else if (msg.method === "ui/notifications/tool-result") {
+        applyToolPayload(params, { fromInitialNotification: true });
+      } else if (msg.method === "ui/notifications/tool-cancelled") {
+        state.lastFailed = inferInitialCall();
+        state.error = {
+          code: "CANCELLED",
+          message: typeof params.reason === "string" && params.reason
+            ? params.reason
+            : "Tool call was cancelled.",
+        };
+        state.view = "error";
+        announce(state.error.message);
+        render("retry");
+      } else if (msg.method === "ui/notifications/host-context-changed") {
+        applyHostContext(params);
+      }
+    }
+  });
+
+  if (hostState.theme) {
+    applyTheme(hostState.theme);
+  }
+  render();
+
+  // Complete the MCP Apps handshake with the host.
+  sendRequest("ui/initialize", {
+    protocolVersion: PROTOCOL_VERSION,
+    appInfo: APP_INFO,
+    appCapabilities: {
+      availableDisplayModes: ["inline", "fullscreen"],
+    },
+  })
+    .then((result) => {
+      if (result && result.hostContext) {
+        applyHostContext(result.hostContext);
+      }
+      sendNotification("ui/notifications/initialized", {});
+    })
+    .catch((error) => {
+      if (state.view === "loading") {
+        state.error = {
+          code: "INIT_FAILED",
+          message: (error && error.message) || "Unable to connect to the MCP Apps host.",
+        };
+        state.view = "error";
+        announce(state.error.message);
+        render("retry");
+      }
+    });
+})();
+</script>
+</body>
+</html>
