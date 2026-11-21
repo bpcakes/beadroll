@@ -42,7 +42,9 @@ pub(crate) const OWNERSHIP: [OpName; 2] = [OpName::Claim, OpName::Release];
 /// One locked read-modify-append on this machine's own journal. Sequential events go to the
 /// journal. Ownership events (`claim`, `release`) form an attempt that is settled with the remote
 /// as one unit, and so does anything emitted through [`Tx::attempt`]: an edit made
-/// together with a claim lands with the claim or not at all.
+/// together with a claim lands with the claim or not at all. Every event of the journal comes
+/// before the attempt's first: one after it is refused, the journal appended before the attempt is
+/// published.
 #[derive(Debug)]
 pub struct Tx<'a> {
     /// The workspace written to: what the causes below were read from.
@@ -412,23 +414,21 @@ impl Emitter<'_> {
                     .and_then(EventId::parse)
             })
             .flatten();
-        // a record of the journal, appended before the attempt is published, names none of the
-        // attempt's events, which it does not build on: an edit of an issue the attempt made, or a
-        // child of it, goes with the attempt
-        if sequenced && self.heads.names_attempted(issue, &data) {
-            return Err(Error::Validation(
-                "an event about what this command's ownership attempt makes (its issue, a \
-                 create's parent, a dependency) must be emitted through the attempt"
-                    .to_owned(),
-            ));
-        }
         // the route the event takes: a claim or a release is an attempt's, wherever it is emitted
         let lane = if sequenced {
             Route::Journal
         } else {
             Route::Attempt
         };
-        let heads = self.heads.of(lane);
+        // every record of the journal before the attempt's first event ([`Heads`])
+        if !self.heads.admits(lane) {
+            return Err(Error::Validation(
+                "a record of the journal must come before this command's ownership attempt: \
+                 emit it through the attempt, or before it"
+                    .to_owned(),
+            ));
+        }
+        let heads = self.heads.ids();
         let parent = parent.filter(|parent| !heads.contains(parent));
         // this machine's last applicable event, where the frontier does not reach it, among the
         // causes of the transaction's first record of the journal: replay sets aside a record that

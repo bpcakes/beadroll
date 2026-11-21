@@ -279,13 +279,15 @@ fn attempt_emission_is_scoped_even_after_an_error() {
                     .is_err()
             );
         }
-        tx.emit(OpName::Comment, Some(&uid), comment(), None)?;
+        // emitted as before the scope, by the journal's route, which the attempt begun refuses
+        let after = tx.emit(OpName::Comment, Some(&uid), comment(), None);
+        assert!(matches!(after, Err(Error::Validation(_))), "{after:?}");
         assert_eq!(
             tx.emitted
                 .iter()
                 .map(|record| record.sequenced)
                 .collect::<Vec<_>>(),
-            [true, false, false, true]
+            [true, false, false]
         );
         assert_eq!(
             tx.ownership,
@@ -331,14 +333,14 @@ fn a_create_the_state_applies_is_a_parent_only_if_replay_made_it() {
     assert!(parent_problem(none, &created, OpName::Create, &data).is_ok());
 }
 
-/// A record of the journal after an attempt's event builds on the journal's frontier alone: the
-/// journal is appended before the attempt is published, and an attempt the remote refused left a
-/// record naming its event waiting for one no journal holds, with every write built on it. An
-/// attempt's event after the record builds on both. And a create the attempt made is no parent of
-/// a create in the journal, nor the issue of a comment there, whether or not the state was read
-/// between, while it is either in the attempt (AT100).
+/// Every record of the journal comes before the attempt's first event, which builds on them: the
+/// journal is appended before the attempt is published, and a record after it, built on its events,
+/// waited for them when the remote refused the attempt, or, built beside them, could replay before
+/// the claim, edit or create of the attempt it relied on, its effect lost though both landed. Any
+/// record of the journal after the attempt began is refused, whether or not the state was read
+/// between, and goes through the attempt instead (AT100).
 #[test]
-fn a_record_of_the_journal_builds_on_no_event_of_the_attempt() {
+fn a_record_of_the_journal_after_the_attempt_began_is_refused() {
     let fixture = Fixture::new("");
     locked(&fixture.ws, || -> Result<(), Error> {
         let mut tx = Tx::new(&fixture.ws, &fixture.actor)?;
@@ -348,62 +350,41 @@ fn a_record_of_the_journal_builds_on_no_event_of_the_attempt() {
             data.insert("text".into(), Value::from("comment"));
             data
         };
+        let labels = || {
+            let mut data = Object::new();
+            data.insert("labels".into(), Value::Array(vec![Value::from("ui")]));
+            data
+        };
         let journal = tx.emit(OpName::Comment, Some(&uid), comment(), None)?;
-        let attempted = tx
-            .attempt()
-            .emit(OpName::Comment, Some(&uid), comment(), None)?;
-        let after = tx.emit(OpName::Comment, Some(&uid), comment(), None)?;
-        tx.attempt()
-            .emit(OpName::Comment, Some(&uid), comment(), None)?;
+        let attempted = tx.attempt().emit(OpName::LabelAdd, Some(&uid), labels(), None)?;
         let deps = |tx: &Tx<'_>, at: usize| -> Vec<String> {
             match &tx.emitted[at].value["deps"] {
-                Value::Array(deps) => deps
-                    .iter()
-                    .map(|dep| dep.as_str().unwrap().into())
-                    .collect(),
+                Value::Array(deps) => deps.iter().map(|dep| dep.as_str().unwrap().into()).collect(),
                 _ => Vec::new(),
             }
         };
-        assert_eq!(deps(&tx, 2), [journal.to_string()], "the journal's alone");
-        assert_eq!(deps(&tx, 3), [attempted.to_string(), after.to_string()]);
-        let create = |key: &str, parent: Option<beadroll_core::id::EventId>| {
-            let mut fields = Object::new();
-            fields.insert("title".into(), Value::from(key));
-            let mut data = Object::new();
-            data.insert("key".into(), Value::from(key));
-            data.insert("fields".into(), Value::from(fields));
-            data.insert("labels".into(), Value::Array(Vec::new()));
-            if let Some(parent) = parent {
-                data.insert("parent".into(), Value::from(parent.to_string()));
-            }
-            data
+        assert_eq!(deps(&tx, 1), [journal.to_string()], "the attempt on the journal");
+        let refused = |judged: Result<_, Error>| {
+            matches!(&judged, Err(Error::Validation(problem)) if problem.contains("attempt"))
         };
-        let parent = tx
-            .attempt()
-            .emit(OpName::Create, None, create("ex-q", None), None)?;
         for read_between in [false, true] {
             if read_between {
-                assert!(tx.state()?.issue(parent).is_some(), "applied");
+                tx.state()?;
             }
-            let child = create("ex-q.1", Some(parent));
-            let judged = tx.emit(OpName::Create, None, child, None);
-            assert!(
-                matches!(&judged, Err(Error::Validation(problem)) if problem.contains("attempt")),
-                "read between: {read_between}: {judged:?}"
-            );
-            // nor is a record of the journal about it: replay may take it first, an orphan
-            let on = parent.to_string();
-            let judged = tx.emit(OpName::Comment, Some(&on), comment(), None);
-            assert!(
-                matches!(&judged, Err(Error::Validation(problem)) if problem.contains("attempt")),
-                "a comment, read between: {read_between}: {judged:?}"
-            );
+            // undoing what the attempt did, on an issue the attempt is not about, or a claim
+            let undone = tx.emit(OpName::LabelRemove, Some(&uid), labels(), None);
+            assert!(refused(undone), "read between: {read_between}");
+            let elsewhere = tx.emit(OpName::Comment, None, comment(), None);
+            assert!(refused(elsewhere), "read between: {read_between}");
+            let mut claim = Object::new();
+            claim.insert("mode".into(), Value::from("online"));
+            claim.insert("generation".into(), Value::from(1));
+            assert!(tx.emit(OpName::Claim, Some(&uid), claim, None).is_ok(), "an attempt's");
         }
-        let child = create("ex-q.1", Some(parent));
-        tx.attempt().emit(OpName::Create, None, child, None)?;
-        let on = parent.to_string();
-        tx.attempt()
-            .emit(OpName::Comment, Some(&on), comment(), None)?;
+        assert_eq!(tx.emitted.len(), 4, "nothing refused recorded");
+        let after = tx.attempt().emit(OpName::LabelRemove, Some(&uid), labels(), None)?;
+        assert_eq!(deps(&tx, 4), [tx.emitted[3].value["id"].as_str().unwrap().to_owned()]);
+        assert!(after != attempted);
         Ok(())
     })
     .unwrap();

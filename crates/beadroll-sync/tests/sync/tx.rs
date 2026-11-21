@@ -15,6 +15,7 @@ use crate::support::{actor, comments, sandbox, text, workspace};
 
 /// Preparation preserves both destinations, including events emitted after the last cached
 /// state read. The returned state and the persisted journal must contain the same whole write.
+/// Every record of the journal comes before the attempt's first event: one after it is refused.
 #[test]
 fn preparing_a_write_keeps_sequential_and_conditional_events_together() {
     let sandbox = sandbox();
@@ -24,8 +25,9 @@ fn preparing_a_write_keeps_sequential_and_conditional_events_together() {
     let ws = workspace(&a, sandbox.origin(), &[]);
     let actor = actor(&a);
     let (_, state) = writing_state(&ws, &actor, |tx| -> Result<(), Error> {
-        comment_on(&key, "before the claim")(tx)?;
+        comment_on(&key, "before the read")(tx)?;
         let uid = tx.state()?.resolve(&key).expect("the issue").uid();
+        comment_on(&key, "before the claim")(tx)?;
         crate::support::claim(tx, beadroll_sync::Mode::Local, &key)?;
         tx.attempt().emit(
             OpName::Set,
@@ -33,7 +35,8 @@ fn preparing_a_write_keeps_sequential_and_conditional_events_together() {
             titled("with the claim"),
             None,
         )?;
-        comment_on(&key, "after the attempt")(tx)?;
+        let after = comment_on(&key, "after the attempt")(tx);
+        assert!(matches!(after, Err(Error::Validation(_))), "{after:?}");
         Ok(())
     })
     .expect("the mixed write");
@@ -43,7 +46,7 @@ fn preparing_a_write_keeps_sequential_and_conditional_events_together() {
     assert!(issue.claim().is_some());
     let shown = a.show(&key);
     assert_eq!(shown["title"].as_str(), Some("with the claim"));
-    assert_eq!(comments(&shown), ["before the claim", "after the attempt"]);
+    assert_eq!(comments(&shown), ["before the read", "before the claim"]);
     assert!(shown["claim"].as_object().is_some());
 }
 
