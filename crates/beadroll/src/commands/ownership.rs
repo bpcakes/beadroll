@@ -62,7 +62,7 @@ impl ClaimStep<'_> {
     /// leaves one the actor already holds as it is; a takeover replaces the owner. A done issue, a
     /// disputed status or another owner's claim without a takeover refuses the whole transaction.
     pub(crate) fn run(&self, tx: &mut Tx<'_>, mode: Mode) -> Result<Mode, Failure> {
-        let me = self.actor.label(&tx.replica);
+        let me = self.actor.label(tx.replica());
         // read as it was before anything is emitted, without a copy (roll-lqjj.29)
         let (st, mut tx) = tx.lend()?;
         need_tracker(st)?;
@@ -267,7 +267,7 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
         args.remote.as_deref(),
         &signature,
         |tx, mode| -> Result<Mode, Failure> {
-            let me = ctx.actor.label(&tx.replica);
+            let me = ctx.actor.label(tx.replica());
             // read as it was before anything is emitted, without a copy (roll-lqjj.29)
             let (st, mut tx) = tx.lend()?;
             need_tracker(st)?;

@@ -202,3 +202,48 @@ fn a_record_kept_without_its_id_is_no_cause_an_extension_applies_after() {
         "the event waits for a cause the journal does not hold"
     );
 }
+
+/// An index naming an event its ids lack, as a buggy build could write one, is refused: a
+/// journal's last applicable event off the frontier, which a write builds on, would otherwise be
+/// a cause no journal holds, and the write wait for it; and so with any event its knowledge keeps,
+/// a machine's latest, or a claim superseded (AT100).
+#[test]
+fn an_index_naming_an_event_its_ids_lack_is_refused() {
+    let mut records = three();
+    // another machine's comment on the last create: the frontier, which does not hold that create
+    let mut data = Object::new();
+    data.insert("text".into(), Value::from("built on the last create"));
+    let there = "0000bb02";
+    let on = event(8, there, &[6], "comment", 2, data);
+    records.push(record(on, there, JournalOrder::Sequenced));
+    let projection = project(journal(&records)).unwrap();
+    let tail = EventId::parse(&id(6)).unwrap();
+    assert_eq!(projection.tails.get(HERE), Some(&tail));
+    assert!(
+        !projection.heads.contains(&tail),
+        "the tail off the frontier"
+    );
+    let refused = |forged: Projection| {
+        let (encoded, _) = forged.encode(0);
+        let refused = Projection::decode(encoded).err();
+        (refused.map(|error| format!("{error:?}")))
+            .is_some_and(|error| error.contains("the journal holds"))
+    };
+    let lacking = |n: u128| {
+        let mut forged = projection.clone();
+        assert!(forged.ids.remove(&EventId::parse(&id(n)).unwrap()), "{n}");
+        forged
+    };
+    assert!(refused(lacking(6)), "the tail");
+    assert!(refused(lacking(8)), "the frontier");
+    assert!(refused(lacking(2)), "a create the state names");
+    let stale = EventId::parse(&id(90)).unwrap();
+    let mut forged = projection.clone();
+    forged.lasts.insert(HERE.to_owned(), stale);
+    assert!(refused(forged), "a machine's latest");
+    let mut forged = projection.clone();
+    forged.superseded.insert(stale);
+    assert!(refused(forged), "a claim superseded");
+    let (encoded, _) = projection.encode(0);
+    assert!(Projection::decode(encoded).is_ok(), "as written");
+}

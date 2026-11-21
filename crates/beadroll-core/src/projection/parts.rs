@@ -14,7 +14,7 @@
 //! table is made anew once it holds more than an eighth more entries, plus `TABLE_SLACK`, than when
 //! it last was.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -371,23 +371,11 @@ impl Projection {
         if !ids.windows(2).all(|pair| matches!(pair, [a, b] if a < b)) {
             return Err(Unreadable("the ids"));
         }
-        let mut lengths = HashMap::new();
-        for _ in 0..r.count()? {
-            let machine = r.text()?;
-            lengths.insert(machine, r.small()?);
-        }
-        let mut lasts = HashMap::new();
-        for _ in 0..r.count()? {
-            let machine = r.text()?;
-            lasts.insert(machine, r.id()?);
-        }
-        let mut tails = HashMap::new();
-        for _ in 0..r.count()? {
-            let machine = r.text()?;
-            let tail = r.id()?;
-            tails.insert(machine, tail);
-        }
-        let superseded = r.ids()?.into_iter().collect();
+        let lengths = by_machine(&mut r, Reader::small)?;
+        let lasts = by_machine(&mut r, Reader::id)?;
+        let tails = by_machine(&mut r, Reader::id)?;
+        let superseded: HashSet<EventId> = r.ids()?.into_iter().collect();
+        held(&ids, &knowledge, &lasts, &superseded)?;
         let open = r.flag()?;
         r.done()?;
         let (sets, positions) = knowledge.read_arena(&mut after)?;
@@ -452,4 +440,35 @@ pub fn decode_state(bytes: &[u8]) -> Result<State, Unreadable> {
     after.number()?;
     after.done()?;
     Ok(state)
+}
+
+/// An entry for each machine, by its name, each read by `read`.
+fn by_machine<'a, T>(
+    r: &mut Reader<'a>,
+    read: impl Fn(&mut Reader<'a>) -> Result<T, Unreadable>,
+) -> Result<HashMap<String, T>, Unreadable> {
+    let mut entries = HashMap::new();
+    for _ in 0..r.count()? {
+        let machine = r.text()?;
+        entries.insert(machine, read(r)?);
+    }
+    Ok(entries)
+}
+
+/// That every event an index names is one the journal holds, by `ids`, in order: every event its
+/// knowledge keeps (what a write builds on, the frontier and each journal's last applicable event,
+/// among them, which would otherwise be a cause no journal holds and the write wait for it), each
+/// machine's latest and the claims superseded. Each looked up once.
+fn held(
+    ids: &[EventId],
+    knowledge: &Knowledge,
+    lasts: &HashMap<String, EventId>,
+    superseded: &HashSet<EventId>,
+) -> Result<(), Unreadable> {
+    let mut named = (knowledge.events.keys()).chain(lasts.values()).chain(superseded);
+    if named.all(|id| ids.binary_search(id).is_ok()) {
+        Ok(())
+    } else {
+        Err(Unreadable("the events the journal holds"))
+    }
 }

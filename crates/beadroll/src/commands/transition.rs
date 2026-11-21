@@ -96,7 +96,7 @@ pub(crate) fn transition(
     let kind = op.op();
     let (verb, status, said) = op.words();
     let written = writing_spent(ctx.ws, ctx.actor, |tx| {
-        let me = ctx.actor.label(&tx.replica);
+        let me = ctx.actor.label(tx.replica());
         let st = tx.state()?;
         need_tracker(st)?;
         let mut plan = plan(st, args)?;

@@ -43,12 +43,13 @@ pub(crate) const OWNERSHIP: [OpName; 2] = [OpName::Claim, OpName::Release];
 /// together with a claim lands with the claim or not at all.
 #[derive(Debug)]
 pub struct Tx<'a> {
-    /// The workspace written to.
-    pub ws: &'a Workspace,
+    /// The workspace written to: what the causes below were read from.
+    ws: &'a Workspace,
     /// Who writes.
     pub actor: Value,
-    /// This machine's id.
-    pub replica: String,
+    /// This machine's id: the journal written to, whose last record the causes below were chosen
+    /// for, fixed once they are ([`Tx::replica`]).
+    replica: String,
     /// The projection or replay, with the prefix of emitted events it contains.
     materialized: Materialized,
     /// The frontier, with the events emitted so far: what a new event builds on.
@@ -151,6 +152,18 @@ impl<'a> Tx<'a> {
             state: self.materialized.state().ok(),
             applied: self.materialized.applied(),
         }
+    }
+
+    /// This machine's id: the journal the transaction writes to. Fixed once it is begun, as what
+    /// its events build on was chosen for that journal's last record:
+    ///
+    /// ```compile_fail
+    /// fn elsewhere(tx: &mut beadroll_sync::Tx<'_>) {
+    ///     tx.replica = "0000bb02".to_owned();
+    /// }
+    /// ```
+    pub fn replica(&self) -> &str {
+        &self.replica
     }
 
     /// A fresh id for the next event the caller emits ([`Minted`]).
