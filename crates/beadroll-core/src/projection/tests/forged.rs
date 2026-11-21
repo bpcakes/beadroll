@@ -58,6 +58,22 @@ fn twice(state: &[u8], from: usize, to: usize) -> Vec<u8> {
     out
 }
 
+/// What decoding `encoded` is refused for, as its error reads: none where it is read.
+fn refusal(encoded: Encoded) -> Option<String> {
+    Projection::decode(encoded)
+        .err()
+        .map(|error| format!("{error:?}"))
+}
+
+/// The parts of a projection: the state part of `state`, the index of `index`.
+fn paired(state: &Encoded, index: &Encoded) -> Encoded {
+    Encoded {
+        state: state.state.clone(),
+        index: index.index.clone(),
+        texts: Vec::new(),
+    }
+}
+
 /// Whether the projection with this state part is refused, alone and with its index.
 fn refused(state: Vec<u8>, index: &[u8]) -> bool {
     let whole = Encoded {
@@ -150,9 +166,7 @@ fn an_index_naming_another_event_last_in_a_journal_is_refused() {
     // the table's place, the part's first eight bytes, moved back past what was taken out
     let at = u64::from_le_bytes(index[..8].try_into().unwrap()) - entry.len() as u64;
     index[..8].copy_from_slice(&at.to_le_bytes());
-    let refused = Projection::decode(whole(index))
-        .err()
-        .map(|error| format!("{error:?}"));
+    let refused = refusal(whole(index));
     assert!(
         refused
             .as_deref()
@@ -224,10 +238,8 @@ fn an_index_naming_an_event_its_ids_lack_is_refused() {
         "the tail off the frontier"
     );
     let refused = |forged: Projection| {
-        let (encoded, _) = forged.encode(0);
-        let refused = Projection::decode(encoded).err();
-        (refused.map(|error| format!("{error:?}")))
-            .is_some_and(|error| error.contains("the journal holds"))
+        let refused = refusal(forged.encode(0).0);
+        refused.is_some_and(|error| error.contains("the journal holds"))
     };
     let lacking = |n: u128| {
         let mut forged = projection.clone();
@@ -257,24 +269,14 @@ fn a_state_naming_an_event_the_index_lacks_is_refused() {
     let records = three();
     let (before, _) = project(journal(&records[..3])).unwrap().encode(0);
     let (after, _) = project(journal(&records)).unwrap().encode(0);
-    let paired = |state: &[u8], index: &[u8]| Encoded {
-        state: state.to_vec(),
-        index: index.to_vec(),
-        texts: Vec::new(),
-    };
-    let refused = Projection::decode(paired(&after.state, &before.index))
-        .err()
-        .map(|error| format!("{error:?}"));
+    let refused = refusal(paired(&after, &before));
     assert!(
         refused
             .as_deref()
             .is_some_and(|error| error.contains("the journal holds")),
         "an issue whose create the index lacks: {refused:?}"
     );
-    assert!(
-        Projection::decode(paired(&after.state, &after.index)).is_ok(),
-        "as written"
-    );
+    assert!(refusal(paired(&after, &after)).is_none(), "as written");
 }
 
 /// A state part read with an index from before the cause an issue's create waited for came, as
@@ -311,22 +313,12 @@ fn a_state_naming_a_create_the_index_holds_pending_is_refused() {
         "the create applied once its cause came"
     );
     let (after, _) = after.encode(0);
-    let paired = |state: &[u8], index: &[u8]| Encoded {
-        state: state.to_vec(),
-        index: index.to_vec(),
-        texts: Vec::new(),
-    };
-    let refused = Projection::decode(paired(&after.state, &before.index))
-        .err()
-        .map(|error| format!("{error:?}"));
+    let refused = refusal(paired(&after, &before));
     assert!(
         refused
             .as_deref()
             .is_some_and(|error| error.contains("the journal holds")),
         "an issue whose create the index holds pending: {refused:?}"
     );
-    assert!(
-        Projection::decode(paired(&after.state, &after.index)).is_ok(),
-        "as written"
-    );
+    assert!(refusal(paired(&after, &after)).is_none(), "as written");
 }
