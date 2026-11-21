@@ -117,8 +117,9 @@ impl Link<'_> {
         Ok(pulled)
     }
 
-    /// Internal rounds receive a completed merge rather than reading report slots on the link.
-    /// The first requested rename count remains command-wide, even across a failed round.
+    /// Internal rounds receive a completed merge rather than reading report slots on the link. The
+    /// keys a reporting sync began with, once taken ([`KeysBefore`]), stay command-wide, across a
+    /// failed or contended round.
     pub(crate) fn merge_from(
         &mut self,
         tip: Option<&str>,
