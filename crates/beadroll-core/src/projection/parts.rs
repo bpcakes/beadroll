@@ -375,7 +375,7 @@ impl Projection {
         let lasts = by_machine(&mut r, Reader::id)?;
         let tails = by_machine(&mut r, Reader::id)?;
         let superseded: HashSet<EventId> = r.ids()?.into_iter().collect();
-        held(&ids, &knowledge, &lasts, &superseded)?;
+        held(&ids, &knowledge, &read, &lasts, &superseded)?;
         let open = r.flag()?;
         r.done()?;
         let (sets, positions) = knowledge.read_arena(&mut after)?;
@@ -455,18 +455,25 @@ fn by_machine<'a, T>(
     Ok(entries)
 }
 
-/// That every event an index names is one the journal holds, by `ids`, in order: every event its
-/// knowledge keeps (what a write builds on, the frontier and each journal's last applicable event,
-/// among them, which would otherwise be a cause no journal holds and the write wait for it), each
-/// machine's latest and the claims superseded. Each looked up once.
+/// That every event the state part names is one the index keeps, and every event the index names
+/// one the journal holds, by `ids`, in order: every event its knowledge keeps (what a write builds
+/// on, the frontier, each journal's last applicable event and each issue's create, a child's
+/// parent, among them, which would otherwise be a cause no journal holds and the write wait for
+/// it), each machine's latest and the claims superseded. Each looked up once.
 fn held(
     ids: &[EventId],
     knowledge: &Knowledge,
+    state: &State,
     lasts: &HashMap<String, EventId>,
     superseded: &HashSet<EventId>,
 ) -> Result<(), Unreadable> {
-    let mut named = (knowledge.events.keys()).chain(lasts.values()).chain(superseded);
-    if named.all(|id| ids.binary_search(id).is_ok()) {
+    let kept = named(state)
+        .iter()
+        .all(|id| knowledge.events.contains_key(id));
+    let mut named = (knowledge.events.keys())
+        .chain(lasts.values())
+        .chain(superseded);
+    if kept && named.all(|id| ids.binary_search(id).is_ok()) {
         Ok(())
     } else {
         Err(Unreadable("the events the journal holds"))

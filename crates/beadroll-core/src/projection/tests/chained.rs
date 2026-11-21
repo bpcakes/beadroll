@@ -1,9 +1,10 @@
 //! Histories whose journals hold what keeps the frontier off a machine's last record (AT100): a
-//! cycle of causes, a cause no journal holds yet (later written, by another machine), a placeholder,
-//! a record written with the clock turned back, in the store's own journal as in others. Machine
-//! 0 builds each write on what its projection names (`Projection::causes_for`), as a transaction
-//! builds it, and replay must apply it, or set it aside, exactly as those causes said it would;
-//! and every extension is still what projecting the whole journal makes, or declines.
+//! cycle of causes, a cause no journal holds yet (later written, by another machine), an operation
+//! replay does not know, a placeholder (an operation that is no text), a record written with the
+//! clock turned back, in the store's own journal as in others. Machine 0 builds each write on what
+//! its projection names (`Projection::causes_for`), as a transaction builds it, and replay must
+//! apply it, or set it aside, exactly as those causes said it would; and every extension is still
+//! what projecting the whole journal makes, or declines.
 
 use super::taken::differential;
 use super::{MACHINES, Machine, World, load};
@@ -42,8 +43,8 @@ impl World {
 
     /// One thing machine `m` writes that keeps the frontier off a journal's last record, or that
     /// releases what waited (an event of an id one names, by a machine other than the store under
-    /// test): two comments each naming the other, a comment naming an id no event has, an
-    /// operation replay does not know, or what machine `m` does with its clock turned back. Of
+    /// test): two comments each naming the other, a comment naming an id no event has, an operation
+    /// replay does not know, a placeholder, or what machine `m` does with its clock turned back. Of
     /// machine 0's, only the last are writes of a transaction, and judged.
     pub(super) fn chain_flaw(&mut self, m: usize) {
         let (issues, _) = self.issues(m);
@@ -71,7 +72,19 @@ impl World {
                 self.add_cause(self.events.len() - 1, &owed);
                 self.owed.push(owed);
             }
-            2 | 3 => drop(self.write(m, "future_op", Some(issue), Object::new())),
+            2 => drop(self.write(m, "future_op", Some(issue), Object::new())),
+            3 => {
+                // a placeholder: an op that is no text, no applicable position of its journal
+                self.write(m, "comment", Some(issue), text("placeholder"));
+                let at = self.events.len() - 1;
+                let mut event = self.events[at]
+                    .value
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_default();
+                event.insert("op".into(), Value::from(5));
+                self.events[at].value = Value::from(event);
+            }
             _ => {
                 let now = self.clock;
                 self.clock = now.saturating_sub(1 + self.rng.below(40) as u64);
@@ -186,8 +199,13 @@ fn judged(seeds: impl IntoIterator<Item = u64>) -> Judged {
                     .filter(|at| world.folders[world.events[*at].machine] == MACHINES[0])
                     .filter(|at| !world.events[*at].attempt)
                     .collect();
-                let op = |at: &usize| super::str_of(world.events[*at].value.get("op"));
-                let placeholder = before.last().is_some_and(|last| op(last) == "future_op");
+                // the record before it is a placeholder, its op no text
+                let placeholder = (before.last()).is_some_and(|last| {
+                    world.events[*last]
+                        .value
+                        .get("op")
+                        .is_some_and(|op| op.as_str().is_none())
+                });
                 let turned_back = causes.predecessor.is_some_and(|tail| {
                     (before.iter()).any(|at| EventId::parse(&world.id_of(*at)) > Some(tail))
                 });

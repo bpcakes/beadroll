@@ -247,3 +247,31 @@ fn an_index_naming_an_event_its_ids_lack_is_refused() {
     let (encoded, _) = projection.encode(0);
     assert!(Projection::decode(encoded).is_ok(), "as written");
 }
+
+/// A state part read with an index from before an issue it holds was made, as parts written by
+/// two commands could pair, is refused: the issue's create, which a child's create names among its
+/// causes, would otherwise be a parent no journal holds, and the child wait for it (AT100).
+#[test]
+fn a_state_naming_an_event_the_index_lacks_is_refused() {
+    let records = three();
+    let (before, _) = project(journal(&records[..3])).unwrap().encode(0);
+    let (after, _) = project(journal(&records)).unwrap().encode(0);
+    let paired = |state: &[u8], index: &[u8]| Encoded {
+        state: state.to_vec(),
+        index: index.to_vec(),
+        texts: Vec::new(),
+    };
+    let refused = Projection::decode(paired(&after.state, &before.index))
+        .err()
+        .map(|error| format!("{error:?}"));
+    assert!(
+        refused
+            .as_deref()
+            .is_some_and(|error| error.contains("the journal holds")),
+        "an issue whose create the index lacks: {refused:?}"
+    );
+    assert!(
+        Projection::decode(paired(&after.state, &after.index)).is_ok(),
+        "as written"
+    );
+}
