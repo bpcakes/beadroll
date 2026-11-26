@@ -88,7 +88,14 @@ pub(super) struct Stored {
 
 impl Stored {
     /// The projection, with the index read and checked.
-    pub(super) fn decode(mut self, points: &crate::failpoint::Failpoints) -> Option<Projection> {
+    pub(super) fn decode(self, points: &crate::failpoint::Failpoints) -> Option<Projection> {
+        Projection::decode(self.encoded(points)?).ok()
+    }
+
+    /// Only the checked buffers pass to the core decoder. The source list has already
+    /// served its purpose by the time the index is needed.
+    fn encoded(mut self, points: &crate::failpoint::Failpoints) -> Option<Encoded> {
+        drop(self.made);
         points.hit("projection.read-index");
         self.file.seek(SeekFrom::Start(self.index_at)).ok()?;
         let mut index = vec![0; self.index_len];
@@ -96,12 +103,11 @@ impl Stored {
         if sum(&index) != self.index_sum {
             return None;
         }
-        Projection::decode(Encoded {
+        Some(Encoded {
             state: self.state,
             index,
             texts: Vec::new(),
         })
-        .ok()
     }
 }
 

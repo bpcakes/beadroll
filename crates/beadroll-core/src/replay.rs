@@ -14,7 +14,7 @@ pub(crate) use batch::Batch;
 use std::collections::{HashMap, HashSet};
 
 use crate::id::EventId;
-use crate::journal::{Journal, Parts, Rest};
+use crate::journal::{Event, Journal, Parts, Rest};
 use crate::json::Value;
 use crate::op::Op;
 use crate::order::Order;
@@ -37,6 +37,12 @@ pub fn replay(journal: Journal) -> Result<State, KeySpace> {
     Ok(replayed(journal)?.0)
 }
 
+/// A snapshot keeps this journal for event reads, so its state shares the journal's events.
+/// Only the operations to apply need an owned copy.
+pub(crate) fn replay_snapshot(journal: &Journal) -> Result<State, KeySpace> {
+    Ok(replay_with(journal.clone(), |event| Box::new(event.rest().clone()))?.0)
+}
+
 /// What a projection keeps of a replay besides its state, to apply the events that come after it.
 pub(crate) struct Replayed {
     /// The claims takeovers superseded.
@@ -56,7 +62,14 @@ struct Takeovers {
 }
 
 /// [`replay`], with what a projection keeps besides the state.
-pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpace> {
+pub(crate) fn replayed(journal: Journal) -> Result<(State, Replayed), KeySpace> {
+    replay_with(journal, Event::take_rest)
+}
+
+fn replay_with(
+    mut journal: Journal,
+    operation: fn(&mut Event) -> Box<Rest>,
+) -> Result<(State, Replayed), KeySpace> {
     let mut order = Order::of(journal.settled_view());
     let Parts {
         mut events,
@@ -64,9 +77,9 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpa
         quarantined,
         invalid,
     } = journal.into_parts();
-    // What each event does, taken from it by index: the state keeps the rest of each event.
+    // Operations in journal order, each released as soon as replay has applied it.
     let mut applying: Vec<Option<Box<Rest>>> = (events.values_mut())
-        .map(|event| Some(event.take_rest()))
+        .map(|event| Some(operation(event)))
         .collect();
     let placeholder = |at: usize| {
         applying

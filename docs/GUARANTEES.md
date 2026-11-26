@@ -26,7 +26,8 @@ same thing*) and the variables bead reads (*Configuration*).
   Projections expose their retained scope, and decoded state parts expose summary scope. Neither
   can acquire full knowledge by loading texts. `Projection::retains` means retained ancestry,
   not membership in the original journal.
-- `Snapshot` owns a settled journal and the state replayed from that exact read. It accepts no
+- `Snapshot` owns a settled journal and the state replayed from that exact read. The journal
+  and state share event metadata for the lifetime of the snapshot. It accepts no
   independently supplied state. Its event readers resolve issues in that state, including valid
   creation events, which name their own ids as the issue. Its immutable
   recap results carry the same snapshot and their own placed set for joining frontiers. A later

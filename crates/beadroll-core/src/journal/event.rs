@@ -207,7 +207,7 @@ impl Event {
     }
 
     /// What it does and how it was found.
-    fn rest(&self) -> &Rest {
+    pub(crate) fn rest(&self) -> &Rest {
         self.0.rest.as_deref().unwrap_or(&TAKEN)
     }
 

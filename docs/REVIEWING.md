@@ -1869,7 +1869,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
     a projection cannot promote it. `Projection::retains` inspects its explicitly partial index.
     Scope is derived, not serialized: projection encoding 11 and its bytes remain unchanged.
   - `Snapshot::from_journal` settles and replays one owned journal; `Tree::snapshot` supplies that
-    read directly. It exposes no mutable parts or constructor accepting a separate state.
+    read directly. The snapshot keeps its journal for event readers, so its replay shares the
+    original event metadata. Standalone replay and projection extension can outlive their input
+    and release applied payloads even when the caller retains a clone of the journal or batch.
+    The snapshot exposes no mutable parts or constructor accepting a separate state.
     `SnapshotEvent` binds issue resolution to that replay, including valid creates: the emitter
     defaults their issue to their own id, and payload validation requires that identity (AQ05).
     `snapshot::Recap` owns its immutable
