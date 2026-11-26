@@ -101,7 +101,11 @@ fn a_tail_ending_in_a_line_not_yet_whole_is_declined() {
         appended.add_segment(&line.as_bytes()[..cut], &next[0].replica, &next[0].origin);
         assert!(!appended.is_readable(), "cut at {cut}");
         assert!(matches!(
-            projection.clone().extend(appended).unwrap(),
+            projection
+                .clone()
+                .prepare_appended(appended)
+                .apply()
+                .unwrap(),
             Extended::Replay
         ));
     }
@@ -116,6 +120,40 @@ fn an_unreadable_line_leaves_the_batch_unreadable() {
     let mut appended = Appended::new();
     appended.add_segment(b"", "a", "segment");
     assert!(appended.is_readable() && appended.is_empty());
+}
+
+/// A missing newline rules out the entire segment before parsing. Later additions to
+/// the same rejected batch also do no work (AU25).
+#[test]
+fn an_incomplete_segment_stops_the_batch_before_parsing_its_prefix() {
+    use super::hostile::base;
+    use crate::work::{Work, counted};
+
+    let record = base().remove(0);
+    let mut line = write(&record.value, Format::COMPACT).unwrap().into_bytes();
+    line.push(b'\n');
+    let mut partial = line.clone();
+    partial.push(b'{');
+    let mut batch = Appended::new();
+    let (_, work) = counted(|| batch.add_segment(&line, &record.replica, &record.origin));
+    assert!(batch.is_readable());
+    assert_eq!(work.of(Work::JournalLine), 1);
+    let replica =
+        std::sync::Arc::downgrade(batch.readable().unwrap().records()[0].shared_replica());
+
+    let (_, work) = counted(|| {
+        batch.add_segment(&partial, &record.replica, &record.origin);
+        batch.add_segment(&line, &record.replica, &record.origin);
+        batch.add_attempt(&line, &record.replica, &record.origin);
+        batch.add(record);
+    });
+    assert!(!batch.is_readable());
+    assert!(
+        replica.upgrade().is_none(),
+        "the batch kept its earlier records"
+    );
+    assert_eq!(work.of(Work::JournalLine), 0);
+    assert_eq!(work.of(Work::RecordDigest), 0);
 }
 
 /// A public caller with raw records pays no serialization cost when the projection is already
@@ -186,7 +224,7 @@ fn applying_a_shared_batch_releases_its_operations_from_the_state() {
     else {
         panic!("a sequential batch should extend the projection");
     };
-    for original in batch.records() {
+    for original in batch.readable().unwrap().records() {
         let id = original.id();
         let metadata = Event::applied(
             id,

@@ -482,7 +482,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   whole (`show`, `comments`, `update`, `claim`, `takeover`) reads in only theirs; `export`, `search`
   and `lint` read every text; and records applied after the projection have the texts of the issues
   they are about read in first, and of the issues that wait, by an import's dependency, for a key a
-  create among them brings, which that create makes an edge in (`Projection::about`): an edge added
+  create among them brings, which that create makes an edge in (`ReadableAppended::about`): an edge added
   or removed changes its issue's texts, which hold its
   additions' metadata, and a change to texts not read in declines. Edges are read through
   `Issue::deps` and `Issue::dep_tags`, which answer as when each edge was a pair of strings with a
@@ -1895,7 +1895,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
     building a full detail or loading texts. The existing golden and projection edge tests
     caught that caller's reliance on the old partial-detail behavior during migration.
   - `Projection::prepare_extension` and `prepare_appended` return an `Extension` that owns
-    the projection and the batch it will try to apply.
+    the projection. Its private plan distinguishes an empty batch, a required replay, and a
+    readable batch it can try to apply. Only the last can carry text locations (AU24).
     Its requested locations are derived once from that pair. Only requested locations can be
     loaded; `apply` consumes both and requests replay if loading is incomplete or the existing
     extension checks decline. Cached reads and transaction materialization use
@@ -2434,7 +2435,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   read it into values by (a last line not yet whole skipped, any other unreadable line reported;
   an attempt whole or not at all). A projection catching up reads those bytes into a journal of
   its own (`projection::Appended`, roll-0668). It declines an incomplete segment tail so the
-  caller cannot advance past it. For in-memory records, `prepare_extension` checks the vector's
+  caller cannot advance past it. Detecting the missing newline discards the builder's journal
+  before parsing the segment. Later additions to the rejected batch do no work on the records.
+  For in-memory records, `prepare_extension` checks the vector's
   length before serializing any record for a projection that requires replay. `prepare_appended`
   takes an already-read batch. The store keeps the projection's eligibility in its checksummed
   source metadata so it can verify unchanged files or choose replay before reading the index.

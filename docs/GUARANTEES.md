@@ -34,7 +34,10 @@ same thing*) and the variables bead reads (*Configuration*).
   read does not change an existing snapshot. `Tree::snapshot` reads one supplied git tree; it does
   not fetch or claim that a mutable store's files were read atomically.
 - A projection that already requires replay declines a nonempty batch before converting its
-  records. An empty batch leaves the projection as it was. For a batch it will try to apply,
+  records. An empty batch leaves the projection as it was. A batch with a recorded read error
+  requests replay before selecting any saved texts, even when earlier records were readable.
+  An incomplete segment discards the batch before its complete lines are parsed.
+  For a batch it will try to apply,
   the preparation owns the projection and exact records and selects the texts to load from that
   state. Application consumes the preparation. Incomplete loading or an unsafe batch requests
   replay. The store can reuse an unchanged cache even when the projection cannot extend. A

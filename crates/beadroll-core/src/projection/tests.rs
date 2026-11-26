@@ -31,10 +31,10 @@ pub(crate) use world::history;
 use world::{MACHINES, Machine, World, Written, load, records, str_of};
 
 use super::parts::Copying;
-use super::{Causes, Projection, decode_state};
+use super::{Appended, Causes, Extended, Projection, decode_state};
 use crate::id::EventId;
 use crate::projection::parts::Compaction;
-use crate::state::State;
+use crate::state::{KeySpace, State};
 
 /// Whether generated histories include malformed or conflicting records.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +50,23 @@ pub(crate) enum HistoryKind {
 
 /// The seeded generator the tests of the crate draw from: the same draws on every run.
 pub(crate) use beadroll_test_support::values::Rng;
+
+impl Projection {
+    /// The issues this track would load for a batch shared across the differential tests.
+    fn about(&self, batch: &Appended) -> Vec<EventId> {
+        batch
+            .readable()
+            .map_or_else(Vec::new, |batch| batch.about(self))
+    }
+
+    /// Applies a batch with the texts the test chose to load, including intentionally missing ones.
+    pub(crate) fn extend(self, records: impl Into<Appended>) -> Result<Extended, KeySpace> {
+        match records.into().into_readable() {
+            Some(batch) => self.extend_readable(batch),
+            None => Ok(Extended::Replay),
+        }
+    }
+}
 
 /// Whether two states answer alike: everything replay builds, and what a state answers with of its
 /// events (who wrote what a register holds, where machines' journals broke).

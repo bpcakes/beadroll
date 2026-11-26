@@ -1,8 +1,8 @@
 //! Public projection preparation, loading, writeback and retry against full replay.
 
 use beadroll_core::id::EventId;
-use beadroll_core::json::Value;
-use beadroll_core::projection::{Encoded, Extended, Projection, Record, project};
+use beadroll_core::json::{Format, Value, write};
+use beadroll_core::projection::{Appended, Encoded, Extended, Projection, Record, project};
 use beadroll_core::replay::replay;
 use beadroll_core::state::{State, Texts};
 use beadroll_test_support::events::{Event, id, journal};
@@ -57,6 +57,39 @@ fn load(state: &mut State, file: &[u8]) {
         state
             .read_texts(uid, place, &file[at..at + place.len as usize])
             .unwrap();
+    }
+}
+
+/// A complete update needs the issue's saved text. A trailing partial line or an in-memory
+/// record without an id commits the batch to replay before any text is requested (AU24).
+#[test]
+fn an_unreadable_batch_requests_no_texts_for_its_valid_prefix() {
+    let mut original = project(journal(&history())).unwrap();
+    let saved = original.prepare_rewrite(0).unwrap();
+    let read = decoded(saved.encoded().clone(), saved.generation());
+    let expected = read.state().wanted_texts([uid(1)]);
+    assert_eq!(expected.len(), 1);
+
+    let mut line = write(&changed(), Format::COMPACT).unwrap().into_bytes();
+    line.push(b'\n');
+    let mut batch = Appended::new();
+    batch.add_segment(&line, "a", "test");
+    let mut complete = read.clone().prepare_appended(batch.clone());
+    assert_eq!(complete.wanted_texts(), expected);
+    let (issue, place) = expected[0];
+    let at = place.at as usize;
+    let texts = &saved.encoded().texts[at..at + place.len as usize];
+    complete.read_texts(issue, place, texts).unwrap();
+    assert!(matches!(complete.apply().unwrap(), Extended::Applied(_)));
+
+    batch.add_segment(b"{", "a", "test");
+    for mut unreadable in [
+        read.clone().prepare_appended(batch),
+        read.prepare_extension(vec![record(changed()), record(Value::Null)]),
+    ] {
+        assert!(unreadable.wanted_texts().is_empty());
+        assert!(unreadable.read_texts(issue, place, texts).is_err());
+        assert!(matches!(unreadable.apply().unwrap(), Extended::Replay));
     }
 }
 

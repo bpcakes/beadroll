@@ -122,6 +122,7 @@ type Line = (Envelope, Digest);
 impl Journal {
     /// Reads `line` into what this journal keeps of it.
     fn read_line(&self, line: &[u8]) -> Result<Line, ParseError> {
+        crate::work::tally(crate::work::Work::JournalLine, 1);
         let envelope = json::deserialize(line)?;
         Ok((envelope, self.shared.digester.digest(line)))
     }

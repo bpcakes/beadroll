@@ -38,6 +38,8 @@ pub(crate) enum Work {
     Probe,
     /// In-memory records serialized and hashed for a journal.
     RecordDigest,
+    /// Journal lines submitted to the event parser.
+    JournalLine,
 }
 
 /// Counts `n` units of `work`, in this crate's tests; anywhere else it does nothing.
@@ -61,7 +63,7 @@ mod counter {
     use super::Work;
 
     /// How many kinds of work there are.
-    const KINDS: usize = 7;
+    const KINDS: usize = 8;
 
     thread_local! {
         static COUNTS: [Cell<usize>; KINDS] = const { [const { Cell::new(0) }; KINDS] };
@@ -77,6 +79,7 @@ mod counter {
             Work::Key => 4,
             Work::Probe => 5,
             Work::RecordDigest => 6,
+            Work::JournalLine => 7,
         }
     }
 
