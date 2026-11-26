@@ -6,6 +6,43 @@ use std::time::{Duration, Instant};
 use super::*;
 use crate::LockState;
 
+/// Replay must fail if it cannot buffer an accepted attempt. A retry sees the confirmed claim
+/// in that same file (AU01).
+#[test]
+fn an_allocation_failure_reading_an_accepted_attempt_fails_the_view() {
+    let home = tempfile::tempdir().unwrap();
+    let ws = failing(
+        home.path(),
+        Some("this build"),
+        Some("journal.read-attempt=errno(ENOMEM)"),
+    );
+    begun(&ws);
+    let mut data = Object::new();
+    data.insert("mode".into(), Value::from("online"));
+    let claim = [event(5, &[4], "claim", 2, data)];
+    let path = crate::attempt_path(&ws, &claim);
+    write_attempt_file(&ws, &path, &claim).unwrap();
+
+    let errno = rustix::io::Errno::NOMEM.raw_os_error();
+    let expected = beadroll_git::IoError::at(&std::io::Error::from_raw_os_error(errno), &path);
+    assert_eq!(
+        view(&ws).unwrap_err(),
+        crate::ViewError::Store(crate::Error::Io(expected))
+    );
+    assert_eq!(ws.settings.failpoints.hits("journal.read-attempt"), 1);
+    let state = view(&ws).unwrap();
+    assert_eq!(
+        state
+            .issue_named(&id(2))
+            .unwrap()
+            .claim()
+            .unwrap()
+            .id
+            .to_string(),
+        id(5)
+    );
+}
+
 /// A reader outside the lock lists the attempt files once it has read the segments, whatever it
 /// listed before: a claims directory that gains a file within one tick of a listing keeps its
 /// identity, and a listing taken before the segments were read leaves out an attempt that a record

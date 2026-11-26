@@ -172,7 +172,8 @@ The journal holds sequential events; ownership is kept apart from it. An
 *attempt* (a `claim`, `release` or `takeover`, plus any edits made in the same
 command) is one small file under `events/<machine>/claims/`, written whole, and
 such a file exists only once the remote has accepted the push that carried it.
-A reader therefore sees all of an attempt or none of it.
+A reader therefore sees all of an attempt or none of it. If replay cannot allocate the buffer
+for an accepted attempt, the command fails with an `IO` error naming the file.
 
 A claim makes its owner the issue's assignee. A release or a reopen (a takeover's
 too) gives back the assignee the issue had before the claim, none or a hand-set

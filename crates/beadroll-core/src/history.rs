@@ -89,14 +89,24 @@ const ENTRY_BYTES: usize = 16 + 9;
 /// damaged holds. Room is made for no more entries than the bytes can hold, whatever count they
 /// claim.
 pub fn from_cached(bytes: &[u8]) -> Option<Vec<HistoryEntry>> {
+    read_cache(bytes).ok()
+}
+
+fn read_cache(bytes: &[u8]) -> Result<Vec<HistoryEntry>, Unreadable> {
     let mut r = Reader::new(bytes);
-    let count = r.count().ok()?;
-    let mut entries = Vec::with_capacity(count.min(bytes.len() / ENTRY_BYTES));
-    for _ in 0..count {
-        entries.push(HistoryEntry::read(&mut r).ok()?);
+    let count = r.count()?;
+    if count > (bytes.len() - r.at()) / ENTRY_BYTES {
+        return Err(Unreadable("a history entry count"));
     }
-    r.done().ok()?;
-    Some(entries)
+    let mut entries = Vec::new();
+    entries
+        .try_reserve_exact(count)
+        .map_err(|_| Unreadable("history entry allocation"))?;
+    for _ in 0..count {
+        entries.push(HistoryEntry::read(&mut r)?);
+    }
+    r.done()?;
+    Ok(entries)
 }
 
 impl HistoryEntry {

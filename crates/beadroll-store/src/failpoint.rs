@@ -11,8 +11,9 @@
 //! Actions. Every point but `clock` takes `exit(N)`, `sigkill` (a real SIGKILL), `sleep(MS)` and
 //! `pause-until(PATH)`, which touches `PATH.ready` and waits up to 300 seconds for `PATH.go`.
 //! `torn-sigkill` (`append.mid`) writes half a line, fsyncs it and dies; `errno(NAME)`
-//! (`atomic-write:`, `atomic-flush:`) fails the write with ENOSPC, EFBIG, EIO, EACCES, EPERM,
-//! EROFS, EDQUOT, EMFILE, ENFILE, ENOENT or EINTR; `fail-reply` (`push.reply`) reports a push that succeeded as
+//! (`atomic-write:`, `atomic-flush:`, `journal.read-attempt`) fails the operation with ENOSPC,
+//! EFBIG, EIO, EACCES, EPERM, EROFS, EDQUOT, EMFILE, ENFILE, ENOMEM, ENOENT or EINTR;
+//! `fail-reply` (`push.reply`) reports a push that succeeded as
 //! failed and drops git's status line with it, the lost acknowledgement; `error(CODE)` fails
 //! `publish.result` or `fetch.result` with that code, and the command at
 //! `ownership.after-confirm`, leaving its attempt confirmed and its pending twin in place; `skip`
@@ -34,7 +35,8 @@
 //! round releases the store lock and before saving its publication bookkeeping;
 //! `claim.before-push`, between a claim's fetch and
 //! push; `pending.after-list`, between listing and reading `pending/`; `journal.after-enumerate`,
-//! `journal.before-read` (before each segment is read), `view.before-load-pending` and
+//! `journal.before-read` (before each segment is read), `journal.read-attempt` (each accepted
+//! attempt read during full replay), `view.before-load-pending` and
 //! `identity.before-link`, for readers racing writers; `recap.before-save`, once a recap's answer
 //! is written and before it takes the cursor's lock;
 //! `projection.before-save`, once a projection to write back is caught up or made and before its
@@ -65,7 +67,7 @@ use beadroll_core::code::Code;
 use crate::error::Error;
 
 /// The points bead has, besides the path-qualified atomic write and flush points above.
-pub const POINTS: [&str; 27] = [
+pub const POINTS: [&str; 28] = [
     "ownership.before-publish",
     "ownership.before-transaction",
     "ownership.after-publish-ok",
@@ -85,6 +87,7 @@ pub const POINTS: [&str; 27] = [
     "pending.after-list",
     "journal.after-enumerate",
     "journal.before-read",
+    "journal.read-attempt",
     "projection.before-save",
     "projection.texts-appended",
     "projection.read",
@@ -118,7 +121,7 @@ pub enum Action {
     Sigkill,
     /// At `append.mid`: half the line written and fsynced, then `SIGKILL`.
     TornSigkill,
-    /// At `atomic-write` or `atomic-flush`: the write fails with this error number.
+    /// Fail the file operation with this error number.
     Errno(i32),
     /// At `push.reply`: a push the remote accepted is reported as failed, its status line dropped.
     FailReply,
@@ -144,7 +147,7 @@ pub enum Action {
 pub enum Fired {
     /// Write half the line, fsync it, then [`kill_self`].
     TornSigkill,
-    /// Fail the write with this error number.
+    /// Fail the file operation with this error number.
     Errno(i32),
     /// Report the accepted push as failed.
     FailReply,
@@ -397,7 +400,9 @@ fn allowed(point: &str, action: &Action) -> Result<(), String> {
         }
         Action::TornSigkill => point == "append.mid",
         Action::Errno(_) => {
-            point.starts_with("atomic-write:") || point.starts_with("atomic-flush:")
+            point.starts_with("atomic-write:")
+                || point.starts_with("atomic-flush:")
+                || point == "journal.read-attempt"
         }
         Action::FailReply => point == "push.reply",
         Action::Error(_) => matches!(
@@ -482,7 +487,7 @@ fn nanoseconds(text: &str) -> Option<i128> {
     number.checked_mul(scale)
 }
 
-/// The error numbers a failpoint may fail a write with, by name.
+/// The error numbers a failpoint may return, by name.
 fn errno_named(name: &str) -> Option<i32> {
     use rustix::io::Errno;
     let errno = match name {
@@ -495,6 +500,7 @@ fn errno_named(name: &str) -> Option<i32> {
         "EDQUOT" => Errno::DQUOT,
         "EMFILE" => Errno::MFILE,
         "ENFILE" => Errno::NFILE,
+        "ENOMEM" => Errno::NOMEM,
         "ENOENT" => Errno::NOENT,
         "EINTR" => Errno::INTR,
         _ => return None,

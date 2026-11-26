@@ -22,6 +22,13 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Journal replay and history cache review (roll-0668.1, ids AU)
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AU01 | Medium | Journal replay could omit a confirmed claim when it could not allocate the buffer for its accepted attempt | fixed | Replay propagates the allocation failure as an `IO` error naming the attempt file | `beadroll-store`: `projection::tests::attempts::an_allocation_failure_reading_an_accepted_attempt_fails_the_view` |
+| AU02 | Low | The history cache fixture failed the generic count check before it reached the row allocation bound | fixed | The decoder checks the remaining bytes before reserving rows. The test checks the specific count error one byte below the minimum for two rows and decodes both rows at the minimum | `beadroll-core`: `history::tests::a_count_beyond_what_the_bytes_hold_is_no_cache` |
+
 ## Weeding audit (2026-11-17, ids AT)
 
 Not reported by a review: an audit for workarounds and copied patterns that the next change would

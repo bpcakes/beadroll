@@ -59,14 +59,19 @@ fn bytes_cut_short_or_running_on_are_no_cache() {
     assert_eq!(from_cached(&longer), None);
 }
 
-/// Bytes that claim more entries than they can hold are no cache, the room made for the entries
-/// bounded by the bytes rather than by the count they claim.
+/// Even when the generic count fits, the decoder rejects a count that exceeds the space for
+/// whole rows before reserving them (AU02). The count prefix takes space of its own.
 #[test]
 fn a_count_beyond_what_the_bytes_hold_is_no_cache() {
     let mut w = Writer::default();
-    w.count(1 << 20);
+    w.count(2);
     let mut bytes = w.finish();
-    // every one of them, as zeros, a readable entry, until the bytes run out
-    bytes.resize(bytes.len() + (1 << 20) - 8, 0);
+    // Two minimal rows, with the final byte of the second row missing.
+    bytes.resize(bytes.len() + 2 * 25 - 1, 0);
+    assert_eq!(Reader::new(&bytes).count(), Ok(2));
+    assert_eq!(read_cache(&bytes), Err(Unreadable("a history entry count")));
     assert_eq!(from_cached(&bytes), None);
+
+    bytes.push(0);
+    assert_eq!(from_cached(&bytes).unwrap().len(), 2);
 }

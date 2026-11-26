@@ -242,13 +242,7 @@ pub fn read(path: &Path) -> Result<Vec<u8>, IoError> {
 /// The bytes of `path` up to its length when it was opened, and the identity of what was read:
 /// the open file's, up to those bytes, so that a file replaced or appended to while it was read
 /// is never taken for what was read (roll-lqjj.2).
-pub(crate) fn read_keyed(path: &Path) -> Result<(Vec<u8>, Option<FileKey>), IoError> {
-    read_opened(path).map_err(|e| IoError::at(&e, path))
-}
-
-/// The bytes of `path` up to its length when it was opened, and the identity of what was read
-/// ([`read_keyed`]).
-fn read_opened(path: &Path) -> io::Result<(Vec<u8>, Option<FileKey>)> {
+pub(crate) fn read_keyed(path: &Path) -> io::Result<(Vec<u8>, Option<FileKey>)> {
     let file = File::open(path)?;
     let meta = file.metadata()?;
     let data = read_up_to(file, meta.len())?;
@@ -303,7 +297,7 @@ pub(crate) fn read_json_keyed<T>(
 ) -> (Result<T, Unreadable>, Option<FileKey>) {
     // up to its length when it was opened, as `read_keyed` reads: bytes appended after are not
     // what the identity measured
-    match read_opened(path) {
+    match read_keyed(path) {
         Ok((data, key)) => {
             let read = match std::str::from_utf8(&data) {
                 Ok(_) => parse(&data),
