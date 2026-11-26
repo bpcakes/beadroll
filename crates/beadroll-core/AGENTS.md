@@ -46,8 +46,9 @@ consumer on tokio calls through `spawn_blocking`.
 
 - `src/lib.rs`: the crate root, listing the modules.
 - `src/history.rs`: `HistoryEntry`, display metadata derived from a settled event, and its
-  disposable cache encoding (`cached`, `from_cached`), in the projection's codec. It has no operation payload or authority to enter replay; issue
-  and machine ids stay unresolved for the caller's current keys and aliases.
+  disposable cache encoding (`cached`, `from_cached`), in the projection's codec. It has no
+  operation payload or authority to enter replay; issue and machine ids stay unresolved for the
+  caller's current keys and aliases.
 - `src/json.rs` (`json/read.rs`, `json/write.rs`, `json/int.rs`): `Value` and its `Deserialize`,
   `parse` (serde_json), `write`, `Format`.
 - `src/text.rs`: `repr`, `str_of`, `strip`, `b36`, and `surrogateescaped`, `repr_bytes`,
@@ -141,8 +142,8 @@ consumer on tokio calls through `spawn_blocking`.
 - `src/replay/tests.rs`: replay is invariant under delivery order, on histories of the
   differential tests' generator (`projection::tests::history`, roll-k2wy.14.4).
 - What core's unit tests share: `projection::tests` (`history`, `Rng`, and `hostile`'s `event` and
-  `id`), and `projection::journal_of`, records read into a journal in their files' order, which
-  `read_batch` settles. They take from beadroll-test-support only what holds none of core's
+  `id`), and `projection::journal_of`, records read into a journal in their files' order, as
+  `projection::Appended` reads a batch. They take from beadroll-test-support only what holds none of core's
   types (`events::id_at`, `values::Rng`): they build a second `beadroll_core` there.
 
 ## Edit here for X
