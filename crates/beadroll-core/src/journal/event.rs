@@ -22,7 +22,7 @@ pub struct Event(Arc<Read>);
 
 /// What was read of one record: what a replayed state keeps of it, its causes, machine and actor,
 /// and the rest, which replay takes and lets go of once it has applied the event.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct Read {
     id: EventId,
     /// Its causes, as listed: the members of `deps` that are UUIDs.
@@ -211,13 +211,13 @@ impl Event {
         self.0.rest.as_deref().unwrap_or(&TAKEN)
     }
 
-    /// What it does, taken for replay to apply: moved out when this is the event's only handle,
-    /// so that it goes once applied; copied when a journal that shares the event lives on.
+    /// Takes the operation for replay and leaves only its metadata in this handle. Other
+    /// owners of a shared event still need the original operation for their own reads.
     pub(crate) fn take_rest(&mut self) -> Box<Rest> {
-        match Arc::get_mut(&mut self.0).and_then(|read| read.rest.take()) {
-            Some(rest) => rest,
-            None => Box::new(self.rest().clone()),
-        }
+        Arc::make_mut(&mut self.0)
+            .rest
+            .take()
+            .unwrap_or_else(|| Box::new(TAKEN.clone()))
     }
 
     /// Its id.

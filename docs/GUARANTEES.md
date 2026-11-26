@@ -40,7 +40,9 @@ same thing*) and the variables bead reads (*Configuration*).
   journal file from the cache's own timestamp tick is verified against its saved checksum before
   reuse. The checksummed source metadata tells the store whether it can prepare new records.
   A source mismatch triggers replay before the store reads the saved index. Store reads and
-  sync transactions use the same text-loading path.
+  sync transactions use the same text-loading path. Applying a cloned batch retains only event
+  metadata in the projection's ancestry. The original batch still owns its operations and can
+  be applied to another projection.
 - A prepared writeback holds an exclusive borrow of its projection, its encoded bytes, text
   locations and text-file generation. Acknowledgement consumes that preparation and updates
   only its source projection. The store acknowledges after both writes succeed. A failed write

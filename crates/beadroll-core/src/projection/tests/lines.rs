@@ -155,3 +155,56 @@ fn preparation_checks_for_replay_before_hashing_in_memory_records() {
     assert!(matches!(result, Extended::Applied(_)));
     assert_eq!(work.of(Work::RecordDigest), 1);
 }
+
+/// A shared input keeps its original operations. Both the extended state and a full replay
+/// retain only the event metadata, including for a superseded update (AU21).
+#[test]
+fn applying_a_shared_batch_releases_its_operations_from_the_state() {
+    use super::hostile::{HERE, base, event, fields, record};
+    use crate::journal::{Event, JournalOrder};
+    use crate::replay::replay;
+
+    let updates: Vec<Record> = [(4, "superseded"), (5, "current")]
+        .into_iter()
+        .map(|(n, title)| {
+            record(
+                event(n, HERE, &[n - 1], "set", 2, fields(title)),
+                HERE,
+                JournalOrder::Sequenced,
+            )
+        })
+        .collect();
+    let batch = Appended::from(updates.clone());
+    let mut journal = journal_of(base().into_iter().chain(updates));
+    let replayed = replay(journal.clone()).unwrap();
+    let start = project(journal_of(base())).unwrap();
+    let Extended::Applied(projected) = start
+        .clone()
+        .prepare_appended(batch.clone())
+        .apply()
+        .unwrap()
+    else {
+        panic!("a sequential batch should extend the projection");
+    };
+    for original in batch.records() {
+        let id = original.id();
+        let metadata = Event::applied(
+            id,
+            original.deps().into(),
+            original.shared_replica().clone(),
+            original.shared_actor().cloned(),
+        );
+        assert_eq!(original.op_name(), "set");
+        assert_eq!(journal.settled_view().event(id).unwrap().op_name(), "set");
+        for state in [projected.state(), &replayed] {
+            assert!(
+                state.knowledge.events.get(&id) == Some(&metadata),
+                "retained the operation for {id}"
+            );
+        }
+    }
+    let Extended::Applied(again) = start.prepare_appended(batch).apply().unwrap() else {
+        panic!("the original batch must still apply");
+    };
+    assert_eq!(bytes(&again), bytes(&projected));
+}
