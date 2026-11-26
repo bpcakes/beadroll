@@ -182,6 +182,37 @@ fn a_projection_waiting_for_a_cause_is_set_aside_before_batch_preparation() {
     assert!(view.state().unwrap().resolve("ex-waiting").is_some());
 }
 
+/// After an unreadable record, only full replay visits later records and applies them (AU27).
+#[test]
+fn replay_recovers_the_suffix_that_batch_preparation_leaves_unread() {
+    use beadroll_core::projection::Record;
+    use beadroll_test_support::events::{Event, id};
+
+    let fixture = Fixture::new("");
+    let projection = beadroll_store::projection(&fixture.ws).unwrap();
+    assert!(projection.extendable());
+    let mut view = Materialized::projected(projection);
+    let create = Event::new(&id(1), "create")
+        .replica("a")
+        .data(json!({"key": "ex-after", "fields": {}}))
+        .json();
+    let records = [Value::Null, create].map(|value| Record {
+        value,
+        replica: "a".into(),
+        origin: String::new(),
+        sequenced: true,
+    });
+    let visits = [std::cell::Cell::new(0), std::cell::Cell::new(0)];
+    let emitted = records.iter().enumerate().map(|(i, record)| {
+        visits[i].set(visits[i].get() + 1);
+        record
+    });
+    view.ensure(&fixture.ws, "a", emitted).unwrap();
+    assert_eq!(visits.map(std::cell::Cell::into_inner), [2, 1]);
+    assert!(matches!(view, Materialized::Replayed { applied: 2, .. }));
+    assert!(view.state().unwrap().resolve("ex-after").is_some());
+}
+
 /// Attach only after the last application: replacement during application is a different lifetime.
 fn observe(tx: &mut Tx<'_>, view: View, observed: &Arc<Mutex<Vec<LockState>>>) {
     if matches!(view, View::Replay) {

@@ -60,6 +60,35 @@ fn load(state: &mut State, file: &[u8]) {
     }
 }
 
+/// A lazy producer yields the first unreadable record and keeps its remaining suffix (AU27).
+#[test]
+fn collecting_a_batch_stops_the_producer_at_the_first_unreadable_record() {
+    let valid = history();
+    for (total, bad) in [
+        (1024, Some(0)),
+        (1024, Some(1)),
+        (3, Some(2)),
+        (3, None),
+        (0, None),
+    ] {
+        let mut produced = 0;
+        let mut source = (0..total).map(|i| {
+            produced += 1;
+            record(if Some(i) == bad {
+                Value::Null
+            } else {
+                valid[i % valid.len()].clone()
+            })
+        });
+        let batch: Appended = source.by_ref().collect();
+        let remaining = source.len();
+        let expected = bad.map_or(total, |i| i + 1);
+        assert_eq!(produced, expected, "first unreadable at {bad:?}");
+        assert_eq!(remaining, total - expected);
+        assert_eq!(batch.is_readable(), bad.is_none());
+    }
+}
+
 /// A complete update needs the issue's saved text. A trailing partial line or an in-memory
 /// record without an id commits the batch to replay before any text is requested (AU24).
 #[test]

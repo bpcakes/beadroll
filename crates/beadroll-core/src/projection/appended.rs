@@ -146,11 +146,15 @@ impl Appended {
     }
 }
 
+/// Collects through the first unreadable record, leaving the rest of a borrowed iterator available.
 impl FromIterator<Record> for Appended {
     fn from_iter<I: IntoIterator<Item = Record>>(records: I) -> Appended {
         let mut appended = Appended::new();
         for record in records {
             appended.add(record);
+            if !appended.is_readable() {
+                break;
+            }
         }
         appended
     }

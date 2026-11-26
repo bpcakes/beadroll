@@ -2439,7 +2439,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   before parsing the segment. For complete input, catch-up uses the journal's line parser
   and record installation but stops at the first unreadable line. Full replay continues to
   collect diagnostics and recover later records. Later additions to the rejected batch do
-  no work on the records.
+  no work on the records. When collecting a lazy iterator, the batch consumes the first
+  unreadable record and stops. A transaction keeps the original iterator for full replay.
   For in-memory records, `prepare_extension` checks the vector's
   length before serializing any record for a projection that requires replay. `prepare_appended`
   takes an already-read batch. The store keeps the projection's eligibility in its checksummed
