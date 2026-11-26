@@ -36,9 +36,10 @@ same thing*) and the variables bead reads (*Configuration*).
   records. An empty batch leaves the projection as it was. For a batch it will try to apply,
   the preparation owns the projection and exact records and selects the texts to load from that
   state. Application consumes the preparation. Incomplete loading or an unsafe batch requests
-  replay. The store can answer from a settled, unchanged cache even when the projection cannot
-  extend. When records have changed, it checks that the projection can extend before preparing
-  those records. Store reads and sync transactions use the same text-loading path.
+  replay. The store can reuse an unchanged cache even when the projection cannot extend. A
+  journal file from the cache's own timestamp tick is verified against its saved checksum before
+  reuse. The store checks that the projection can extend before preparing new records. Store
+  reads and sync transactions use the same text-loading path.
 - A prepared writeback holds an exclusive borrow of its projection, its encoded bytes, text
   locations and text-file generation. Acknowledgement consumes that preparation and updates
   only its source projection. The store acknowledges after both writes succeed. A failed write

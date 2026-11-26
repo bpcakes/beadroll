@@ -193,6 +193,47 @@ fn a_waiting_projection_reads_changed_records_only_during_replay() {
     }
 }
 
+/// A file of the projection's own timestamp can still match its checksum. A waiting
+/// projection verifies that file and reuses the other settled segments (AU14).
+#[test]
+fn a_waiting_projection_only_verifies_the_file_of_its_own_tick() {
+    for kind in [JournalFile::Segment, JournalFile::Attempt] {
+        let home = tempfile::tempdir().unwrap();
+        let ws = store(home.path(), Some("this build"));
+        begun(&ws);
+        let waiting = [title(6, &[4, 99], 2, "waiting")];
+        let path = match kind {
+            JournalFile::Segment => {
+                let path = ws.events_dir.join(HERE).join("000002.jsonl");
+                std::fs::write(&path, crate::journal::encode_events(&waiting).unwrap()).unwrap();
+                path
+            }
+            JournalFile::Attempt => {
+                let path = crate::attempt_path(&ws, &waiting);
+                write_attempt_file(&ws, &path, &waiting).unwrap();
+                path
+            }
+        };
+        let tick = std::time::SystemTime::now() + Duration::from_secs(60);
+        crate::testing::set_modified(&path, tick);
+        assert!(!projection(&ws).unwrap().extendable());
+        crate::testing::set_modified(&projection_path(&ws), tick);
+
+        let reader = failing(
+            home.path(),
+            Some("this build"),
+            Some("journal.before-read@always=sleep(0);journal.read-attempt@always=sleep(0)"),
+        );
+        let state = view(&reader).unwrap();
+        assert!(state.pending().contains(&EventId::parse(&id(6)).unwrap()));
+        assert_eq!(
+            reader.settings.failpoints.hits("journal.before-read"),
+            u64::from(kind == JournalFile::Segment)
+        );
+        assert_eq!(reader.settings.failpoints.hits("journal.read-attempt"), 0);
+    }
+}
+
 /// Under the store lock each attempt file is stat-ed once a phase, whoever asks, and again once
 /// bead writes it: an attempt replaced under the lock, at the same length, is read as it is now
 /// (roll-lqjj.30). Outside the lock nothing is kept, and a new phase stats every file again.
