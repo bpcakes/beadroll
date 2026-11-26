@@ -31,6 +31,9 @@ consumer on tokio calls through `spawn_blocking`.
   against that state; its `Recap` keeps the selection, frontier and placed set together.
 - `replay/batch.rs`: `Batch` owns state during event application. Only consuming full or
   changed-record finishing returns it, after dependency holes and derived indexes are settled.
+- `projection/appended.rs`: `Appended`, the batch a projection takes in, a journal of it alone
+  not yet settled: a store reads it from the bytes its files grew by (`add_segment`,
+  `add_attempt`), a transaction and a test build it of `Record`s (roll-0668).
 - `projection/extension.rs`: `prepare_extension` owns a projection and its exact batch; it
   selects and checks text loading before consuming application. `projection/writeback.rs`:
   `prepare_append` and `prepare_rewrite` lend `Writeback`, freezing a projection alongside its
@@ -43,7 +46,7 @@ consumer on tokio calls through `spawn_blocking`.
 
 - `src/lib.rs`: the crate root, listing the modules.
 - `src/history.rs`: `HistoryEntry`, display metadata derived from a settled event, and its
-  disposable cache encoding. It has no operation payload or authority to enter replay; issue
+  disposable cache encoding (`cached`, `from_cached`), in the projection's codec. It has no operation payload or authority to enter replay; issue
   and machine ids stay unresolved for the caller's current keys and aliases.
 - `src/json.rs` (`json/read.rs`, `json/write.rs`, `json/int.rs`): `Value` and its `Deserialize`,
   `parse` (serde_json), `write`, `Format`.

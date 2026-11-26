@@ -453,7 +453,7 @@ fn an_import_a_followed_child_leaves_waiting_is_not_written_again() {
     let mut file = super::TextFile::new();
     let projection = super::super::project(super::hostile::journal(&held)).unwrap();
     let mut projection = super::read_back(&projection, &mut file, super::WriteBack::Encoded);
-    let about = projection.about(std::slice::from_ref(&child));
+    let about = projection.about_records(std::slice::from_ref(&child));
     let import = EventId::parse(&id(15)).unwrap();
     assert!(
         about.contains(&import),

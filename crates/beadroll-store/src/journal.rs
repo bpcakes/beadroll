@@ -320,7 +320,7 @@ pub fn read_attempt(path: &Path, problems: Option<&mut Vec<Problem>>) -> Vec<Val
 
 /// The events of the attempt file at `path` whose bytes are `data` (`None`: it could not be read),
 /// as [`read_attempt`] reads them.
-pub(crate) fn attempt_events(
+fn attempt_events(
     path: &Path,
     data: Option<&[u8]>,
     problems: Option<&mut Vec<Problem>>,

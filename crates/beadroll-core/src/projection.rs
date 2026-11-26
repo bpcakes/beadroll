@@ -32,6 +32,7 @@
 //! what changes them ([`crate::state::Issues`]), and events are only ever added between
 //! compactions.
 
+mod appended;
 pub(crate) mod codec;
 mod extend;
 mod extension;
@@ -44,14 +45,16 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::{DefaultHasher, Hasher as _};
 
 use crate::id::EventId;
-use crate::journal::{Journal, JournalOrder};
-use crate::json::Value;
+use crate::journal::Journal;
 use crate::order::position;
 use crate::replay::replayed;
 use crate::state::{KeySpace, State, TextPlace, Texts};
 
 use text_codec::read_texts;
 
+#[cfg(test)]
+pub(crate) use appended::journal_of;
+pub use appended::{Appended, Record};
 pub use codec::Unreadable;
 pub use extend::Extended;
 pub use extension::Extension;
@@ -102,37 +105,6 @@ pub fn sum(bytes: &[u8]) -> [u8; 16] {
         *slot = byte;
     }
     out
-}
-
-/// A record of a journal's files, to apply: an event as it was read, the machine whose folder held
-/// it, the file, and whether it is one of that machine's journal's records (an attempt file's are
-/// not).
-#[derive(Clone, Debug)]
-pub struct Record {
-    /// The event, as read.
-    pub value: Value,
-    /// The machine whose folder held it.
-    pub replica: String,
-    /// The file it was read from.
-    pub origin: String,
-    /// Whether it is a record of that machine's journal.
-    pub sequenced: bool,
-}
-
-/// A journal of `records`, each taken in with the order its file gives it (a journal's records
-/// sequenced, an attempt file's not), not yet settled: what a batch, or a test's history, is read
-/// into.
-pub(crate) fn journal_of(records: impl IntoIterator<Item = Record>) -> Journal {
-    let mut journal = Journal::new();
-    for record in records {
-        let order = if record.sequenced {
-            JournalOrder::Sequenced
-        } else {
-            JournalOrder::Attempt
-        };
-        journal.add(record.value, &record.replica, &record.origin, order);
-    }
-    journal
 }
 
 /// A journal's state, replayed, with what applying the events that come after it needs.

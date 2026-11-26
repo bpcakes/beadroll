@@ -379,6 +379,11 @@ impl Journal {
         &self.quarantined
     }
 
+    /// Every record with a readable id, in the order added, settled or not.
+    pub(crate) fn raw(&self) -> &[Event] {
+        &self.raw
+    }
+
     /// Whether every record added has been judged.
     pub fn is_settled(&self) -> bool {
         self.settled

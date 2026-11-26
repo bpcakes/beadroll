@@ -6,6 +6,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A projection catching up reads the bytes its journal's files grew by straight into a journal,
+  as a whole journal is read (roll-lqjj.53.1), where it built a value for each line and printed it
+  again to hash it (roll-0668). `bead log`'s history cache is kept in the projection's binary
+  codec rather than as JSON, ids as their 16 bytes (`bead history 2`; an older cache is rebuilt
+  once). Output and format 1 are unchanged.
+
 - Actor detection recognises Cursor sessions (`CURSOR_CONVERSATION_ID` and `CURSOR_AGENT`),
   recording `agent: "cursor"` and the conversation id as the thread so concurrent Cursor threads
   (including those hosted by T3 Code) hold distinct claims instead of falling back to `human`. When

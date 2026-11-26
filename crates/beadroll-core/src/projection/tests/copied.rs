@@ -46,7 +46,7 @@ fn held() -> Vec<Record> {
 /// `projection`, read back and written back from `file`, extended by `batch` as a store extends it.
 fn taken(projection: &Projection, file: &mut TextFile, batch: Vec<Record>) -> Projection {
     let mut read = read_back(projection, file, WriteBack::Uncompacted);
-    let about = read.about(&batch);
+    let about = read.about_records(&batch);
     super::read_in(read.state_mut(), file, Some(about));
     match read.extend(batch).unwrap() {
         Extended::Applied(extended) => *extended,

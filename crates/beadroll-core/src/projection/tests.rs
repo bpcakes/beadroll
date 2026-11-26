@@ -16,6 +16,7 @@ mod followed;
 mod forged;
 pub(crate) mod hostile;
 mod known;
+mod lines;
 mod marked;
 mod numbered;
 pub(crate) mod owned;
@@ -30,10 +31,18 @@ pub(crate) use world::history;
 use world::{MACHINES, Machine, World, Written, load, records, str_of};
 
 use super::parts::Copying;
-use super::{Causes, Projection, decode_state};
+use super::{Appended, Causes, Projection, Record, decode_state};
 use crate::id::EventId;
 use crate::projection::parts::Compaction;
 use crate::state::State;
+
+impl Projection {
+    /// The issues whose texts applying `records` can change ([`Projection::about`]), each record
+    /// read as a batch of them is.
+    pub(crate) fn about_records(&self, records: &[Record]) -> Vec<EventId> {
+        self.about(&records.iter().cloned().collect::<Appended>())
+    }
+}
 
 /// Whether generated histories include malformed or conflicting records.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

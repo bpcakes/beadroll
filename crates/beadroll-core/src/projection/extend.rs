@@ -46,10 +46,9 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use indexmap::IndexMap;
 
-use super::{Projection, Record};
+use super::{Appended, Projection};
 use crate::id::EventId;
-use crate::journal::{Event, Journal, Parts, Rest};
-use crate::json::Value;
+use crate::journal::{Event, Parts, Rest};
 use crate::op::Op;
 use crate::order::position;
 use crate::replay::{Batch, Contents, Names, Room, observe_one};
@@ -77,7 +76,8 @@ impl Projection {
     /// Applies `records`, read from the journal's files after the records this projection was made
     /// from, as replay would apply them after every event of that journal; or declines
     /// ([`Extended::Replay`]). Fails only as replay does, when a renamed copy finds no free key.
-    pub(crate) fn extend(mut self, records: Vec<Record>) -> Result<Extended, KeySpace> {
+    pub(crate) fn extend(mut self, records: impl Into<Appended>) -> Result<Extended, KeySpace> {
+        let records = records.into();
         if records.is_empty() {
             return Ok(Extended::Applied(Box::new(self)));
         }
@@ -86,8 +86,8 @@ impl Projection {
         }
         // Read and judged as a journal reads and judges them: every record a new, valid event of
         // the machine whose folder held it.
-        let count = records.len();
-        let mut journal = read_batch(records);
+        let count = records.records().len();
+        let mut journal = records.settled();
         let settled = journal.settled_view();
         // an id replay reported a record of, held or not (found only in another machine's journal)
         let reported: HashSet<EventId> = (self.state.integrity.iter())
@@ -176,22 +176,14 @@ impl Projection {
     /// imported dependency, for the key a create among them brings, which that create makes an edge
     /// of, its metadata with the issue's texts (roll-lqjj.39). Which of them a record needs read in
     /// is [`Projection::texts_in`]'s to say.
-    pub(crate) fn about(&self, records: &[Record]) -> Vec<EventId> {
+    pub(crate) fn about(&self, records: &Appended) -> Vec<EventId> {
         let mut about = Vec::new();
-        for record in records {
-            let value = &record.value;
-            about.extend(
-                value
-                    .get("issue")
-                    .and_then(Value::as_str)
-                    .and_then(EventId::parse),
-            );
-            if value.get("op").and_then(Value::as_str) == Some("create")
-                && let Some(key) = value.get("data").and_then(|data| data.get("key"))
-                && let Some(key) = key.as_str()
-                && !self.state.by_key.contains_key(key)
+        for event in records.records() {
+            about.extend(event.issue().and_then(EventId::parse));
+            if let Op::Create(making) = event.op()
+                && !self.state.by_key.contains_key(&making.key)
             {
-                about.extend(self.state.awaiting.waiting(key));
+                about.extend(self.state.awaiting.waiting(&making.key));
             }
         }
         about
@@ -358,11 +350,4 @@ impl Projection {
             }
         }
     }
-}
-
-/// Reads a candidate batch by the same validation and ordering rules as a journal.
-fn read_batch(records: Vec<Record>) -> Journal {
-    let mut journal = super::journal_of(records);
-    journal.settle();
-    journal
 }

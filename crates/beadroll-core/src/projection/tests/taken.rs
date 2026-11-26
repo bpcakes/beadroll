@@ -141,7 +141,7 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: History
                 let before = flawed::kinds(projection.state());
                 let open = projection.extendable();
                 tally.closed += usize::from(!open && counted);
-                let about = projection.about(&records);
+                let about = projection.about_records(&records);
                 read_in(projection.state_mut(), &file, Some(about.clone()));
                 let histories = owned::histories(projection.state(), &about);
                 let ahead = marked::ahead(&mut projection, &file, &mut coin, held.as_ref());
@@ -257,7 +257,7 @@ impl Stored {
         self.since.extend(batch);
         self.batches += 1;
         let records = read_after(world, &self.since);
-        let about = self.projection.about(&records);
+        let about = self.projection.about_records(&records);
         let mut extending = self.projection.clone();
         read_in(extending.state_mut(), &self.file, Some(about.clone()));
         let before = owned::histories(extending.state(), &about);

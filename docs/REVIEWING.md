@@ -103,7 +103,7 @@ reads, and the published tree is also read by `br`/`bv` through `bead export` an
 | `<ws>/events/<machine>/claims/<event-id>.json` | The attempt's events, compact lines, written atomically | Immutable; on a mismatch the local copy is kept as `*.fork-<ns>` |
 | `<ws>/pending/<id>.json`, `<id>.command` | The pending attempt and its receipt | The receipt's signature is below |
 | `<ws>/projection`, `<ws>/projection-texts` | A cache of one build of bead (§2) | No part of format 1: another build never reads them, and deleting them is always safe |
-| `<ws>/history` | Checksummed causal history metadata of one build, validated against every journal file's settled identity | Disposable, outside format 1; current issue keys and machine aliases are resolved after reading it |
+| `<ws>/history` | Checksummed causal history metadata of one build, in the projection's codec (`projection/codec.rs`), validated against every journal file's settled identity | Disposable, outside format 1; current issue keys and machine aliases are resolved after reading it |
 | `<ws>/sync.git` | `git init --bare --template= --shared=0600 --object-format=<the checkout's>`; git's maintenance off through the environment | Set aside as `sync.git.damaged-<ns>` when damaged |
 | Temporary files | `.<name>.<pid>.tmp` beside the target | Readers and sync ignore them, and every name that is not `.json`/`.jsonl`; a write-back of the projection first removes those its dead writers left beside either cache (§2) |
 | Modes | 0700 directories and 0600 files throughout the store, whatever the umask | Files written into a checkout (`.beadroll.json`, `export -o`) follow the umask |
@@ -2427,7 +2427,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   envelope (`Envelope::from_value`), so there is one reader of events, and a journal's
   `add_segment` and `add_attempt` read a file by the rules `read_segment` and `read_attempt`
   read it into values by (a last line not yet whole skipped, any other unreadable line reported;
-  an attempt whole or not at all). The digest is two SipHash-1-3 hashes under keys drawn at random
+  an attempt whole or not at all). A projection catching up reads the bytes the journal's files
+  grew by so too, into a journal of its own (`projection::Appended`, roll-0668), as the whole
+  journal is read; only the records a transaction writes, and a test's, are added as values. The digest is two SipHash-1-3 hashes under keys drawn at random
   for each journal, over the bytes of the line, whitespace around it left out, and for a record
   built in memory over the compact line bead writes of it: the same content is the same bytes,
   since bead writes every record once, compact and with its members in one order, and copies it

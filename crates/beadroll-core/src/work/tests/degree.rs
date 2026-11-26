@@ -178,7 +178,7 @@ fn read_back_with_more(edges: usize) -> (Projection, Vec<Record>) {
         history.add("dep_add", Some(hub), edge(to, Some("blocks")));
     }
     let records = history.after(held);
-    let about = projection.about(&records);
+    let about = projection.about_records(&records);
     let state = projection.state_mut();
     for (uid, place) in state.wanted_texts(about) {
         let at = usize::try_from(place.at).unwrap();

@@ -388,7 +388,7 @@ fn a_create_of_an_awaited_key_extends_once_the_waiting_issues_texts_are_read_in(
     );
     let waiting = EventId::parse(&id(2)).unwrap();
     assert_eq!(
-        stored.about(&batch),
+        stored.about_records(&batch),
         [EventId::parse(&id(3)).unwrap(), waiting]
     );
     // not read in: declined
@@ -396,7 +396,7 @@ fn a_create_of_an_awaited_key_extends_once_the_waiting_issues_texts_are_read_in(
     assert!(matches!(declined, Extended::Replay));
     // read in as a store reads them: taken, and replay's answer, the edge's metadata with it
     let mut reading = stored;
-    let about = reading.about(&batch);
+    let about = reading.about_records(&batch);
     super::read_in(reading.state_mut(), &file, Some(about));
     let Extended::Applied(extended) = reading.extend(batch.clone()).unwrap() else {
         panic!("declined with the waiting issue's texts read in");

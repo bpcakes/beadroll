@@ -4,6 +4,8 @@ use crate::id::EventId;
 use crate::journal::Event;
 use crate::json::Value;
 use crate::op::Op;
+use crate::projection::Unreadable;
+use crate::projection::codec::{Reader, Writer};
 
 /// One settled event's display metadata. Issue ids and machine ids remain unresolved so a
 /// reader uses today's keys and aliases. This is not an event that replay can apply.
@@ -68,67 +70,70 @@ impl From<&Event> for HistoryEntry {
     }
 }
 
+/// The bytes a cache keeps of `entries`, in order: no part of format 1, written in the codec a
+/// projection is ([`crate::projection`]), and read back only by the build that wrote them
+/// ([`from_cached`]).
+pub fn cached(entries: &[HistoryEntry]) -> Vec<u8> {
+    let mut w = Writer::default();
+    w.count(entries.len());
+    for entry in entries {
+        entry.write(&mut w);
+    }
+    w.finish()
+}
+
+/// The entries of bytes [`cached`] wrote; `None` for any other bytes, which a cache that is
+/// damaged holds.
+pub fn from_cached(bytes: &[u8]) -> Option<Vec<HistoryEntry>> {
+    let mut r = Reader::new(bytes);
+    let count = r.count().ok()?;
+    let mut entries = Vec::with_capacity(count);
+    for _ in 0..count {
+        entries.push(HistoryEntry::read(&mut r).ok()?);
+    }
+    r.done().ok()?;
+    Some(entries)
+}
+
 impl HistoryEntry {
-    /// A compact cache record. This is not part of the published journal format.
-    pub fn cached(&self) -> Value {
-        Value::Array(vec![
-            Value::from(self.id.to_string()),
-            Value::from(self.machine.as_str()),
-            self.agent.clone(),
-            self.thread.clone(),
-            self.name.clone(),
-            Value::from(self.operation.as_str()),
-            Value::from(self.issue.as_deref()),
-            self.branch.clone(),
-            Value::Array(
-                self.changed_fields
-                    .iter()
-                    .map(|field| Value::from(field.as_str()))
-                    .collect(),
-            ),
-            Value::from(self.takeover_of.as_deref()),
-        ])
+    fn write(&self, w: &mut Writer) {
+        w.id(self.id);
+        w.text(&self.machine);
+        w.value(&self.agent);
+        w.value(&self.thread);
+        w.value(&self.name);
+        w.text(&self.operation);
+        w.optional_text(self.issue.as_deref());
+        w.value(&self.branch);
+        w.count(self.changed_fields.len());
+        for field in &self.changed_fields {
+            w.text(field);
+        }
+        w.optional_text(self.takeover_of.as_deref());
     }
 
-    /// Reads a record written by [`Self::cached`], or refuses a malformed cache.
-    pub fn from_cached(value: &Value) -> Option<Self> {
-        let [
-            id,
-            machine,
-            agent,
-            thread,
-            name,
-            operation,
-            issue,
-            branch,
-            fields,
-            takeover_of,
-        ] = value.as_array()?
-        else {
-            return None;
-        };
-        let text_or_null = |value: &Value| match value {
-            Value::Null => Some(None),
-            Value::Str(text) => Some(Some(text.clone())),
-            _ => None,
-        };
-        let issue = text_or_null(issue)?;
-        let takeover_of = text_or_null(takeover_of)?;
-        Some(Self {
-            id: EventId::parse(id.as_str()?)?,
-            machine: machine.as_str()?.to_owned(),
-            agent: agent.clone(),
-            thread: thread.clone(),
-            name: name.clone(),
-            operation: operation.as_str()?.to_owned(),
-            issue,
-            branch: branch.clone(),
-            changed_fields: fields
-                .as_array()?
-                .iter()
-                .map(|field| field.as_str().map(str::to_owned))
-                .collect::<Option<_>>()?,
-            takeover_of,
+    fn read(r: &mut Reader<'_>) -> Result<HistoryEntry, Unreadable> {
+        Ok(HistoryEntry {
+            id: r.id()?,
+            machine: r.text()?,
+            agent: r.value()?,
+            thread: r.value()?,
+            name: r.value()?,
+            operation: r.text()?,
+            issue: r.optional_text()?,
+            branch: r.value()?,
+            changed_fields: {
+                let count = r.count()?;
+                let mut fields = Vec::with_capacity(count);
+                for _ in 0..count {
+                    fields.push(r.text()?);
+                }
+                fields
+            },
+            takeover_of: r.optional_text()?,
         })
     }
 }
+
+#[cfg(test)]
+mod tests;

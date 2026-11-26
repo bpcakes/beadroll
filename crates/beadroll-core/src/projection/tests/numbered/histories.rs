@@ -158,7 +158,7 @@ fn histories_of_numbered_keys_agree_every_way_and_with_replay_before_the_runs() 
                 if reading_back {
                     projection = read_back(&projection, &mut file, back);
                 }
-                let about = projection.about(&records);
+                let about = projection.about_records(&records);
                 read_in(projection.state_mut(), &file, Some(about));
                 let projection = match projection.extend(records.clone()).unwrap() {
                     Extended::Applied(extended) => {

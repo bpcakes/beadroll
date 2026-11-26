@@ -254,7 +254,7 @@ fn an_event_that_can_add_to_an_issues_history_waits_for_its_texts_and_has_them_w
         assert!(matches!(declined, Extended::Replay), "{op}");
         let mut texts = read.clone();
         let file = encoded.texts.clone();
-        let about = texts.about(&batch);
+        let about = texts.about_records(&batch);
         assert_eq!(about, [uid], "{op}");
         read_in(texts.state_mut(), &file, Some(about));
         let Extended::Applied(extended) = texts.extend(batch.clone()).unwrap() else {
@@ -452,7 +452,7 @@ fn a_world_heavy_in_ownership_answers_what_it_did_replayed_extended_and_read_bac
                     *projection = read_back(projection, file, *back);
                     *read = true;
                 }
-                let about = projection.about(&records);
+                let about = projection.about_records(&records);
                 read_in(projection.state_mut(), file, Some(about.clone()));
                 let before = histories(projection.state(), &about);
                 *projection = match projection.clone().extend(records.clone()).unwrap() {

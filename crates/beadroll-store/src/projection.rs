@@ -43,8 +43,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use beadroll_core::id::EventId;
-use beadroll_core::journal::{self, Problem};
-use beadroll_core::projection::{Extended, Projection, Record, decode_state, project};
+use beadroll_core::projection::{Appended, Extended, Projection, decode_state, project};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 use file::{Held, Made};
@@ -52,8 +51,8 @@ use sources::Sources;
 
 use crate::fs::{content_sum, read_keyed};
 use crate::journal::{
-    ContentSums, ViewError, attempt_events, claim_files_afresh, claim_keys, folder_name,
-    load_journal, load_listed, segment_files,
+    ContentSums, ViewError, claim_files_afresh, claim_keys, folder_name, load_journal, load_listed,
+    segment_files,
 };
 use crate::layout;
 use crate::listing::{Keys, Stamp};
@@ -422,9 +421,8 @@ fn machine(path: &str) -> &str {
 /// whole: a grown segment's bytes before are not the ones summed, a file of the projection's own
 /// tick is not the one it was made from or has no sum, a segment ends in a line not yet whole, a
 /// record is unreadable.
-fn read_tails(ws: &Workspace, tails: &[Tail]) -> Option<(Vec<Record>, Vec<Held>)> {
-    let mut records = Vec::new();
-    let mut problems: Vec<Problem> = Vec::new();
+fn read_tails(ws: &Workspace, tails: &[Tail]) -> Option<(Appended, Vec<Held>)> {
+    let mut records = Appended::new();
     let mut read = Vec::with_capacity(tails.len());
     for tail in tails {
         let path = ws.events_dir.join(&tail.path);
@@ -441,14 +439,7 @@ fn read_tails(ws: &Workspace, tails: &[Tail]) -> Option<(Vec<Record>, Vec<Held>)
         }
         let origin = path.display().to_string();
         let replica = folder_name(&path, 1);
-        for value in journal::read_segment(after, &origin, Some(&mut problems)) {
-            records.push(Record {
-                value,
-                replica: replica.clone(),
-                origin: origin.clone(),
-                sequenced: true,
-            });
-        }
+        records.add_segment(after, &replica, &origin);
         read.push(kept(
             ws,
             &path,
@@ -457,7 +448,7 @@ fn read_tails(ws: &Workspace, tails: &[Tail]) -> Option<(Vec<Record>, Vec<Held>)
             Some(content_sum(&data)),
         )?);
     }
-    problems.is_empty().then_some((records, read))
+    records.is_readable().then_some((records, read))
 }
 
 /// The accepted attempt files as they are: each one's path and identity as the phase has them,
@@ -500,11 +491,10 @@ fn appended(
     made: &Made,
     read: Vec<Held>,
     listed: Listed,
-    records: &mut Vec<Record>,
+    records: &mut Appended,
     build: &str,
     settled: i128,
 ) -> Option<(Made, Option<Sources>)> {
-    let mut problems: Vec<Problem> = Vec::new();
     let before: HashMap<&str, &Held> = (made.files.iter())
         .filter(|held| held.kind == JournalFile::Attempt)
         .map(|held| (held.path.as_str(), held))
@@ -534,14 +524,7 @@ fn appended(
         };
         let origin = path.display().to_string();
         let replica = folder_name(path, 2);
-        for value in attempt_events(path, Some(&data), Some(&mut problems)) {
-            records.push(Record {
-                value,
-                replica: replica.clone(),
-                origin: origin.clone(),
-                sequenced: false,
-            });
-        }
+        records.add_attempt(&data, &replica, &origin);
         files.extend(kept(
             ws,
             path,
@@ -550,7 +533,7 @@ fn appended(
             Some(content_sum(&data)),
         ));
     }
-    if !problems.is_empty() {
+    if !records.is_readable() {
         return None;
     }
     let mut read: HashMap<String, Held> = (read.into_iter())

@@ -3,7 +3,7 @@
 use crate::id::EventId;
 use crate::state::{KeySpace, TextPlace};
 
-use super::{Extended, Projection, Record, Unreadable};
+use super::{Appended, Extended, Projection, Unreadable};
 
 /// An owned projection and record batch, with their selected text locations. Obtain it from
 /// [`Projection::prepare_extension`], load [`Self::wanted_texts`], then consume it with
@@ -21,14 +21,15 @@ use super::{Extended, Projection, Record, Unreadable};
 #[must_use = "load the requested texts and apply, or discard the preparation and replay"]
 pub struct Extension {
     projection: Projection,
-    records: Vec<Record>,
+    records: Appended,
     wanted: Vec<(EventId, TextPlace)>,
 }
 
 impl Projection {
     /// Prepares these records alone for application to this projection. Missing texts or an
     /// unsafe batch make [`Extension::apply`] request replay; preparation never invents data.
-    pub fn prepare_extension(self, records: Vec<Record>) -> Extension {
+    pub fn prepare_extension(self, records: impl Into<Appended>) -> Extension {
+        let records = records.into();
         let mut wanted = self.state.wanted_texts(self.about(&records));
         wanted.sort_unstable_by_key(|(uid, place)| (place.at, *uid));
         Extension {

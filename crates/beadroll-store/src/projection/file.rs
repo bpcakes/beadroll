@@ -173,12 +173,7 @@ fn made_bytes(made: &Made) -> Vec<u8> {
             }
             None => out.push(0),
         }
-        let (len, modified, changed, inode, device) = held.key.parts();
-        out.extend_from_slice(&len.to_le_bytes());
-        out.extend_from_slice(&modified.to_le_bytes());
-        out.extend_from_slice(&changed.to_le_bytes());
-        out.extend_from_slice(&inode.to_le_bytes());
-        out.extend_from_slice(&device.to_le_bytes());
+        out.extend_from_slice(&held.key.bytes());
     }
     out.extend_from_slice(&made.texts);
     out
@@ -201,11 +196,7 @@ fn unmade(bytes: &[u8]) -> Option<Made> {
             [1] => Some(at.take::<16>()?),
             _ => return None,
         };
-        let len = at.number()?;
-        let modified = i128::from_le_bytes(at.take()?);
-        let changed = i128::from_le_bytes(at.take()?);
-        let (inode, device) = (at.number()?, at.number()?);
-        let key = FileKey::from_parts((len, modified, changed, inode, device));
+        let key = FileKey::from_bytes(at.take()?);
         files.push(Held {
             path,
             key,

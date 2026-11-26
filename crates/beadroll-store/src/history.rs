@@ -4,8 +4,7 @@
 use std::os::unix::ffi::OsStrExt as _;
 use std::path::Path;
 
-use beadroll_core::history::HistoryEntry;
-use beadroll_core::json::{self, Format, Value};
+use beadroll_core::history::{self as entries, HistoryEntry};
 use beadroll_core::order::causal_order;
 
 use crate::{
@@ -15,7 +14,7 @@ use crate::{
     layout,
 };
 
-const MAGIC: &[u8] = b"bead history 1\n";
+const MAGIC: &[u8] = b"bead history 2\n";
 
 /// Settled events in causal order, keeping only the metadata `log` prints. The journal remains
 /// the source: a changed, missing or unreadable file, another build, a damaged cache or an
@@ -40,14 +39,12 @@ pub fn history(ws: &Workspace) -> Result<Vec<HistoryEntry>, Error> {
         && loaded.whole
         && let Some(stamp) = loaded_stamp(ws, &segments, &loaded)
     {
-        let value = Value::Array(rows.iter().map(HistoryEntry::cached).collect());
-        if let Ok(bytes) = json::write(&value, Format::COMPACT) {
-            let mut header = MAGIC.to_vec();
-            header.extend_from_slice(&stamp);
-            header.extend_from_slice(&content_sum(bytes.as_bytes()));
-            abandoned::remove(&[&path]);
-            let _ = write_cache_parts(&path, &[&header, bytes.as_bytes()], &ws.settings.failpoints);
-        }
+        let bytes = entries::cached(&rows);
+        let mut header = MAGIC.to_vec();
+        header.extend_from_slice(&stamp);
+        header.extend_from_slice(&content_sum(&bytes));
+        abandoned::remove(&[&path]);
+        let _ = write_cache_parts(&path, &[&header, &bytes], &ws.settings.failpoints);
     }
     Ok(rows)
 }
@@ -76,13 +73,7 @@ fn cached(
     if saved != stamp.finish() || sum != content_sum(data) {
         return None;
     }
-    json::parse(data)
-        .ok()?
-        .value
-        .as_array()?
-        .iter()
-        .map(HistoryEntry::from_cached)
-        .collect()
+    entries::from_cached(data)
 }
 
 #[cfg(test)]
@@ -122,12 +113,7 @@ impl Stamp {
 
     fn add(&mut self, path: &Path, key: FileKey) {
         self.bytes(path.as_os_str().as_bytes());
-        let (len, modified, changed, inode, device) = key.parts();
-        self.0.extend_from_slice(&len.to_le_bytes());
-        self.0.extend_from_slice(&modified.to_le_bytes());
-        self.0.extend_from_slice(&changed.to_le_bytes());
-        self.0.extend_from_slice(&inode.to_le_bytes());
-        self.0.extend_from_slice(&device.to_le_bytes());
+        self.0.extend_from_slice(&key.bytes());
     }
 
     fn settled(&mut self, path: &Path, key: FileKey, written: i128) -> Option<()> {
