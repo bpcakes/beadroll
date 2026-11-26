@@ -139,7 +139,7 @@ impl<'a> Tx<'a> {
     /// `Projection::about`); a command reads in any other it prints.
     pub fn state(&mut self) -> Result<&State, Error> {
         self.materialized
-            .ensure(self.ws, &self.replica, &self.emitted)?;
+            .ensure(self.ws, &self.replica, self.emitted.iter())?;
         self.materialized.state()
     }
 

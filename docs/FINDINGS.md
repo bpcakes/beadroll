@@ -22,15 +22,17 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
-## Journal replay and history cache reviews (roll-0668.1 and roll-0668.2, ids AU)
+## Journal replay and history cache reviews (roll-0668.1 through roll-0668.3, ids AU)
 
 | Id | Severity | Finding | Status | Resolution | Tests |
 |---|---|---|---|---|---|
 | AU01 | Medium | Journal replay could omit a confirmed claim when it could not allocate the buffer for its accepted attempt | fixed | Replay propagates the allocation failure as an `IO` error naming the attempt file | `beadroll-store`: `projection::tests::attempts::an_allocation_failure_reading_an_accepted_attempt_fails_the_view` |
 | AU02 | Low | The history cache fixture failed the generic count check before it reached the row allocation bound | fixed | The decoder checks the remaining bytes before reserving rows. The test checks the specific count error one byte below the minimum for two rows and decodes both rows at the minimum | `beadroll-core`: `history::tests::a_count_beyond_what_the_bytes_hold_is_no_cache` |
-| AU03 | Medium | A transaction prepared its emitted records for extension even when its projection already required full replay | fixed | The transaction checks whether the projection can extend before cloning the emitted records. Counting conversions in the waiting-cause transaction test gave one before the fix and zero after it | `beadroll-sync`: `tx::materialized::tests::a_projection_waiting_for_a_cause_is_set_aside_before_batch_preparation`, `tx::a_create_built_on_a_waiting_cause_is_no_parent_however_the_transaction_is_read` |
+| AU03 | Medium | A transaction prepared its emitted records for extension even when its projection already required full replay | fixed | The transaction checks whether the projection can extend before cloning the emitted records. Counting conversions in the waiting-cause transaction test gave one before the fix and zero after it | `beadroll-sync`: `tx::tests::a_projection_waiting_for_a_cause_is_set_aside_before_batch_preparation`, `tx::a_create_built_on_a_waiting_cause_is_no_parent_however_the_transaction_is_read` |
 | AU04 | Low | A history count of 2⁶⁴ wrapped to zero and decoded as an empty history | fixed | The shared varint reader rejects a tenth byte greater than one before shifting its bits into a `u64` | `beadroll-core`: `history::tests::an_overflowing_count_is_no_cache` |
 | AU05 | Low | Records without event IDs masked a failure to report malformed JSON in the unreadable-line test | fixed | The malformed line is the only input to the batch under test | `beadroll-core`: `projection::tests::lines::an_unreadable_line_leaves_the_batch_unreadable` |
+| AU06 | Medium | Nested arrays and objects in a damaged history cache could each reserve against the same remaining bytes | fixed | The codec charges each container slot against a shared limit before its fallible reservation. Each slot needs a distinct value tag in the input | `beadroll-core`: `history::tests::nested_containers_cannot_reserve_the_same_history_bytes_twice` |
+| AU07 | Low | The AU03 test called the projection selection helper directly and could miss premature batch preparation in the transaction | fixed | The test calls `Materialized::ensure` with a missing cause as its emitted record and checks that replay has begun at the only visit to that record | `beadroll-sync`: `tx::tests::a_projection_waiting_for_a_cause_is_set_aside_before_batch_preparation` |
 
 ## Weeding audit (2026-11-17, ids AT)
 

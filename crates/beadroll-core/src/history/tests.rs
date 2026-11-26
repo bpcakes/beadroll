@@ -88,3 +88,21 @@ fn an_overflowing_count_is_no_cache() {
     w.number(u64::MAX);
     assert_eq!(Reader::new(&w.finish()).number(), Ok(u64::MAX));
 }
+
+/// The agent field's array and its first object's members each fit the remaining byte count
+/// alone. Their combined reservation must be refused before the object's keys are read (AU06).
+#[test]
+fn nested_containers_cannot_reserve_the_same_history_bytes_twice() {
+    let members: Object = (0..64).map(|n| (n.to_string(), Value::Null)).collect();
+    let mut items = vec![Value::Null; 100];
+    items[0] = Value::from(members);
+    let mut row = entries().remove(0);
+    row.agent = Value::Array(items);
+    let bytes = cached(std::slice::from_ref(&row));
+    assert_eq!(from_cached(&bytes), Some(vec![row]));
+
+    // Both counts fit separately, but even one value tag per slot needs 164 bytes.
+    let cut = &bytes[..160];
+    assert_eq!(from_cached(cut), None);
+    assert_eq!(read_cache(cut), Err(Unreadable("value container counts")));
+}

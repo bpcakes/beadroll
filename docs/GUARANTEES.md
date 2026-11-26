@@ -701,7 +701,9 @@ it, and the file is committed again.
   `bead log` caches settled history metadata in causal order. A repeat read
   checks every source file's identity and reads the metadata without parsing
   journal payloads. A changed journal, missing or damaged cache, different
-  build or unsettled file timestamp rebuilds it from the whole journal. Keys
+  build or unsettled file timestamp rebuilds it from the whole journal.
+  The public history decoder rejects array and object counts whose combined
+  slots exceed the input length, including counts in nested values. Keys
   and machine aliases are resolved afresh. This remains work proportional to
   the history's metadata, even for `--limit 1`; it is not a history boundary.
   First sync into an empty store flushes up to eight independent journal files

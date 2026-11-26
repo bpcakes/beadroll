@@ -322,6 +322,9 @@ impl Writer {
 pub(crate) struct Reader<'a> {
     bytes: &'a [u8],
     at: usize,
+    /// Each array item and object member has its own value tag in `bytes`. Charge its slot
+    /// before reserving so nested containers cannot all reserve against the same bytes.
+    value_slots_left: usize,
     names: Vec<Arc<str>>,
     shared: Vec<Arc<Value>>,
     /// Where `bytes` begin in the part they were taken from.
@@ -333,6 +336,7 @@ impl<'a> Reader<'a> {
         Reader {
             bytes,
             at: 0,
+            value_slots_left: bytes.len(),
             names: Vec::new(),
             shared: Vec::new(),
             base: 0,
@@ -361,11 +365,10 @@ impl<'a> Reader<'a> {
             table.values.push(Arc::new(after.value()?));
         }
         let records = Reader {
-            bytes: records,
-            at: 0,
             names: table.names.clone(),
             shared: table.values.clone(),
             base: 8,
+            ..Reader::new(records)
         };
         Ok((records, after, table))
     }
@@ -506,6 +509,15 @@ impl<'a> Reader<'a> {
         self.value_within(NESTING)
     }
 
+    fn container_count(&mut self) -> Result<usize, Unreadable> {
+        let count = self.count()?;
+        self.value_slots_left = self
+            .value_slots_left
+            .checked_sub(count)
+            .ok_or(Unreadable("value container counts"))?;
+        Ok(count)
+    }
+
     /// A value nesting at most `depth` arrays and objects.
     fn value_within(&mut self, depth: usize) -> Result<Value, Unreadable> {
         Ok(match self.byte()? {
@@ -527,8 +539,11 @@ impl<'a> Reader<'a> {
             6 => Value::Str(self.text()?),
             7 => {
                 let depth = depth.checked_sub(1).ok_or(Unreadable("nesting"))?;
-                let n = self.count()?;
-                let mut items = Vec::with_capacity(n);
+                let n = self.container_count()?;
+                let mut items = Vec::new();
+                items
+                    .try_reserve_exact(n)
+                    .map_err(|_| Unreadable("an array allocation"))?;
                 for _ in 0..n {
                     items.push(self.value_within(depth)?);
                 }
@@ -547,8 +562,11 @@ impl<'a> Reader<'a> {
     }
 
     fn object_within(&mut self, depth: usize) -> Result<Object, Unreadable> {
-        let n = self.count()?;
-        let mut members = Object::with_capacity(n);
+        let n = self.container_count()?;
+        let mut members = Object::new();
+        members
+            .try_reserve_exact(n)
+            .map_err(|_| Unreadable("an object allocation"))?;
         for _ in 0..n {
             let key = self.text()?;
             let value = self.value_within(depth)?;
