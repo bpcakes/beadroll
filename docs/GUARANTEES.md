@@ -36,7 +36,9 @@ same thing*) and the variables bead reads (*Configuration*).
 - A projection that already requires replay declines a nonempty batch before converting its
   records. An empty batch leaves the projection as it was. A batch with a recorded read error
   requests replay before selecting any saved texts, even when earlier records were readable.
-  An incomplete segment discards the batch before its complete lines are parsed.
+  An incomplete segment discards the batch before its complete lines are parsed. Catch-up
+  stops at the first unreadable line in a complete segment. Full replay reports the error
+  and reads the later lines.
   For a batch it will try to apply,
   the preparation owns the projection and exact records and selects the texts to load from that
   state. Application consumes the preparation. Incomplete loading or an unsafe batch requests

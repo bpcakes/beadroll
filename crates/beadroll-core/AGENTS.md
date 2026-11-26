@@ -39,7 +39,8 @@ consumer on tokio calls through `spawn_blocking`.
   issues. The preparation owns that batch and its requested locations until application.
   Empty batches and batches already known to require replay request no texts. `prepare_appended`
   prepares a batch already read into a journal. An incomplete segment discards the batch
-  before parsing its prefix. Later additions to an unreadable batch do no parsing.
+  before parsing its prefix. `Journal::try_add_segment` stops at the first unreadable line
+  in complete input. Later additions to an unreadable batch do no parsing.
   `projection/writeback.rs`:
   `prepare_append` and `prepare_rewrite` lend `Writeback`, freezing a projection alongside its
   bytes, places and generation. Only its consuming `written` acknowledges those locations.

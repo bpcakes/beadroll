@@ -2436,7 +2436,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   an attempt whole or not at all). A projection catching up reads those bytes into a journal of
   its own (`projection::Appended`, roll-0668). It declines an incomplete segment tail so the
   caller cannot advance past it. Detecting the missing newline discards the builder's journal
-  before parsing the segment. Later additions to the rejected batch do no work on the records.
+  before parsing the segment. For complete input, catch-up uses the journal's line parser
+  and record installation but stops at the first unreadable line. Full replay continues to
+  collect diagnostics and recover later records. Later additions to the rejected batch do
+  no work on the records.
   For in-memory records, `prepare_extension` checks the vector's
   length before serializing any record for a projection that requires replay. `prepare_appended`
   takes an already-read batch. The store keeps the projection's eligibility in its checksummed

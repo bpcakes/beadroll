@@ -141,6 +141,27 @@ impl Journal {
         }
     }
 
+    /// Adds a segment tail to a catch-up batch. On failure the caller discards the journal,
+    /// so there is no need to read later lines or accumulate diagnostics for full replay.
+    pub(crate) fn try_add_segment(&mut self, data: &[u8], replica: &str, origin: &str) -> bool {
+        if data.last().is_some_and(|last| *last != b'\n') {
+            return false;
+        }
+        for line in data.split(|b| *b == b'\n') {
+            if strip_bytes(line).is_empty() {
+                continue;
+            }
+            let Ok((envelope, digest)) = self.read_line(line) else {
+                return false;
+            };
+            self.add_read(envelope, digest, replica, origin, JournalOrder::Sequenced);
+            if !self.invalid.is_empty() {
+                return false;
+            }
+        }
+        true
+    }
+
     /// Adds the events of an attempt file found in `replica`'s journal at `origin`, each line
     /// read straight into what the journal keeps of it, as [`read_attempt`] reads them: all of
     /// them, or none, since any bad line is reported and invalidates the entire attempt.

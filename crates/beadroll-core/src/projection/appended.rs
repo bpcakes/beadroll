@@ -98,12 +98,11 @@ impl Appended {
         self.readable
     }
 
-    fn read(&mut self, add: impl FnOnce(&mut Journal)) {
-        if let Some(batch) = &mut self.readable {
-            add(&mut batch.0);
-            if !batch.0.invalid.is_empty() {
-                self.readable = None;
-            }
+    fn read(&mut self, add: impl FnOnce(&mut Journal) -> bool) {
+        if let Some(batch) = &mut self.readable
+            && !add(&mut batch.0)
+        {
+            self.readable = None;
         }
     }
 
@@ -118,23 +117,25 @@ impl Appended {
     /// but a batch that skipped it would be applied without it, and its reader would go on after
     /// bytes the projection never took in.
     pub fn add_segment(&mut self, data: &[u8], replica: &str, origin: &str) {
-        if data.last().is_some_and(|last| *last != b'\n') {
-            self.readable = None;
-            return;
-        }
-        self.read(|journal| journal.add_segment(data, replica, origin));
+        self.read(|journal| journal.try_add_segment(data, replica, origin));
     }
 
     /// Adds the events of `data`, an attempt file found in `replica`'s journal at `origin`, as a
     /// journal reads one ([`Journal::add_attempt`]).
     pub fn add_attempt(&mut self, data: &[u8], replica: &str, origin: &str) {
-        self.read(|journal| journal.add_attempt(data, replica, origin));
+        self.read(|journal| {
+            journal.add_attempt(data, replica, origin);
+            journal.invalid.is_empty()
+        });
     }
 
     /// Adds a record built in memory, with the order its file gives it (a journal's records
     /// sequenced, an attempt file's not).
     pub fn add(&mut self, record: Record) {
-        self.read(|journal| record.add_to(journal));
+        self.read(|journal| {
+            record.add_to(journal);
+            journal.invalid.is_empty()
+        });
     }
 
     /// Whether nothing added was found unreadable so far: a line that is not JSON, an attempt line

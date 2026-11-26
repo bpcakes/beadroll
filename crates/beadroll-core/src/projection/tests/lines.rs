@@ -156,6 +156,39 @@ fn an_incomplete_segment_stops_the_batch_before_parsing_its_prefix() {
     assert_eq!(work.of(Work::RecordDigest), 0);
 }
 
+/// Catch-up stops at the first unreadable record. Full replay reports it and recovers
+/// the later event from the same segment (AU26).
+#[test]
+fn catch_up_stops_at_a_bad_line_that_full_replay_reads_past() {
+    use super::hostile::base;
+    use crate::journal::Journal;
+    use crate::work::{Work, counted};
+
+    let records = base();
+    let first = &records[0];
+    let before = write(&first.value, Format::COMPACT).unwrap();
+    let after = write(&records[1].value, Format::COMPACT).unwrap();
+    for broken in ["not json", "{}"] {
+        let data = format!("{before}\n \t\n{broken}\n{after}\n");
+        let mut batch = Appended::new();
+        let (_, work) =
+            counted(|| batch.add_segment(data.as_bytes(), &first.replica, &first.origin));
+        assert!(!batch.is_readable());
+        assert_eq!(work.of(Work::JournalLine), 2, "{broken}");
+
+        let mut full = Journal::new();
+        full.add_segment(data.as_bytes(), &first.replica, &first.origin);
+        let settled = full.settled_view();
+        assert_eq!(settled.invalid().len(), 1);
+        let ops: Vec<_> = settled
+            .events()
+            .values()
+            .map(|event| event.op_name())
+            .collect();
+        assert_eq!(ops, ["init", "create"]);
+    }
+}
+
 /// A public caller with raw records pays no serialization cost when the projection is already
 /// committed to replay. An empty batch still leaves that projection alone (AU08).
 #[test]
