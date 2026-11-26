@@ -10,6 +10,7 @@ use super::hostile::{HERE, event, fields, journal, record};
 use super::{TextFile, WriteBack, equal, read_back};
 use crate::journal::JournalOrder;
 use crate::json::{Object, Value};
+use crate::projection::Appended;
 
 /// An `init` and issue 101 made by `HERE` as events 100 and 101, then titles set on it as the even
 /// events 102 to 120, each after the one before, ids ascending.
@@ -46,6 +47,7 @@ fn held() -> Vec<Record> {
 /// `projection`, read back and written back from `file`, extended by `batch` as a store extends it.
 fn taken(projection: &Projection, file: &mut TextFile, batch: Vec<Record>) -> Projection {
     let mut read = read_back(projection, file, WriteBack::Uncompacted);
+    let batch = Appended::from(batch);
     let about = read.about(&batch);
     super::read_in(read.state_mut(), file, Some(about));
     match read.extend(batch).unwrap() {

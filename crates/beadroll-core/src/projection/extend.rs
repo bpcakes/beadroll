@@ -38,7 +38,7 @@
 //! added or removed, whose additions' metadata is with them, roll-lqjj.39), or may (a claim, a
 //! release, a close or a reopen, which can add to the ownership history they hold, roll-lqjj.40),
 //! needs them in the issue, and a create needs those of each issue that waits for its key, in which
-//! it makes an edge: a store reads them in before it extends ([`Projection::about`], roll-lqjj.6),
+//! it makes an edge: a store reads them in before it extends ([`super::Extension::wanted_texts`], roll-lqjj.6),
 //! and when one is not, the projection declines too. Texts read in that change are written again.
 
 use std::cmp::Reverse;
@@ -46,10 +46,10 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use indexmap::IndexMap;
 
-use super::{Projection, Record};
+use super::Projection;
+use super::appended::ReadableAppended;
 use crate::id::EventId;
-use crate::journal::{Event, Journal, Parts, Rest};
-use crate::json::Value;
+use crate::journal::{Event, Parts, Rest};
 use crate::op::Op;
 use crate::order::position;
 use crate::replay::{Batch, Contents, Names, Room, observe_one};
@@ -77,8 +77,11 @@ impl Projection {
     /// Applies `records`, read from the journal's files after the records this projection was made
     /// from, as replay would apply them after every event of that journal; or declines
     /// ([`Extended::Replay`]). Fails only as replay does, when a renamed copy finds no free key.
-    pub(crate) fn extend(mut self, records: Vec<Record>) -> Result<Extended, KeySpace> {
-        if records.is_empty() {
+    pub(super) fn extend_readable(
+        mut self,
+        records: ReadableAppended,
+    ) -> Result<Extended, KeySpace> {
+        if records.records().is_empty() {
             return Ok(Extended::Applied(Box::new(self)));
         }
         if !self.open {
@@ -86,8 +89,8 @@ impl Projection {
         }
         // Read and judged as a journal reads and judges them: every record a new, valid event of
         // the machine whose folder held it.
-        let count = records.len();
-        let mut journal = read_batch(records);
+        let count = records.records().len();
+        let mut journal = records.into_journal();
         let settled = journal.settled_view();
         // an id replay reported a record of, held or not (found only in another machine's journal)
         let reported: HashSet<EventId> = (self.state.integrity.iter())
@@ -171,34 +174,8 @@ impl Projection {
         Ok(Extended::Applied(Box::new(self)))
     }
 
-    /// The issues whose texts applying `records` can change, which a store reads in before it
-    /// extends ([`Projection::extend`]): each issue a record is about, and each that waits, by an
-    /// imported dependency, for the key a create among them brings, which that create makes an edge
-    /// of, its metadata with the issue's texts (roll-lqjj.39). Which of them a record needs read in
-    /// is [`Projection::texts_in`]'s to say.
-    pub(crate) fn about(&self, records: &[Record]) -> Vec<EventId> {
-        let mut about = Vec::new();
-        for record in records {
-            let value = &record.value;
-            about.extend(
-                value
-                    .get("issue")
-                    .and_then(Value::as_str)
-                    .and_then(EventId::parse),
-            );
-            if value.get("op").and_then(Value::as_str) == Some("create")
-                && let Some(key) = value.get("data").and_then(|data| data.get("key"))
-                && let Some(key) = key.as_str()
-                && !self.state.by_key.contains_key(key)
-            {
-                about.extend(self.state.awaiting.waiting(key));
-            }
-        }
-        about
-    }
-
     /// Whether every issue whose texts `doing` changes, or may, has them in it, read in by the
-    /// store first (roll-lqjj.6, [`Projection::about`]): those read in that it changes are then to
+    /// store first (roll-lqjj.6, [`super::Extension::wanted_texts`]): those read in that it changes are then to
     /// be written again. An edge's metadata is with them (roll-lqjj.39), so an edge added or
     /// removed changes them, and so does a create in each issue that waits for its key. An
     /// ownership event may add to the issue's ownership history, which they hold too
@@ -358,11 +335,4 @@ impl Projection {
             }
         }
     }
-}
-
-/// Reads a candidate batch by the same validation and ordering rules as a journal.
-fn read_batch(records: Vec<Record>) -> Journal {
-    let mut journal = super::journal_of(records);
-    journal.settle();
-    journal
 }

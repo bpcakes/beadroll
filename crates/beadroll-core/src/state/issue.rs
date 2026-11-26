@@ -320,7 +320,7 @@ impl Issue {
     /// What its texts hold changed: its ownership history, or the metadata of an edge an import
     /// waiting for a key became. Texts read in are then to be written again, as texts changed are.
     /// A projection applies an event that can change them only to an issue whose texts are in it
-    /// (`Projection::extend`), so they are never only in a text file here.
+    /// (`Projection::extend_readable`), so they are never only in a text file here.
     pub(crate) fn texts_changed(&mut self) {
         if let Texts::Read(_) = self.texts {
             self.texts = Texts::Here;

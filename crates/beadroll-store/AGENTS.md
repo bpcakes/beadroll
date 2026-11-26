@@ -87,7 +87,11 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   the locked phase keeps; `src/projection.rs`'s `projection_sourced` makes one), and
   `Sourced::into_current`, which says whether they are still the store's files (roll-lqjj.37).
   `projection/extension.rs` loads the exact locations an owned core `Extension` requests and
-  applies it, with replay on missing or damaged texts; sync uses the same `extend_projection`.
+  applies it, with replay on missing or damaged texts. A settled, unchanged cache can answer
+  a state read without its index. For catch-up, the checksummed source metadata records whether
+  new records can be applied. `from_stored` lists attempts after reading any segment tails and
+  rejects stale sources before reading the index. `extend_projection` takes records and
+  `extend_appended` takes an already-read batch. Both use the same text-loading path.
   `projection/writeback.rs` persists the core's borrowed `Writeback` and acknowledges its own
   places and generation only after both writes succeed. Failed writes leave new places
   unacknowledged for retry, with existing cache durability and lock order.

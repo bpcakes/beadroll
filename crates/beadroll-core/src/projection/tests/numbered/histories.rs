@@ -3,6 +3,7 @@
 //! not, pick what replay picked before copies skipped runs.
 
 use crate::json::{Object, Value};
+use crate::projection::Appended;
 use crate::replay::replay;
 use crate::state::{Rename, asked, used};
 
@@ -153,7 +154,7 @@ fn histories_of_numbered_keys_agree_every_way_and_with_replay_before_the_runs() 
             let full = project(load(&world, &held)).unwrap();
             let replayed = replay(load(&world, &held)).unwrap();
             assert!(same(full.state(), &replayed) && answers_alike(&full, &replayed));
-            let records = records(&world, &batch);
+            let records = Appended::from(records(&world, &batch));
             tracks = tracks.map(|(mut projection, mut file, back)| {
                 if reading_back {
                     projection = read_back(&projection, &mut file, back);

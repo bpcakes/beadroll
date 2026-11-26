@@ -2,10 +2,10 @@
 //! it stays on replay; a failed read or application leaves it ready to retry from the journal.
 
 use beadroll_core::journal::JournalOrder;
-use beadroll_core::projection::{Extended, Projection, Record};
+use beadroll_core::projection::{Appended, Extended, Projection, Record};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
-use beadroll_store::{Workspace, extend_projection, load_journal};
+use beadroll_store::{Workspace, extend_appended, load_journal};
 
 use crate::error::Error;
 
@@ -46,33 +46,35 @@ impl Materialized {
         }
     }
 
-    pub(super) fn ensure(
+    pub(super) fn ensure<'a>(
         &mut self,
         ws: &Workspace,
         replica: &str,
-        emitted: &[Record],
+        emitted: impl ExactSizeIterator<Item = &'a Record> + Clone,
     ) -> Result<(), Error> {
+        let count = emitted.len();
         match self {
             Self::Projected { applied, .. } | Self::Replayed { applied, .. }
-                if *applied >= emitted.len() =>
+                if *applied >= count =>
             {
                 return Ok(());
             }
             _ => {}
         }
-        // Application consumes the projection. On any error the next request must replay,
-        // rather than reuse a view that may contain only part of the emitted prefix.
+        // Leave the view ready to replay on error. Only an extendable projection needs a
+        // batch of its own. Full replay reads the original records below.
         if let Self::Projected {
             projection,
             applied,
             ..
         } = std::mem::take(self)
+            && projection.extendable()
         {
-            let records = emitted.get(applied..).unwrap_or_default().to_vec();
-            if let Extended::Applied(projection) = extend_projection(ws, *projection, records)? {
+            let records = Appended::read_records(&mut emitted.clone().skip(applied).cloned());
+            if let Extended::Applied(projection) = extend_appended(ws, *projection, records)? {
                 *self = Self::Projected {
                     projection,
-                    applied: emitted.len(),
+                    applied: count,
                     #[cfg(test)]
                     drop_probe: None,
                 };
@@ -94,7 +96,7 @@ impl Materialized {
         }
         *self = Self::Replayed {
             state: Box::new(replay(journal)?),
-            applied: emitted.len(),
+            applied: count,
             #[cfg(test)]
             drop_probe: None,
         };

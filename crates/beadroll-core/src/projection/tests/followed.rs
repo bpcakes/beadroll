@@ -9,6 +9,7 @@ use super::hostile::{HERE, id};
 use super::numbered::{pairs, renames};
 use crate::id::EventId;
 use crate::json::{Object, Value};
+use crate::projection::Appended;
 use crate::state::State;
 
 use super::super::Record;
@@ -453,14 +454,15 @@ fn an_import_a_followed_child_leaves_waiting_is_not_written_again() {
     let mut file = super::TextFile::new();
     let projection = super::super::project(super::hostile::journal(&held)).unwrap();
     let mut projection = super::read_back(&projection, &mut file, super::WriteBack::Encoded);
-    let about = projection.about(std::slice::from_ref(&child));
+    let batch = Appended::from(vec![child]);
+    let about = projection.about(&batch);
     let import = EventId::parse(&id(15)).unwrap();
     assert!(
         about.contains(&import),
         "read in, in case the child binds to it"
     );
     super::read_in(projection.state_mut(), &file, Some(about));
-    let extended = match projection.extend(vec![child]).unwrap() {
+    let extended = match projection.extend(batch).unwrap() {
         super::super::Extended::Applied(extended) => extended,
         super::super::Extended::Replay => panic!("declined"),
     };

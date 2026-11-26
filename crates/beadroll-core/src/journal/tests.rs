@@ -217,6 +217,13 @@ fn a_segment_line_that_is_no_event_is_reported_with_its_file() {
     assert_eq!(journal.events().len(), 1);
 }
 
+/// A whole attempt may need many staged records. Their validation verdict replaces the
+/// fields used only to reach it (AU32).
+#[test]
+fn a_staged_attempt_record_fits_in_the_space_of_its_parsed_line() {
+    assert!(size_of::<super::Admitted>() <= size_of::<crate::event::Envelope>());
+}
+
 #[test]
 fn an_attempt_is_read_whole_or_not_at_all() {
     let good = segment(&[

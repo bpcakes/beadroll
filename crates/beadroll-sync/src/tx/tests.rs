@@ -142,6 +142,77 @@ impl Fixture {
     }
 }
 
+/// When the projection waits for a cause, `ensure` visits emitted records only for full
+/// replay. Preparing even a temporary copy before loading the journal fails this test (AU03, AU07).
+#[test]
+fn a_projection_waiting_for_a_cause_is_set_aside_before_batch_preparation() {
+    use beadroll_core::projection::Record;
+    use beadroll_test_support::events::{Event, id};
+
+    let fixture = Fixture::new("journal.after-enumerate@always=sleep(0)");
+    let ws = &fixture.ws;
+    let waiting = Event::new(&id(2), "create")
+        .replica("b")
+        .deps(&[&id(1)])
+        .data(json!({"key": "ex-waiting", "fields": {}}))
+        .json();
+    beadroll_store::append_events(ws, "b", [waiting]).unwrap();
+    let projection = beadroll_store::projection(ws).unwrap();
+    assert!(!projection.extendable());
+    let mut view = Materialized::projected(projection);
+    let cause = Record {
+        value: Event::new(&id(1), "create")
+            .replica("a")
+            .data(json!({"key": "ex-cause", "fields": {}}))
+            .json(),
+        replica: "a".into(),
+        origin: String::new(),
+        sequenced: true,
+    };
+    let reads = || ws.settings.failpoints.hits("journal.after-enumerate");
+    let before = reads();
+    let visits = std::cell::Cell::new(0);
+    let emitted = std::iter::once(&cause).inspect(|_| {
+        assert_eq!(reads(), before + 1, "record visited before full replay");
+        visits.set(visits.get() + 1);
+    });
+    view.ensure(ws, "a", emitted).unwrap();
+    assert_eq!(visits.get(), 1);
+    assert!(matches!(view, Materialized::Replayed { applied: 1, .. }));
+    assert!(view.state().unwrap().resolve("ex-waiting").is_some());
+}
+
+/// After an unreadable record, only full replay visits later records and applies them (AU27).
+#[test]
+fn replay_recovers_the_suffix_that_batch_preparation_leaves_unread() {
+    use beadroll_core::projection::Record;
+    use beadroll_test_support::events::{Event, id};
+
+    let fixture = Fixture::new("");
+    let projection = beadroll_store::projection(&fixture.ws).unwrap();
+    assert!(projection.extendable());
+    let mut view = Materialized::projected(projection);
+    let create = Event::new(&id(1), "create")
+        .replica("a")
+        .data(json!({"key": "ex-after", "fields": {}}))
+        .json();
+    let records = [Value::Null, create].map(|value| Record {
+        value,
+        replica: "a".into(),
+        origin: String::new(),
+        sequenced: true,
+    });
+    let visits = [std::cell::Cell::new(0), std::cell::Cell::new(0)];
+    let emitted = records.iter().enumerate().map(|(i, record)| {
+        visits[i].set(visits[i].get() + 1);
+        record
+    });
+    view.ensure(&fixture.ws, "a", emitted).unwrap();
+    assert_eq!(visits.map(std::cell::Cell::into_inner), [2, 1]);
+    assert!(matches!(view, Materialized::Replayed { applied: 2, .. }));
+    assert!(view.state().unwrap().resolve("ex-after").is_some());
+}
+
 /// Attach only after the last application: replacement during application is a different lifetime.
 fn observe(tx: &mut Tx<'_>, view: View, observed: &Arc<Mutex<Vec<LockState>>>) {
     if matches!(view, View::Replay) {

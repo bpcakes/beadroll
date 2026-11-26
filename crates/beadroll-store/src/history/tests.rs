@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
-use beadroll_core::json::Object;
+use beadroll_core::json::{Object, Value};
 use beadroll_test_support::events::Event;
 
 use super::*;

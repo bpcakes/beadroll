@@ -103,7 +103,7 @@ reads, and the published tree is also read by `br`/`bv` through `bead export` an
 | `<ws>/events/<machine>/claims/<event-id>.json` | The attempt's events, compact lines, written atomically | Immutable; on a mismatch the local copy is kept as `*.fork-<ns>` |
 | `<ws>/pending/<id>.json`, `<id>.command` | The pending attempt and its receipt | The receipt's signature is below |
 | `<ws>/projection`, `<ws>/projection-texts` | A cache of one build of bead (§2) | No part of format 1: another build never reads them, and deleting them is always safe |
-| `<ws>/history` | Checksummed causal history metadata of one build, validated against every journal file's settled identity | Disposable, outside format 1; current issue keys and machine aliases are resolved after reading it |
+| `<ws>/history` | Checksummed causal history metadata of one build, in the projection's codec (`projection/codec.rs`), validated against every journal file's settled identity | Disposable, outside format 1; current issue keys and machine aliases are resolved after reading it |
 | `<ws>/sync.git` | `git init --bare --template= --shared=0600 --object-format=<the checkout's>`; git's maintenance off through the environment | Set aside as `sync.git.damaged-<ns>` when damaged |
 | Temporary files | `.<name>.<pid>.tmp` beside the target | Readers and sync ignore them, and every name that is not `.json`/`.jsonl`; a write-back of the projection first removes those its dead writers left beside either cache (§2) |
 | Modes | 0700 directories and 0600 files throughout the store, whatever the umask | Files written into a checkout (`.beadroll.json`, `export -o`) follow the umask |
@@ -482,7 +482,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   whole (`show`, `comments`, `update`, `claim`, `takeover`) reads in only theirs; `export`, `search`
   and `lint` read every text; and records applied after the projection have the texts of the issues
   they are about read in first, and of the issues that wait, by an import's dependency, for a key a
-  create among them brings, which that create makes an edge in (`Projection::about`): an edge added
+  create among them brings, which that create makes an edge in (`ReadableAppended::about`): an edge added
   or removed changes its issue's texts, which hold its
   additions' metadata, and a change to texts not read in declines. Edges are read through
   `Issue::deps` and `Issue::dep_tags`, which answer as when each edge was a pair of strings with a
@@ -1869,7 +1869,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
     a projection cannot promote it. `Projection::retains` inspects its explicitly partial index.
     Scope is derived, not serialized: projection encoding 11 and its bytes remain unchanged.
   - `Snapshot::from_journal` settles and replays one owned journal; `Tree::snapshot` supplies that
-    read directly. It exposes no mutable parts or constructor accepting a separate state.
+    read directly. The snapshot keeps its journal for event readers, so its replay shares the
+    original event metadata. Standalone replay and projection extension can outlive their input
+    and release applied payloads even when the caller retains a clone of the journal or batch.
+    The snapshot exposes no mutable parts or constructor accepting a separate state.
     `SnapshotEvent` binds issue resolution to that replay, including valid creates: the emitter
     defaults their issue to their own id, and payload validation requires that identity (AQ05).
     `snapshot::Recap` owns its immutable
@@ -1891,11 +1894,14 @@ These were decided deliberately. Report problems *with* them, not their existenc
     `State::dependency_summary` supplies the dependency-only rows `dep list` needs without
     building a full detail or loading texts. The existing golden and projection edge tests
     caught that caller's reliance on the old partial-detail behavior during migration.
-  - `Projection::prepare_extension` owns a projection and its record batch as `Extension`.
+  - `Projection::prepare_extension` and `prepare_appended` return an `Extension` that owns
+    the projection. Its private plan distinguishes an empty batch, a required replay, and a
+    readable batch it can try to apply. Only the last can carry text locations (AU24).
     Its requested locations are derived once from that pair. Only requested locations can be
     loaded; `apply` consumes both and requests replay if loading is incomplete or the existing
-    extension checks decline. `beadroll_store::extend_projection` is the shared loading path
-    for cached reads and transaction materialization. The transaction retains its existing
+    extension checks decline. Cached reads and transaction materialization use
+    `beadroll_store::extend_appended`. It shares its text-loading logic with
+    `extend_projection`, which takes a vector of records. The transaction retains its existing
     replay-needed fallback on errors, applied prefix and destruction ordering.
   - `Projection::prepare_append` borrows a projection for a write in its current text generation.
     `prepare_rewrite` first requires every text, marks them for writing and derives a new
@@ -2427,7 +2433,25 @@ These were decided deliberately. Report problems *with* them, not their existenc
   envelope (`Envelope::from_value`), so there is one reader of events, and a journal's
   `add_segment` and `add_attempt` read a file by the rules `read_segment` and `read_attempt`
   read it into values by (a last line not yet whole skipped, any other unreadable line reported;
-  an attempt whole or not at all). The digest is two SipHash-1-3 hashes under keys drawn at random
+  an attempt whole or not at all). A projection catching up reads those bytes into a journal of
+  its own (`projection::Appended`, roll-0668). It declines an incomplete segment tail so the
+  caller cannot advance past it. Detecting the missing newline discards the builder's journal
+  before parsing the segment. For complete input, catch-up uses the journal's line parser
+  and record installation but stops at the first unreadable line. Full replay continues to
+  collect diagnostics and recover later records. Later additions to the rejected batch do
+  no work on the records. A batch borrows a lazy iterator and consumes through the first
+  unreadable record. A caller with an eager vector can transfer it whole or hold its
+  suffix in an `OwnedRecords` buffer for borrowed inspection or another batch. For both attempt representations the journal admits a record
+  only after its envelope and payload pass the same check. A segment can retain a malformed
+  record with a readable id for settlement. A caller-built value outside the JSON reader's
+  depth, number range or precision requires replay. The compact writer checks these bounds
+  as it serializes for the digest. A rejected record and the skipped tail of a caller-supplied
+  vector are disposed of iteratively. A transaction keeps its validated emitted records for full replay, where `JournalOrder` describes their placement.
+  For in-memory records, `prepare_extension` checks the vector's
+  length before serializing any record for a projection that requires replay. `prepare_appended`
+  takes an already-read batch. The store keeps the projection's eligibility in its checksummed
+  source metadata so it can verify unchanged files or choose replay before reading the index.
+  The digest is two SipHash-1-3 hashes under keys drawn at random
   for each journal, over the bytes of the line, whitespace around it left out, and for a record
   built in memory over the compact line bead writes of it: the same content is the same bytes,
   since bead writes every record once, compact and with its members in one order, and copies it
@@ -2527,7 +2551,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   journal reader's ordering; pending attempts never enter it. A miss uses `load_listed` and
   `causal_order`, fingerprinting the identities actually read, never later stats that could bless
   old rows as a replacement's. Missing, damaged, foreign or stale caches rebuild, and failed cache
-  writes do not fail the command. Cache writes use private atomic replacement without fsync,
+  writes do not fail the command. The history writer checks caller-built JSON fields against
+  the reader's nesting limit. A row outside that limit can still be displayed and skips the
+  optional cache write. Cache writes use private atomic replacement without fsync,
   sweep their own abandoned temporaries, and never create an absent store. The current outline
   and aliases are read afterwards, keeping the earlier two-moment display behavior. Any journal
   change invalidates the entire cache. Hits still decode all metadata: a small limit saves

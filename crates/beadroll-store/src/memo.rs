@@ -126,7 +126,43 @@ impl FileKey {
         )
     }
 
-    /// The identity of these parts ([`FileKey::parts`]).
+    /// How many bytes an identity is kept in ([`FileKey::bytes`]).
+    pub const BYTES: usize = 56;
+
+    /// Its bytes, as a projection keeps it and a history cache's stamp sums it: length (from byte
+    /// 0), modification and change times (8, 24), inode (40) and device (48), each little-endian.
+    pub fn bytes(&self) -> [u8; FileKey::BYTES] {
+        let mut out = [0; FileKey::BYTES];
+        out[..8].copy_from_slice(&self.len.to_le_bytes());
+        out[8..24].copy_from_slice(&self.modified.to_le_bytes());
+        out[24..40].copy_from_slice(&self.changed.to_le_bytes());
+        out[40..48].copy_from_slice(&self.inode.to_le_bytes());
+        out[48..].copy_from_slice(&self.device.to_le_bytes());
+        out
+    }
+
+    /// The identity whose bytes are `bytes` ([`FileKey::bytes`]).
+    pub fn from_bytes(bytes: [u8; FileKey::BYTES]) -> FileKey {
+        let eight = |at: usize| {
+            let mut part = [0; 8];
+            part.copy_from_slice(&bytes[at..at + 8]);
+            u64::from_le_bytes(part)
+        };
+        let sixteen = |at: usize| {
+            let mut part = [0; 16];
+            part.copy_from_slice(&bytes[at..at + 16]);
+            i128::from_le_bytes(part)
+        };
+        FileKey {
+            len: eight(0),
+            modified: sixteen(8),
+            changed: sixteen(24),
+            inode: eight(40),
+            device: eight(48),
+        }
+    }
+
+    /// The identity of these parts: length, modification and change times, inode, device.
     pub fn from_parts(
         (len, modified, changed, inode, device): (u64, i128, i128, u64, u64),
     ) -> FileKey {

@@ -48,31 +48,31 @@ impl<'a> Borrowed<'a> {
         }
     }
 
-    /// The envelope's first problem, in the established diagnostic order.
-    pub(super) fn problem(&self) -> Option<String> {
+    /// The readable id of a valid envelope, or its first problem in diagnostic order.
+    pub(super) fn checked_id(&self) -> Result<EventId, String> {
         if !self.object {
-            return Some("event is not an object".into());
+            return Err("event is not an object".into());
         }
         let Some(id) = self.id else {
-            return Some("id is not a UUID".into());
+            return Err("id is not a UUID".into());
         };
         if id.millis() > MAX_MILLIS {
-            return Some("id carries an impossible timestamp".into());
+            return Err("id carries an impossible timestamp".into());
         }
         if self.op.is_none() || self.replica.is_none() {
-            return Some("op or replica missing".into());
+            return Err("op or replica missing".into());
         }
         if !self.deps_valid {
-            return Some("deps is not a list of event ids".into());
+            return Err("deps is not a list of event ids".into());
         }
         if !self.data_valid {
-            return Some("data is not an object".into());
+            return Err("data is not an object".into());
         }
         if !self.v.is_none_or(super::is_int) {
-            return Some("v is not an integer".into());
+            return Err("v is not an integer".into());
         }
         if !self.issue_valid {
-            return Some("issue is not an id".into());
+            return Err("issue is not an id".into());
         }
         let actor_valid = match self.actor {
             None | Some(Value::Null) => true,
@@ -82,7 +82,7 @@ impl<'a> Borrowed<'a> {
             Some(_) => false,
         };
         if !actor_valid {
-            return Some("actor is malformed".into());
+            return Err("actor is malformed".into());
         }
         let where_valid = match self.place {
             None | Some(Value::Null) => true,
@@ -92,9 +92,21 @@ impl<'a> Borrowed<'a> {
             Some(_) => false,
         };
         if !where_valid {
-            return Some("where is malformed".into());
+            return Err("where is malformed".into());
         }
-        None
+        Ok(id)
+    }
+
+    /// An attempt admits an event only once its envelope and its payload pass.
+    pub(super) fn attempt_id(&self) -> Result<EventId, String> {
+        if !self.object {
+            return Err("attempt line is not an event".into());
+        }
+        let id = self.checked_id()?;
+        match self.payload_problem() {
+            Some(problem) => Err(problem),
+            None => Ok(id),
+        }
     }
 
     /// The payload rules inspect the same borrowed fields for either input route.

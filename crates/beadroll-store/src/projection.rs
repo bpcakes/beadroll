@@ -8,7 +8,7 @@
 //! projection names. All the same: the projection is read, a command that only reads reading its
 //! state alone. Records appended since (a segment grown whose bytes before are the ones summed, a
 //! segment or an attempt file added) are read alone and applied after it, when replay would apply
-//! them so ([`Projection::prepare_extension`]). A file whose times are the projection's own, which
+//! them so ([`Projection::prepare_appended`]). A file whose times are the projection's own, which
 //! could have been rewritten in place since with nothing to show for it, is read again and its
 //! bytes summed: the sum kept of it says whether it is the one the projection was made from.
 //! Anything else (a file replaced, rewritten, cut or gone, a record replay would apply otherwise) and a
@@ -43,8 +43,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use beadroll_core::id::EventId;
-use beadroll_core::journal::{self, Problem};
-use beadroll_core::projection::{Extended, Projection, Record, decode_state, project};
+use beadroll_core::projection::{Appended, Extended, Projection, decode_state, project};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 use file::{Held, Made};
@@ -52,8 +51,8 @@ use sources::Sources;
 
 use crate::fs::{content_sum, read_keyed};
 use crate::journal::{
-    ContentSums, ViewError, attempt_events, claim_files_afresh, claim_keys, folder_name,
-    load_journal, load_listed, segment_files,
+    ContentSums, ViewError, claim_files_afresh, claim_keys, folder_name, load_journal, load_listed,
+    read_accepted, segment_files,
 };
 use crate::layout;
 use crate::listing::{Keys, Stamp};
@@ -61,7 +60,7 @@ use crate::memo::FileKey;
 use crate::projection::texts::TextFileAccess;
 use crate::workspace::Workspace;
 
-pub use extension::extend_projection;
+pub use extension::{extend_appended, extend_projection};
 pub use sources::Sourced;
 pub(crate) use texts::texts_path;
 use writeback::save;
@@ -198,52 +197,9 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
     let stored = file::read(&projection_path(ws)).filter(|stored| stored.made.build == build);
     if let (Some(stored), Some(seen)) = (stored, held(ws, &segments, JournalFile::Segment))
         && let Some(tails) = grown(&stored.made, &seen, stored.written)
-        && let Some((mut records, read)) = read_tails(ws, &tails)
-        // listed once the segments are read: an attempt file is in place before a record built on
-        // it is appended
-        && let Some(listed) = attempts(ws)?
+        && let Some(now) = from_stored(ws, stored, seen, &tails, want)?
     {
-        let file = Some(stored.made.texts);
-        let settled = stored.written;
-        let (size, was) = (stored.size, stored.made.journal_bytes());
-        if tails.is_empty() && same(&stored.made, &seen, &listed.held, settled) {
-            if want != Want::Projection
-                && let Ok(mut state) = decode_state(&stored.state)
-            {
-                state.set_texts_file(file);
-                // texts that cannot be read have the journal replayed
-                if want == Want::Outline || read_all(ws, &mut state) {
-                    return Ok(Now::State(Box::new(state)));
-                }
-            } else if let Some(mut projection) =
-                stored.encoded().and_then(|e| Projection::decode(e).ok())
-            {
-                projection.state_mut().set_texts_file(file);
-                projection.let_go(); // nothing to write back
-                let seen = (seen.into_iter())
-                    .map(|held| (held.path, held.key))
-                    .collect();
-                let sources = Sources::of(seen, listed.paths, listed.keys, listed.stamp);
-                return Ok(Now::Projection(Box::new(projection), sources));
-            }
-        } else if let Some((now, sources)) =
-            appended(ws, &stored.made, read, listed, &mut records, build, settled)
-            && let Some(mut projection) = stored.encoded().and_then(|e| Projection::decode(e).ok())
-        {
-            projection.state_mut().set_texts_file(file);
-            // the records applied: the bytes the journal's files grew by, only appended to
-            let tail = now.journal_bytes().saturating_sub(was);
-            if let Extended::Applied(mut projection) = extend_projection(ws, projection, records)? {
-                if kept_for(want, tail, size) {
-                    save(ws, now, &mut projection);
-                }
-                // written back or not, the command goes on without the bytes it was read from
-                projection.let_go();
-                if want != Want::Texts || read_all(ws, projection.state_mut()) {
-                    return Ok(Now::Projection(projection, sources));
-                }
-            }
-        }
+        return Ok(now);
     }
     let loaded = load_listed(ws, &segments, ContentSums::Compute)?;
     let sources = Sources::read(ws, &segments, &loaded);
@@ -272,6 +228,93 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
         );
     }
     Ok(Now::Projection(Box::new(projection), sources))
+}
+
+/// Reads the unchanged cache or applies the journal records that grew after it. When there
+/// are segment tails, the fresh attempt listing must follow the read of those segments.
+fn from_stored(
+    ws: &Workspace,
+    stored: file::Stored,
+    seen: Vec<Held>,
+    tails: &[Tail],
+    want: Want,
+) -> Result<Option<Now>, ViewError> {
+    let file = Some(stored.made.texts);
+    let settled = stored.written;
+    let size = stored.size;
+    let listed = if tails.is_empty() {
+        let Some(listed) = attempts(ws)? else {
+            return Ok(None);
+        };
+        if same(&stored.made, &seen, &listed.held, settled) {
+            return Ok(unchanged(ws, stored, seen, listed, want));
+        }
+        Some(listed)
+    } else {
+        None
+    };
+    // Even a projection that cannot take more records can verify its original files.
+    let mut records = (stored.catch_up == file::CatchUp::Extend).then(Appended::new);
+    let Some(read) = read_tails(ws, tails, records.as_mut()) else {
+        return Ok(None);
+    };
+    let listed = match listed {
+        None => attempts(ws)?,
+        known => known,
+    };
+    let Some(listed) = listed else {
+        return Ok(None);
+    };
+    let Some((now, sources)) = appended(ws, &stored.made, read, listed, records.as_mut(), settled)
+    else {
+        return Ok(None);
+    };
+    let tail = now
+        .journal_bytes()
+        .saturating_sub(stored.made.journal_bytes());
+    let Some(mut projection) = stored.decode(&ws.settings.failpoints) else {
+        return Ok(None);
+    };
+    projection.state_mut().set_texts_file(file);
+    let mut projection = if let Some(records) = records {
+        let Extended::Applied(projection) = extend_appended(ws, projection, records)? else {
+            return Ok(None);
+        };
+        projection
+    } else {
+        Box::new(projection)
+    };
+    if kept_for(want, tail, size) {
+        save(ws, now, &mut projection);
+    }
+    projection.let_go();
+    Ok(
+        (want != Want::Texts || read_all(ws, projection.state_mut()))
+            .then_some(Now::Projection(projection, sources)),
+    )
+}
+
+/// Answers from settled, unchanged files. An outline or full state needs only the state section.
+fn unchanged(
+    ws: &Workspace,
+    stored: file::Stored,
+    seen: Vec<Held>,
+    listed: Listed,
+    want: Want,
+) -> Option<Now> {
+    let file = Some(stored.made.texts);
+    if want != Want::Projection {
+        let mut state = decode_state(&stored.state).ok()?;
+        state.set_texts_file(file);
+        return (want == Want::Outline || read_all(ws, &mut state))
+            .then(|| Now::State(Box::new(state)));
+    }
+    let mut projection = stored.decode(&ws.settings.failpoints)?;
+    projection.state_mut().set_texts_file(file);
+    projection.let_go();
+    let seen = seen.into_iter().map(|held| (held.path, held.key)).collect();
+    let sources = Sources::of(seen, listed.paths, listed.keys, listed.stamp);
+    Some(Now::Projection(Box::new(projection), sources))
 }
 
 /// Whether a projection of `size` bytes, extended by records that `tail` bytes of the journal's
@@ -334,6 +377,8 @@ fn same(made: &Made, segments: &[Held], attempts: &[Held], settled: i128) -> boo
 struct Tail {
     path: String,
     from: u64,
+    /// Growth already observed at the stat. The file can also grow before it is opened.
+    grew: bool,
     sum: Option<[u8; 16]>,
 }
 
@@ -359,24 +404,16 @@ fn grown(made: &Made, segments: &[Held], settled: i128) -> Option<Vec<Tail>> {
     }
     let mut tails = Vec::new();
     for now in segments {
-        match before.get(now.path.as_str()) {
-            Some(was) if now.key == was.key && was.key.settled_before(settled) => {}
+        let (from, sum) = match before.get(now.path.as_str()) {
+            Some(was) if now.key == was.key && was.key.settled_before(settled) => continue,
             // Nothing was appended, but the identity cannot vouch for the bytes: they must.
-            Some(was) if now.key == was.key => tails.push(Tail {
-                path: now.path.clone(),
-                from: was.key.len(),
-                sum: Some(was.sum?),
-            }),
+            Some(was) if now.key == was.key => (was.key.len(), Some(was.sum?)),
             Some(was)
                 if now.key.same_file(&was.key)
                     && now.key.len() > was.key.len()
                     && last.get(machine(&now.path)) == Some(&now.path.as_str()) =>
             {
-                tails.push(Tail {
-                    path: now.path.clone(),
-                    from: was.key.len(),
-                    sum: was.sum,
-                });
+                (was.key.len(), was.sum)
             }
             Some(_) => return None,
             None => {
@@ -384,13 +421,15 @@ fn grown(made: &Made, segments: &[Held], settled: i128) -> Option<Vec<Tail>> {
                 if now.path.as_str() <= *after {
                     return None;
                 }
-                tails.push(Tail {
-                    path: now.path.clone(),
-                    from: 0,
-                    sum: None,
-                });
+                (0, None)
             }
-        }
+        };
+        tails.push(Tail {
+            path: now.path.clone(),
+            from,
+            grew: now.key.len() > from,
+            sum,
+        });
     }
     let still: HashSet<&str> = segments.iter().map(|held| held.path.as_str()).collect();
     before
@@ -417,14 +456,20 @@ fn machine(path: &str) -> &str {
     path.split('/').next().unwrap_or_default()
 }
 
-/// The records of the segments `tails` name after where each was read up to, and what a
-/// projection keeps of each as it was read. `None` when they cannot be read as a store reads them
+/// Verifies each segment prefix, adds any appended records to the batch and returns the
+/// identities actually read. Without a batch, only checksum verification can succeed.
+/// `None` when the segments cannot be read as a store reads them
 /// whole: a grown segment's bytes before are not the ones summed, a file of the projection's own
 /// tick is not the one it was made from or has no sum, a segment ends in a line not yet whole, a
 /// record is unreadable.
-fn read_tails(ws: &Workspace, tails: &[Tail]) -> Option<(Vec<Record>, Vec<Held>)> {
-    let mut records = Vec::new();
-    let mut problems: Vec<Problem> = Vec::new();
+fn read_tails(
+    ws: &Workspace,
+    tails: &[Tail],
+    mut records: Option<&mut Appended>,
+) -> Option<Vec<Held>> {
+    if records.is_none() && tails.iter().any(|tail| tail.grew) {
+        return None;
+    }
     let mut read = Vec::with_capacity(tails.len());
     for tail in tails {
         let path = ws.events_dir.join(&tail.path);
@@ -439,15 +484,12 @@ fn read_tails(ws: &Workspace, tails: &[Tail]) -> Option<(Vec<Record>, Vec<Held>)
         {
             return None;
         }
-        let origin = path.display().to_string();
-        let replica = folder_name(&path, 1);
-        for value in journal::read_segment(after, &origin, Some(&mut problems)) {
-            records.push(Record {
-                value,
-                replica: replica.clone(),
-                origin: origin.clone(),
-                sequenced: true,
-            });
+        if !after.is_empty() {
+            let batch = records.as_deref_mut()?;
+            batch.add_segment(after, &folder_name(&path, 1), &path.display().to_string());
+            if !batch.is_readable() {
+                return None;
+            }
         }
         read.push(kept(
             ws,
@@ -457,7 +499,7 @@ fn read_tails(ws: &Workspace, tails: &[Tail]) -> Option<(Vec<Record>, Vec<Held>)
             Some(content_sum(&data)),
         )?);
     }
-    problems.is_empty().then_some((records, read))
+    Some(read)
 }
 
 /// The accepted attempt files as they are: each one's path and identity as the phase has them,
@@ -487,8 +529,8 @@ fn attempts(ws: &Workspace) -> Result<Option<Listed>, ViewError> {
 }
 
 /// What a projection with the records appended since it was made is made from, each file as it was
-/// read: the segments `read` (whose records are in `records` already), then each attempt file
-/// `listed` that it was not made from, its records added to `records`. An attempt file whose
+/// read: the segments `read`, then each attempt file `listed` that it was not made from.
+/// New attempts need a batch to receive their records. An attempt file whose
 /// identity was not settled when the projection was written (`settled`) is read and summed, as a
 /// segment of that moment's own tick is. `None` when what was appended cannot be read as a store
 /// reads it whole: a file of the projection's own tick is not the one it was made from or has no
@@ -500,11 +542,9 @@ fn appended(
     made: &Made,
     read: Vec<Held>,
     listed: Listed,
-    records: &mut Vec<Record>,
-    build: &str,
+    mut records: Option<&mut Appended>,
     settled: i128,
 ) -> Option<(Made, Option<Sources>)> {
-    let mut problems: Vec<Problem> = Vec::new();
     let before: HashMap<&str, &Held> = (made.files.iter())
         .filter(|held| held.kind == JournalFile::Attempt)
         .map(|held| (held.path.as_str(), held))
@@ -529,18 +569,15 @@ fn appended(
             }
             None => {}
         }
-        let Ok((data, Some(key))) = read_keyed(path) else {
+        let batch = records.as_deref_mut()?;
+        let Ok((data, Some(key))) = read_accepted(ws, path) else {
             return None;
         };
         let origin = path.display().to_string();
         let replica = folder_name(path, 2);
-        for value in attempt_events(path, Some(&data), Some(&mut problems)) {
-            records.push(Record {
-                value,
-                replica: replica.clone(),
-                origin: origin.clone(),
-                sequenced: false,
-            });
+        batch.add_attempt(&data, &replica, &origin);
+        if !batch.is_readable() {
+            return None;
         }
         files.extend(kept(
             ws,
@@ -549,9 +586,6 @@ fn appended(
             JournalFile::Attempt,
             Some(content_sum(&data)),
         ));
-    }
-    if !problems.is_empty() {
-        return None;
     }
     let mut read: HashMap<String, Held> = (read.into_iter())
         .map(|held| (held.path.clone(), held))
@@ -566,9 +600,8 @@ fn appended(
     segments.extend(read.into_values());
     segments.sort_by(|a, b| a.path.cmp(&b.path));
     segments.extend(files);
-    let build = build.to_owned();
     let made = Made {
-        build,
+        build: made.build.clone(),
         files: segments,
         texts: made.texts,
     };

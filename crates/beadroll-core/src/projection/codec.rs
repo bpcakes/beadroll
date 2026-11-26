@@ -22,7 +22,7 @@ use crate::order::position;
 /// projection's format was fixed (512 levels, until roll-lqjj.53), and the few levels replay wraps
 /// an event's values in (a dependency's metadata, an imported comment), so that no projection
 /// written then is unreadable now.
-const NESTING: usize = 512 + 8;
+pub(crate) const NESTING: usize = 512 + 8;
 
 /// Why bytes are no projection: what was being read when they ran out or did not fit.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -264,6 +264,15 @@ impl Writer {
         }
     }
 
+    /// Writes a caller-built value only if a reader can decode its nesting depth.
+    pub(crate) fn checked_value(&mut self, value: &Value) -> Option<()> {
+        if matches!(value, Value::Array(_) | Value::Object(_)) && value.deeper_than(NESTING) {
+            return None;
+        }
+        self.value(value);
+        Some(())
+    }
+
     /// A JSON value: its kind, then what it holds.
     pub(crate) fn value(&mut self, value: &Value) {
         match value {
@@ -322,6 +331,9 @@ impl Writer {
 pub(crate) struct Reader<'a> {
     bytes: &'a [u8],
     at: usize,
+    /// Each array item and object member has its own value tag in `bytes`. Charge its slot
+    /// before reserving so nested containers cannot all reserve against the same bytes.
+    value_slots_left: usize,
     names: Vec<Arc<str>>,
     shared: Vec<Arc<Value>>,
     /// Where `bytes` begin in the part they were taken from.
@@ -333,6 +345,7 @@ impl<'a> Reader<'a> {
         Reader {
             bytes,
             at: 0,
+            value_slots_left: bytes.len(),
             names: Vec::new(),
             shared: Vec::new(),
             base: 0,
@@ -361,11 +374,10 @@ impl<'a> Reader<'a> {
             table.values.push(Arc::new(after.value()?));
         }
         let records = Reader {
-            bytes: records,
-            at: 0,
             names: table.names.clone(),
             shared: table.values.clone(),
             base: 8,
+            ..Reader::new(records)
         };
         Ok((records, after, table))
     }
@@ -410,6 +422,10 @@ impl<'a> Reader<'a> {
         let mut n: u64 = 0;
         for shift in (0..64).step_by(7) {
             let byte = self.byte()?;
+            // The tenth byte can supply only bit 63 and must end the number.
+            if shift == 63 && byte > 1 {
+                return Err(Unreadable("a number"));
+            }
             n |= u64::from(byte & 0x7f) << shift;
             if byte & 0x80 == 0 {
                 return Ok(n);
@@ -502,6 +518,15 @@ impl<'a> Reader<'a> {
         self.value_within(NESTING)
     }
 
+    fn container_count(&mut self) -> Result<usize, Unreadable> {
+        let count = self.count()?;
+        self.value_slots_left = self
+            .value_slots_left
+            .checked_sub(count)
+            .ok_or(Unreadable("value container counts"))?;
+        Ok(count)
+    }
+
     /// A value nesting at most `depth` arrays and objects.
     fn value_within(&mut self, depth: usize) -> Result<Value, Unreadable> {
         Ok(match self.byte()? {
@@ -523,8 +548,11 @@ impl<'a> Reader<'a> {
             6 => Value::Str(self.text()?),
             7 => {
                 let depth = depth.checked_sub(1).ok_or(Unreadable("nesting"))?;
-                let n = self.count()?;
-                let mut items = Vec::with_capacity(n);
+                let n = self.container_count()?;
+                let mut items = Vec::new();
+                items
+                    .try_reserve_exact(n)
+                    .map_err(|_| Unreadable("an array allocation"))?;
                 for _ in 0..n {
                     items.push(self.value_within(depth)?);
                 }
@@ -543,8 +571,11 @@ impl<'a> Reader<'a> {
     }
 
     fn object_within(&mut self, depth: usize) -> Result<Object, Unreadable> {
-        let n = self.count()?;
-        let mut members = Object::with_capacity(n);
+        let n = self.container_count()?;
+        let mut members = Object::new();
+        members
+            .try_reserve_exact(n)
+            .map_err(|_| Unreadable("an object allocation"))?;
         for _ in 0..n {
             let key = self.text()?;
             let value = self.value_within(depth)?;

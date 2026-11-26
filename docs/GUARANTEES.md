@@ -26,15 +26,34 @@ same thing*) and the variables bead reads (*Configuration*).
   Projections expose their retained scope, and decoded state parts expose summary scope. Neither
   can acquire full knowledge by loading texts. `Projection::retains` means retained ancestry,
   not membership in the original journal.
-- `Snapshot` owns a settled journal and the state replayed from that exact read. It accepts no
+- `Snapshot` owns a settled journal and the state replayed from that exact read. The journal
+  and state share event metadata for the lifetime of the snapshot. It accepts no
   independently supplied state. Its event readers resolve issues in that state, including valid
   creation events, which name their own ids as the issue. Its immutable
   recap results carry the same snapshot and their own placed set for joining frontiers. A later
   read does not change an existing snapshot. `Tree::snapshot` reads one supplied git tree; it does
   not fetch or claim that a mutable store's files were read atomically.
-- A prepared projection extension owns its projection and exact record batch, and selects the
-  texts to load from that state. Application consumes the preparation; incomplete loading or an
-  unsafe batch requests replay. Store reads and sync transactions use the same loading path.
+- A projection that already requires replay declines a nonempty batch before converting its
+  records. An empty batch leaves the projection as it was. A batch with a recorded read error
+  requests replay before selecting any saved texts, even when earlier records were readable.
+  An incomplete segment discards the batch before its complete lines are parsed. Catch-up
+  stops at the first unreadable line in a complete segment. Full replay reports the error
+  and reads the later lines. `Appended::read_records` borrows its source, consumes the first
+  unreadable record and leaves the remaining records in the iterator. `OwnedRecords`
+  releases the unused portion of a caller-built vector safely at any depth. An attempt
+  must pass envelope and payload validation at that point whether supplied as bytes or as
+  records. Catch-up requests replay for caller-built values that journal JSON cannot
+  represent exactly.
+  For a batch it will try to apply,
+  the preparation owns the projection and exact records and selects the texts to load from that
+  state. Application consumes the preparation. Incomplete loading or an unsafe batch requests
+  replay. The store can reuse an unchanged cache even when the projection cannot extend. A
+  journal file from the cache's own timestamp tick is verified against its saved checksum before
+  reuse. The checksummed source metadata tells the store whether it can prepare new records.
+  A source mismatch triggers replay before the store reads the saved index. Store reads and
+  sync transactions use the same text-loading path. Applying a cloned batch retains only event
+  metadata in the projection's ancestry. The original batch still owns its operations and can
+  be applied to another projection.
 - A prepared writeback holds an exclusive borrow of its projection, its encoded bytes, text
   locations and text-file generation. Acknowledgement consumes that preparation and updates
   only its source projection. The store acknowledges after both writes succeed. A failed write
@@ -172,7 +191,8 @@ The journal holds sequential events; ownership is kept apart from it. An
 *attempt* (a `claim`, `release` or `takeover`, plus any edits made in the same
 command) is one small file under `events/<machine>/claims/`, written whole, and
 such a file exists only once the remote has accepted the push that carried it.
-A reader therefore sees all of an attempt or none of it.
+A reader therefore sees all of an attempt or none of it. If replay cannot allocate the buffer
+for an accepted attempt, the command fails with an `IO` error naming the file.
 
 A claim makes its owner the issue's assignee. A release or a reopen (a takeover's
 too) gives back the assignee the issue had before the claim, none or a hand-set
@@ -700,8 +720,11 @@ it, and the file is committed again.
   `bead log` caches settled history metadata in causal order. A repeat read
   checks every source file's identity and reads the metadata without parsing
   journal payloads. A changed journal, missing or damaged cache, different
-  build or unsettled file timestamp rebuilds it from the whole journal. Keys
-  and machine aliases are resolved afresh. This remains work proportional to
+  build or unsettled file timestamp rebuilds it from the whole journal.
+  The public history decoder rejects array and object counts whose combined
+  slots exceed the input length, including counts in nested values. The public history
+  writer and reader both return `None` for values deeper than the codec's nesting limit.
+  Keys and machine aliases are resolved afresh. This remains work proportional to
   the history's metadata, even for `--limit 1`; it is not a history boundary.
   First sync into an empty store flushes up to eight independent journal files
   concurrently, then installs them in listing order. Every file is still

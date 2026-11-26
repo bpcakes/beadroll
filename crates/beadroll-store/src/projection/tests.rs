@@ -394,7 +394,11 @@ fn a_damaged_projection_is_never_trusted() {
     }
     for bytes in damaged {
         std::fs::write(&path, &bytes).unwrap();
-        assert!(file::read(&path).and_then(file::Stored::encoded).is_none());
+        assert!(
+            file::read(&path)
+                .and_then(|stored| stored.decode(&ws.settings.failpoints))
+                .is_none()
+        );
         assert!(replays(&ws));
         assert_eq!(std::fs::read(&path).unwrap(), good);
     }

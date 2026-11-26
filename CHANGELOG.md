@@ -6,6 +6,18 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A projection catching up reads the bytes its journal's files grew by straight into a journal,
+  as a whole journal is read (roll-lqjj.53.1), where it built a value for each line and printed it
+  again to hash it (roll-0668). `bead log`'s history cache is kept in the projection's binary
+  codec rather than as JSON, ids as their 16 bytes (`bead history 2`; an older cache is rebuilt
+  once). The local projection cache also rebuilds once to record whether it can accept new
+  events alongside its source checksums. Output and format 1 are unchanged.
+- In-memory projection batches reject malformed attempt records as soon as a file reader
+  would, before consuming another record or requesting saved texts. JSON output preserves
+  the exact float at binary exponent boundaries, including 2⁻²⁴.
+- Journal replay and strict reads of `meta.json` report an `IO` error naming the file if
+  bead cannot allocate its buffer. Lenient metadata reads use empty metadata in that case.
+
 - Actor detection recognises Cursor sessions (`CURSOR_CONVERSATION_ID` and `CURSOR_AGENT`),
   recording `agent: "cursor"` and the conversation id as the thread so concurrent Cursor threads
   (including those hosted by T3 Code) hold distinct claims instead of falling back to `human`. When

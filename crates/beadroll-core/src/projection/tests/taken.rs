@@ -7,6 +7,7 @@
 //! down to those it names. Every extension of a projection read back is checked for what a
 //! write-back may copy of it (roll-lqjj.44, [`marked`]).
 
+use crate::projection::Appended;
 use std::collections::BTreeMap;
 
 use super::super::{Extended, Projection, Record, project, retained};
@@ -128,6 +129,7 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: History
             }
             let local = batch.iter().all(|at| world.events[*at].machine == 0);
             let records = records(&world, &batch);
+            let appended = Appended::from(records.clone());
             // as a store does: the texts of the issues the batch is about read in first
             tracks = tracks.map(|(mut projection, mut file, back, mut held)| {
                 // the figures are the store's
@@ -141,7 +143,7 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: History
                 let before = flawed::kinds(projection.state());
                 let open = projection.extendable();
                 tally.closed += usize::from(!open && counted);
-                let about = projection.about(&records);
+                let about = projection.about(&appended);
                 read_in(projection.state_mut(), &file, Some(about.clone()));
                 let histories = owned::histories(projection.state(), &about);
                 let ahead = marked::ahead(&mut projection, &file, &mut coin, held.as_ref());
@@ -151,7 +153,7 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: History
                         *tally.brought.entry(kind).or_default() += new;
                     }
                 }
-                let projection = match projection.extend(records.clone()).unwrap() {
+                let projection = match projection.extend(appended.clone()).unwrap() {
                     Extended::Applied(extended) => {
                         assert!(
                             equal(&whole(&extended, &file), &full),
@@ -257,12 +259,13 @@ impl Stored {
         self.since.extend(batch);
         self.batches += 1;
         let records = read_after(world, &self.since);
-        let about = self.projection.about(&records);
+        let appended = Appended::from(records.clone());
+        let about = self.projection.about(&appended);
         let mut extending = self.projection.clone();
         read_in(extending.state_mut(), &self.file, Some(about.clone()));
         let before = owned::histories(extending.state(), &about);
         let ahead = Records::of(&extending);
-        let written = match extending.extend(records.clone()).unwrap() {
+        let written = match extending.extend(appended).unwrap() {
             Extended::Applied(extended) => {
                 assert!(
                     equal(&whole(&extended, &self.file), full),

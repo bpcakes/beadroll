@@ -4,8 +4,8 @@
 //! it was written ([`read_segment`], [`read_attempt`]). Both read a file by the same rules.
 
 use super::content::Digest;
-use super::{Journal, Problem};
-use crate::event::{Envelope, event_problem, payload_problem};
+use super::{Admitted, Journal, Problem};
+use crate::event::{Envelope, checked_attempt};
 use crate::journal::JournalOrder;
 use crate::json::{self, ParseError, Value};
 use crate::text::strip_bytes;
@@ -16,10 +16,6 @@ use crate::text::strip_bytes;
 fn loads_line(line: &[u8]) -> Result<Value, ParseError> {
     json::parse(line).map(|parsed| parsed.value)
 }
-
-/// What an attempt line holds, judged whole: a line that is not strict JSON, not an object, or
-/// not a valid event is the problem with it.
-type Judged<T> = Result<T, String>;
 
 /// Reads a segment's lines with `read`: the records of each, in order. A last line not yet whole
 /// is skipped, since it may still be undergoing append; any other unreadable line is reported.
@@ -49,51 +45,44 @@ fn segment_lines<T>(
     out
 }
 
-/// Reads an attempt's lines with `read`, which judges each whole: the events of all of them, or
-/// none, since any bad line is reported and invalidates the entire attempt.
+/// The original reason is enough for catch-up. Only a diagnostic consumer needs the
+/// path, line number and whole-file explanation joined into a journal problem.
+pub(crate) struct BadAttempt {
+    line: usize,
+    reason: String,
+}
+
+impl BadAttempt {
+    fn at(self, origin: &str) -> Problem {
+        Problem::new(
+            None,
+            format!("{origin}:{}", self.line),
+            format!("{}; the whole attempt is ignored", self.reason),
+        )
+    }
+}
+
+/// Reads an entire attempt before returning any of its records.
 fn attempt_lines<T>(
     data: &[u8],
-    origin: &str,
-    mut problems: Option<&mut Vec<Problem>>,
-    mut read: impl FnMut(&[u8]) -> Judged<T>,
-) -> Vec<T> {
+    mut read: impl FnMut(&[u8]) -> Result<T, String>,
+) -> Result<Vec<T>, BadAttempt> {
     let mut out = Vec::new();
     for (number, line) in data.split(|b| *b == b'\n').enumerate() {
         if strip_bytes(line).is_empty() {
             continue;
         }
-        match read(line) {
-            Ok(record) => out.push(record),
-            Err(problem) => {
-                if let Some(problems) = problems.as_deref_mut() {
-                    let origin = format!("{origin}:{}", number + 1);
-                    problems.push(Problem::new(
-                        None,
-                        origin,
-                        format!("{problem}; the whole attempt is ignored"),
-                    ));
-                }
-                return Vec::new();
-            }
-        }
+        let record = read(line).map_err(|reason| BadAttempt {
+            line: number + 1,
+            reason,
+        })?;
+        out.push(record);
     }
-    out
+    Ok(out)
 }
 
-/// An attempt line's event, judged whole: `read` reads the line, and `problem` checks it by
-/// reference so a reader that keeps the written value need not copy it for validation.
-fn judged<T>(
-    line: &[u8],
-    read: impl FnOnce(&[u8]) -> Result<T, ParseError>,
-    problem: impl FnOnce(&T) -> Option<String>,
-) -> Judged<T> {
-    let Ok(record) = read(line) else {
-        return Err("line is not valid JSON".to_owned());
-    };
-    match problem(&record) {
-        None => Ok(record),
-        Some(problem) => Err(problem),
-    }
+fn invalid_json(_: ParseError) -> String {
+    "line is not valid JSON".to_owned()
 }
 
 /// Reads a segment into the records as written. Skip an unreadable final line that may still be
@@ -105,15 +94,17 @@ pub fn read_segment(data: &[u8], origin: &str, problems: Option<&mut Vec<Problem
 /// Reads an attempt as a whole into the records as written: any bad line is reported and
 /// invalidates the entire attempt.
 pub fn read_attempt(data: &[u8], origin: &str, problems: Option<&mut Vec<Problem>>) -> Vec<Value> {
-    attempt_lines(data, origin, problems, |line| {
-        judged(line, loads_line, |value| {
-            if !matches!(value, Value::Object(_)) {
-                Some("attempt line is not an event".to_owned())
-            } else {
-                event_problem(value).or_else(|| payload_problem(value))
+    match attempt_lines(data, |line| {
+        checked_attempt(loads_line(line).map_err(invalid_json)?)
+    }) {
+        Ok(records) => records,
+        Err(problem) => {
+            if let Some(problems) = problems {
+                problems.push(problem.at(origin));
             }
-        })
-    })
+            Vec::new()
+        }
+    }
 }
 
 /// A line read into what the journal keeps: what was read of it, and its content's digest.
@@ -122,6 +113,7 @@ type Line = (Envelope, Digest);
 impl Journal {
     /// Reads `line` into what this journal keeps of it.
     fn read_line(&self, line: &[u8]) -> Result<Line, ParseError> {
+        crate::work::tally(crate::work::Work::JournalLine, 1);
         let envelope = json::deserialize(line)?;
         Ok((envelope, self.shared.digester.digest(line)))
     }
@@ -136,31 +128,76 @@ impl Journal {
         });
         self.invalid.append(&mut problems);
         for (envelope, digest) in lines {
-            self.add_read(envelope, digest, replica, origin, JournalOrder::Sequenced);
+            self.add_for_replay(envelope, digest, replica, origin, JournalOrder::Sequenced);
         }
+    }
+
+    /// Adds a segment tail to a catch-up batch. On failure the caller discards the journal,
+    /// so there is no need to read later lines or accumulate diagnostics for full replay.
+    pub(crate) fn try_add_segment(&mut self, data: &[u8], replica: &str, origin: &str) -> bool {
+        if data.last().is_some_and(|last| *last != b'\n') {
+            return false;
+        }
+        for line in data.split(|b| *b == b'\n') {
+            if strip_bytes(line).is_empty() {
+                continue;
+            }
+            let Ok((envelope, digest)) = self.read_line(line) else {
+                return false;
+            };
+            let Ok(record) = Admitted::for_batch(envelope, JournalOrder::Sequenced) else {
+                return false;
+            };
+            self.add_read(record, digest, replica, origin);
+        }
+        true
     }
 
     /// Adds the events of an attempt file found in `replica`'s journal at `origin`, each line
     /// read straight into what the journal keeps of it, as [`read_attempt`] reads them: all of
     /// them, or none, since any bad line is reported and invalidates the entire attempt.
     pub fn add_attempt(&mut self, data: &[u8], replica: &str, origin: &str) {
-        let mut problems = Vec::new();
-        let lines = attempt_lines(data, origin, Some(&mut problems), |line| {
-            judged(
-                line,
-                |line| self.read_line(line),
-                |(envelope, _)| {
-                    if !envelope.object {
-                        Some("attempt line is not an event".to_owned())
-                    } else {
-                        envelope.problem().or_else(|| envelope.payload_problem())
-                    }
-                },
-            )
-        });
-        self.invalid.append(&mut problems);
-        for (envelope, digest) in lines {
-            self.add_read(envelope, digest, replica, origin, JournalOrder::Attempt);
+        if let Err(problem) = self.try_add_attempt(data, replica, origin) {
+            self.invalid.push(problem.at(origin));
         }
+    }
+
+    pub(crate) fn try_add_attempt(
+        &mut self,
+        data: &[u8],
+        replica: &str,
+        origin: &str,
+    ) -> Result<(), BadAttempt> {
+        let records = attempt_lines(data, |line| {
+            let (envelope, digest) = self.read_line(line).map_err(invalid_json)?;
+            Ok((
+                Admitted::for_batch(envelope, JournalOrder::Attempt)?,
+                digest,
+            ))
+        })?;
+        for (record, digest) in records {
+            self.add_read(record, digest, replica, origin);
+        }
+        Ok(())
+    }
+
+    /// Admits a value to a catch-up batch by the same rule as a line from its file.
+    pub(crate) fn try_add_record(
+        &mut self,
+        value: Value,
+        replica: &str,
+        origin: &str,
+        order: JournalOrder,
+    ) -> bool {
+        let Some(digest) = self.shared.digester.readable_digest(&value) else {
+            value.discard();
+            return false;
+        };
+        let envelope = Envelope::from_value(value);
+        let Ok(record) = Admitted::for_batch(envelope, order) else {
+            return false;
+        };
+        self.add_read(record, digest, replica, origin);
+        true
     }
 }

@@ -31,8 +31,22 @@ consumer on tokio calls through `spawn_blocking`.
   against that state; its `Recap` keeps the selection, frontier and placed set together.
 - `replay/batch.rs`: `Batch` owns state during event application. Only consuming full or
   changed-record finishing returns it, after dependency holes and derived indexes are settled.
-- `projection/extension.rs`: `prepare_extension` owns a projection and its exact batch; it
-  selects and checks text loading before consuming application. `projection/writeback.rs`:
+- `projection/appended.rs`: `Appended`, the batch a projection takes in, a journal of it alone
+  not yet settled: a store reads it from the bytes its files grew by (`add_segment`,
+  `add_attempt`), a transaction and a test build it of `Record`s (roll-0668).
+- `projection/extension.rs`: `prepare_extension` checks whether the projection can take a
+  nonempty batch before converting its records. Only a `ReadableAppended` can select affected
+  issues. The preparation owns that batch and its requested locations until application.
+  Empty batches and batches already known to require replay request no texts. `prepare_appended`
+  prepares a batch already read into a journal. An incomplete segment discards the batch
+  before parsing its prefix. `Journal::try_add_segment` stops at the first unreadable line
+  in complete input. Later additions to an unreadable batch do no parsing. `Appended::read_records`
+  borrows the iterator and stops at the first unreadable record. Use `OwnedRecords` for a
+  vector whose unvisited suffix can contain over-depth values.
+  Both attempt readers and in-memory attempt admission check the same borrowed envelope
+  and payload before installation. Segment records with a readable id are judged at settlement.
+  Catch-up requires caller-built values to round-trip exactly through journal JSON.
+  `projection/writeback.rs`:
   `prepare_append` and `prepare_rewrite` lend `Writeback`, freezing a projection alongside its
   bytes, places and generation. Only its consuming `written` acknowledges those locations.
   Callers must write both parts before acknowledging; this pure crate cannot verify I/O.
@@ -43,8 +57,11 @@ consumer on tokio calls through `spawn_blocking`.
 
 - `src/lib.rs`: the crate root, listing the modules.
 - `src/history.rs`: `HistoryEntry`, display metadata derived from a settled event, and its
-  disposable cache encoding. It has no operation payload or authority to enter replay; issue
-  and machine ids stay unresolved for the caller's current keys and aliases.
+  disposable cache encoding (`cached`, `from_cached`), in the projection's codec. Both return
+  `None` for values beyond the codec's nesting limit. The methods on `HistoryEntry` convert
+  individual rows to and from their existing JSON arrays. A history row has no
+  operation payload or authority to enter replay; issue and machine ids stay unresolved for the
+  caller's current keys and aliases.
 - `src/json.rs` (`json/read.rs`, `json/write.rs`, `json/int.rs`): `Value` and its `Deserialize`,
   `parse` (serde_json), `write`, `Format`.
 - `src/text.rs`: `repr`, `str_of`, `strip`, `b36`, and `surrogateescaped`, `repr_bytes`,
@@ -88,7 +105,7 @@ consumer on tokio calls through `spawn_blocking`.
   applied after it: what every event had seen cut to the events the state still names
   (`state/seen/compact.rs`), by `project` and then now and then, by the write-back that finds the
   events taken in since more than a `COMPACTED`th of those it knew when last cut
-  (`Projection::compaction_due`, roll-lqjj.43); `projection/extend.rs`: `Projection::extend`, which applies records
+  (`Projection::compaction_due`, roll-lqjj.43); `projection/extend.rs`: `Projection::extend_readable`, which applies records
   appended to its journal when replay would apply them after all of it, and declines otherwise, and
   then finishes only what the batch changed (`replay::finish_some`, roll-lqjj.17);
   `projection/codec.rs`, `projection/state_codec.rs`, `state/seen/codec.rs`: its bytes, two parts
@@ -138,8 +155,8 @@ consumer on tokio calls through `spawn_blocking`.
 - `src/replay/tests.rs`: replay is invariant under delivery order, on histories of the
   differential tests' generator (`projection::tests::history`, roll-k2wy.14.4).
 - What core's unit tests share: `projection::tests` (`history`, `Rng`, and `hostile`'s `event` and
-  `id`), and `projection::journal_of`, records read into a journal in their files' order, which
-  `read_batch` settles. They take from beadroll-test-support only what holds none of core's
+  `id`), and `projection::journal_of`, records read into a journal in their files' order, as
+  `projection::Appended` reads a batch. They take from beadroll-test-support only what holds none of core's
   types (`events::id_at`, `values::Rng`): they build a second `beadroll_core` there.
 
 ## Edit here for X
@@ -220,7 +237,7 @@ consumer on tokio calls through `spawn_blocking`.
   next decode). The state part keeps each edge and the events that added it; the metadata of each
   addition is with the issue's texts, `None` in a state read alone until they are read in, which
   only an export (and applying more events) needs. So an edge added or removed changes an issue's texts, and so does a create of a
-  key another issue's import waits for, which makes that issue an edge: `Projection::extend`
+  key another issue's import waits for, which makes that issue an edge: `Projection::extend_readable`
   declines when such an issue's texts are not in, and `Projection::prepare_extension` lists them
   (`Extension::wanted_texts`) for a store to read in first. Read an edge through `Issue::deps` and `Issue::dep_tags`, never the field; add an
   edge through `DepTags::added` alone, and change an edge's additions through it, or through

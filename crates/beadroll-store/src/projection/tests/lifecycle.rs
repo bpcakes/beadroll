@@ -34,12 +34,13 @@ fn failed_projection_writes_leave_new_texts_unacknowledged_for_retry() {
         let Extended::Applied(next) = extend_projection(
             &ws,
             projected,
-            vec![Record {
+            std::iter::once(Record {
                 value: update.clone(),
                 replica: HERE.into(),
                 origin: "test".into(),
                 sequenced: true,
-            }],
+            })
+            .collect(),
         )
         .unwrap() else {
             panic!("sequential extension")

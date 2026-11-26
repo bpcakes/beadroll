@@ -3,7 +3,7 @@
 use crate::id::EventId;
 use crate::journal::{Event, Journal, SettledJournal};
 use crate::recap::{self, Unseen, Window};
-use crate::replay::replay;
+use crate::replay::replay_snapshot;
 use crate::state::{FullKnowledge, HydratedState, Issue, KeySpace, State};
 
 /// A settled journal paired with its own full replay. There is no constructor accepting
@@ -26,7 +26,7 @@ impl Snapshot {
     /// share their events: cloning it copies none.
     pub fn from_journal(mut journal: Journal) -> Result<Self, KeySpace> {
         journal.settle();
-        let state = replay(journal.clone())?;
+        let state = replay_snapshot(&journal)?;
         Ok(Self { journal, state })
     }
 
@@ -163,5 +163,35 @@ impl<'a> Recap<'a> {
     /// Joins a previously saved or concurrent frontier using this read's own placed set.
     pub fn joined(&self, other: &[EventId]) -> Vec<EventId> {
         recap::joined(self.frontier(), self.placed_ids(), other)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::journal::JournalOrder;
+    use crate::json::{Object, Value};
+    use crate::projection::tests::hostile::event;
+
+    /// A snapshot keeps the journal alive for its event readers. Its replay can use the
+    /// very same dependency list for ancestry (AU22).
+    #[test]
+    fn the_journal_and_its_replayed_state_share_event_causes() {
+        let mut journal = Journal::new();
+        let mut create = Object::new();
+        create.insert("key".into(), Value::from("ex-one"));
+        for value in [
+            event(1, "r", &[], "init", 1, Object::new()),
+            event(2, "r", &[1], "create", 2, create),
+        ] {
+            journal.add(value, "r", "segment", JournalOrder::Sequenced);
+        }
+        let snapshot = Snapshot::from_journal(journal).unwrap();
+        let id = snapshot.knowledge().events().last().unwrap();
+        let original = snapshot.event(id).unwrap().event();
+        assert_eq!(original.op_name(), "create");
+        assert_eq!(original.deps().len(), 1);
+        let retained = &snapshot.state.knowledge.events[&id];
+        assert!(std::ptr::eq(original.deps(), retained.deps()));
     }
 }

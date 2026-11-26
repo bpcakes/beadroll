@@ -7,6 +7,7 @@ use super::super::{
     same, whole,
 };
 use super::{by_key, creating, edges, fnv, on, rendered};
+use crate::projection::Appended;
 
 use crate::id::EventId;
 use crate::json::{Object, Value};
@@ -228,7 +229,7 @@ fn histories_heavy_in_imports_that_wait_agree_every_way_and_with_replay_before_t
                     AnswerCoverage::Direct
                 },
             );
-            let records = records(&world, &batch);
+            let records = Appended::from(records(&world, &batch));
             tracks = tracks.map(|(mut projection, mut file, back)| {
                 if reading_back {
                     projection = read_back(&projection, &mut file, back);

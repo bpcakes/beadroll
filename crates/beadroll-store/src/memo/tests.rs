@@ -275,3 +275,22 @@ fn a_memo_read_for_some_files_holds_what_a_read_of_the_whole_holds_of_them() {
         assert_eq!(part, expected);
     }
 }
+
+#[test]
+fn an_identity_is_kept_in_its_parts_bytes_in_order_and_read_back_from_them() {
+    let key = key(7);
+    assert_eq!(
+        key.parts(),
+        (7, 1_791_558_245_123_456_789, -5, 42, u64::MAX)
+    );
+    assert_eq!(FileKey::from_parts(key.parts()), key);
+    let bytes = key.bytes();
+    let mut expected = Vec::new();
+    expected.extend_from_slice(&7u64.to_le_bytes());
+    expected.extend_from_slice(&1_791_558_245_123_456_789i128.to_le_bytes());
+    expected.extend_from_slice(&(-5i128).to_le_bytes());
+    expected.extend_from_slice(&42u64.to_le_bytes());
+    expected.extend_from_slice(&u64::MAX.to_le_bytes());
+    assert_eq!(bytes.as_slice(), expected.as_slice());
+    assert_eq!(FileKey::from_bytes(bytes), key);
+}

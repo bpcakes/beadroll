@@ -9,7 +9,7 @@ use std::fs::File;
 use std::io::{Read as _, Seek as _, SeekFrom};
 use std::path::Path;
 
-use beadroll_core::projection::{ENCODING, Encoded, sum};
+use beadroll_core::projection::{ENCODING, Encoded, Projection, sum};
 
 use crate::memo::FileKey;
 use crate::projection::JournalFile;
@@ -18,7 +18,7 @@ use crate::projection::JournalFile;
 const MAGIC: &[u8; 16] = b"bead projection\n";
 
 /// The version of this layout.
-const LAYOUT: u32 = 2;
+const LAYOUT: u32 = 3;
 
 /// The header's length: the magic, the two versions, three lengths and three sums.
 const HEADER: usize = 16 + 4 + 4 + 3 * 8 + 3 * 16;
@@ -51,11 +51,30 @@ pub(super) struct Made {
     pub(super) texts: [u8; 16],
 }
 
+/// Whether catch-up may read new records. Saved with the source checksums so a cache miss
+/// can be rejected without reading its index. Core still decides whether an extension applies.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum CatchUp {
+    Verify,
+    Extend,
+}
+
+impl CatchUp {
+    pub(super) fn of(projection: &Projection) -> Self {
+        if projection.extendable() {
+            Self::Extend
+        } else {
+            Self::Verify
+        }
+    }
+}
+
 /// A projection file read as far as its state: what it was made from, when it was written, how
 /// many bytes it holds, its state, and where its index is in the file it was read from, which
 /// stays open, whatever replaces it on disk.
 pub(super) struct Stored {
     pub(super) made: Made,
+    pub(super) catch_up: CatchUp,
     /// When the projection itself was written: a file not settled by then is read again.
     pub(super) written: i128,
     /// The file's length: what writing it again costs, near enough.
@@ -68,12 +87,23 @@ pub(super) struct Stored {
 }
 
 impl Stored {
-    /// Its parts, the index read now. `None` when the index is not as written.
-    pub(super) fn encoded(mut self) -> Option<Encoded> {
+    /// The projection, with the index read and checked.
+    pub(super) fn decode(self, points: &crate::failpoint::Failpoints) -> Option<Projection> {
+        Projection::decode(self.encoded(points)?).ok()
+    }
+
+    /// Only the checked buffers pass to the core decoder. The source list has already
+    /// served its purpose by the time the index is needed.
+    fn encoded(mut self, points: &crate::failpoint::Failpoints) -> Option<Encoded> {
+        drop(self.made);
+        points.hit("projection.read-index");
         self.file.seek(SeekFrom::Start(self.index_at)).ok()?;
         let mut index = vec![0; self.index_len];
         self.file.read_exact(&mut index).ok()?;
-        (sum(&index) == self.index_sum).then_some(Encoded {
+        if sum(&index) != self.index_sum {
+            return None;
+        }
+        Some(Encoded {
             state: self.state,
             index,
             texts: Vec::new(),
@@ -111,8 +141,15 @@ pub(super) fn read(path: &Path) -> Option<Stored> {
     if sum(&parts) != made_sum || sum(&state) != state_sum {
         return None;
     }
+    let (flag, sources) = parts.split_last()?;
+    let catch_up = match flag {
+        0 => CatchUp::Verify,
+        1 => CatchUp::Extend,
+        _ => return None,
+    };
     Some(Stored {
-        made: unmade(&parts)?,
+        made: unmade(sources)?,
+        catch_up,
         written,
         size,
         state,
@@ -133,8 +170,9 @@ impl Made {
 /// The bytes of a projection made from `made`, its parts `encoded`, before its state: the header
 /// and what it was made from. The state and the index follow as they are ([`parts`]), not copied
 /// behind them first (roll-lqjj.44).
-pub(super) fn head(made: &Made, encoded: &Encoded) -> Vec<u8> {
-    let made = made_bytes(made);
+pub(super) fn head(made: &Made, encoded: &Encoded, catch_up: CatchUp) -> Vec<u8> {
+    let mut made = made_bytes(made);
+    made.push(u8::from(catch_up == CatchUp::Extend));
     let mut out = Vec::with_capacity(HEADER + made.len());
     out.extend_from_slice(MAGIC);
     out.extend_from_slice(&ENCODING.to_le_bytes());
@@ -173,12 +211,7 @@ fn made_bytes(made: &Made) -> Vec<u8> {
             }
             None => out.push(0),
         }
-        let (len, modified, changed, inode, device) = held.key.parts();
-        out.extend_from_slice(&len.to_le_bytes());
-        out.extend_from_slice(&modified.to_le_bytes());
-        out.extend_from_slice(&changed.to_le_bytes());
-        out.extend_from_slice(&inode.to_le_bytes());
-        out.extend_from_slice(&device.to_le_bytes());
+        out.extend_from_slice(&held.key.bytes());
     }
     out.extend_from_slice(&made.texts);
     out
@@ -201,11 +234,7 @@ fn unmade(bytes: &[u8]) -> Option<Made> {
             [1] => Some(at.take::<16>()?),
             _ => return None,
         };
-        let len = at.number()?;
-        let modified = i128::from_le_bytes(at.take()?);
-        let changed = i128::from_le_bytes(at.take()?);
-        let (inode, device) = (at.number()?, at.number()?);
-        let key = FileKey::from_parts((len, modified, changed, inode, device));
+        let key = FileKey::from_bytes(at.take()?);
         files.push(Held {
             path,
             key,

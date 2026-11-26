@@ -3,7 +3,7 @@
 
 use std::borrow::Borrow;
 use std::fs::OpenOptions;
-use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
+use std::io::{self, Read as _, Seek as _, SeekFrom, Write as _};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -320,7 +320,7 @@ pub fn read_attempt(path: &Path, problems: Option<&mut Vec<Problem>>) -> Vec<Val
 
 /// The events of the attempt file at `path` whose bytes are `data` (`None`: it could not be read),
 /// as [`read_attempt`] reads them.
-pub(crate) fn attempt_events(
+fn attempt_events(
     path: &Path,
     data: Option<&[u8]>,
     problems: Option<&mut Vec<Problem>>,
@@ -383,7 +383,7 @@ pub(crate) fn load_listed(
     let mut held = Vec::with_capacity(segments.len());
     for path in segments {
         ws.settings.failpoints.hit("journal.before-read");
-        let (data, key) = read_keyed(path)?;
+        let (data, key) = read_keyed(path).map_err(|e| IoError::at(&e, path))?;
         whole &= data.last().is_none_or(|last| *last == b'\n');
         held.push((
             key,
@@ -398,16 +398,23 @@ pub(crate) fn load_listed(
     for path in listing.0.iter() {
         let origin = path.display().to_string();
         let replica = folder_name(path, 2);
-        let read = read_keyed(path).ok();
-        let data = read.as_ref().map(|(data, _)| data.as_slice());
-        let sum = data
-            .filter(|_| summed == ContentSums::Compute)
-            .map(content_sum);
-        match data {
-            Some(data) => journal.add_attempt(data, &replica, &origin),
-            None => journal.report(unreadable_attempt(origin)),
-        }
-        attempts.push((path.clone(), read.and_then(|(_, key)| key), sum));
+        let (key, sum) = match read_accepted(ws, path) {
+            Ok((data, key)) => {
+                journal.add_attempt(&data, &replica, &origin);
+                (
+                    key,
+                    (summed == ContentSums::Compute).then(|| content_sum(&data)),
+                )
+            }
+            Err(e) if e.kind() == io::ErrorKind::OutOfMemory => {
+                return Err(IoError::at(&e, path).into());
+            }
+            Err(_) => {
+                journal.report(unreadable_attempt(origin));
+                (None, None)
+            }
+        };
+        attempts.push((path.clone(), key, sum));
     }
     journal.settle();
     Ok(Loaded {
@@ -417,6 +424,15 @@ pub(crate) fn load_listed(
         attempts,
         listing,
     })
+}
+
+/// The attempt's bytes and file identity. Keep the error kind so replay can distinguish a
+/// failure to allocate its buffer from damage to the attempt.
+pub(crate) fn read_accepted(ws: &Workspace, path: &Path) -> io::Result<(Vec<u8>, Option<FileKey>)> {
+    if let Some(Fired::Errno(errno)) = ws.settings.failpoints.hit("journal.read-attempt") {
+        return Err(io::Error::from_raw_os_error(errno));
+    }
+    read_keyed(path)
 }
 
 /// The name of `path`'s ancestor `up` levels above it (1: its folder).
