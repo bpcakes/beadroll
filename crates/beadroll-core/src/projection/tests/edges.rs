@@ -19,6 +19,7 @@ use super::shown::{FIXTURES as SHOWN, fixture};
 use crate::id::EventId;
 use crate::journal::{Journal, JournalOrder};
 use crate::json::{Format, Object, Value, write};
+use crate::projection::Appended;
 use crate::projection::tests::HistoryKind;
 use crate::query::{Edges, ReadyScope};
 use crate::replay::replay;
@@ -387,18 +388,16 @@ fn a_create_of_an_awaited_key_extends_once_the_waiting_issues_texts_are_read_in(
         super::WriteBack::Encoded,
     );
     let waiting = EventId::parse(&id(2)).unwrap();
-    assert_eq!(
-        stored.about_records(&batch),
-        [EventId::parse(&id(3)).unwrap(), waiting]
-    );
+    let appended = Appended::from(batch.clone());
+    let about = stored.about(&appended);
+    assert_eq!(about, [EventId::parse(&id(3)).unwrap(), waiting]);
     // not read in: declined
-    let declined = stored.clone().extend(batch.clone()).unwrap();
+    let declined = stored.clone().extend(appended.clone()).unwrap();
     assert!(matches!(declined, Extended::Replay));
     // read in as a store reads them: taken, and replay's answer, the edge's metadata with it
     let mut reading = stored;
-    let about = reading.about_records(&batch);
     super::read_in(reading.state_mut(), &file, Some(about));
-    let Extended::Applied(extended) = reading.extend(batch.clone()).unwrap() else {
+    let Extended::Applied(extended) = reading.extend(appended).unwrap() else {
         panic!("declined with the waiting issue's texts read in");
     };
     let mut all = held;

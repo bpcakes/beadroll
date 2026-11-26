@@ -114,6 +114,18 @@ impl FileKey {
         FileKey { len, ..self }
     }
 
+    /// Its parts, as a projection keeps them: length, modification and change times, inode,
+    /// device.
+    pub fn parts(&self) -> (u64, i128, i128, u64, u64) {
+        (
+            self.len,
+            self.modified,
+            self.changed,
+            self.inode,
+            self.device,
+        )
+    }
+
     /// How many bytes an identity is kept in ([`FileKey::bytes`]).
     pub const BYTES: usize = 56;
 

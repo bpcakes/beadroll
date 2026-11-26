@@ -8,7 +8,7 @@
 //! projection names. All the same: the projection is read, a command that only reads reading its
 //! state alone. Records appended since (a segment grown whose bytes before are the ones summed, a
 //! segment or an attempt file added) are read alone and applied after it, when replay would apply
-//! them so ([`Projection::prepare_extension`]). A file whose times are the projection's own, which
+//! them so ([`Projection::prepare_appended`]). A file whose times are the projection's own, which
 //! could have been rewritten in place since with nothing to show for it, is read again and its
 //! bytes summed: the sum kept of it says whether it is the one the projection was made from.
 //! Anything else (a file replaced, rewritten, cut or gone, a record replay would apply otherwise) and a
@@ -60,7 +60,7 @@ use crate::memo::FileKey;
 use crate::projection::texts::TextFileAccess;
 use crate::workspace::Workspace;
 
-pub use extension::extend_projection;
+pub use extension::{extend_appended, extend_projection};
 pub use sources::Sourced;
 pub(crate) use texts::texts_path;
 use writeback::save;
@@ -253,11 +253,8 @@ fn from_stored(
     } else {
         None
     };
-    let Some((mut projection, made)) = stored.decode() else {
-        return Ok(None);
-    };
     // Even a projection that cannot take more records can verify its original files.
-    let mut records = projection.extendable().then(Appended::new);
+    let mut records = (stored.catch_up == file::CatchUp::Extend).then(Appended::new);
     let Some(read) = read_tails(ws, tails, records.as_mut()) else {
         return Ok(None);
     };
@@ -268,19 +265,25 @@ fn from_stored(
     let Some(listed) = listed else {
         return Ok(None);
     };
-    let Some((now, sources)) = appended(ws, &made, read, listed, records.as_mut(), settled) else {
+    let Some((now, sources)) = appended(ws, &stored.made, read, listed, records.as_mut(), settled)
+    else {
+        return Ok(None);
+    };
+    let tail = now
+        .journal_bytes()
+        .saturating_sub(stored.made.journal_bytes());
+    let Some(mut projection) = stored.decode(&ws.settings.failpoints) else {
         return Ok(None);
     };
     projection.state_mut().set_texts_file(file);
     let mut projection = if let Some(records) = records {
-        let Extended::Applied(projection) = extend_projection(ws, projection, records)? else {
+        let Extended::Applied(projection) = extend_appended(ws, projection, records)? else {
             return Ok(None);
         };
         projection
     } else {
         Box::new(projection)
     };
-    let tail = now.journal_bytes().saturating_sub(made.journal_bytes());
     if kept_for(want, tail, size) {
         save(ws, now, &mut projection);
     }
@@ -306,7 +309,7 @@ fn unchanged(
         return (want == Want::Outline || read_all(ws, &mut state))
             .then(|| Now::State(Box::new(state)));
     }
-    let (mut projection, _) = stored.decode()?;
+    let mut projection = stored.decode(&ws.settings.failpoints)?;
     projection.state_mut().set_texts_file(file);
     projection.let_go();
     let seen = seen.into_iter().map(|held| (held.path, held.key)).collect();

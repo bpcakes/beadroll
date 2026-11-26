@@ -70,6 +70,71 @@ impl From<&Event> for HistoryEntry {
     }
 }
 
+impl HistoryEntry {
+    /// The compact JSON representation of this row. The store uses the binary batch codec.
+    pub fn cached(&self) -> Value {
+        Value::Array(vec![
+            Value::from(self.id.to_string()),
+            Value::from(self.machine.as_str()),
+            self.agent.clone(),
+            self.thread.clone(),
+            self.name.clone(),
+            Value::from(self.operation.as_str()),
+            Value::from(self.issue.as_deref()),
+            self.branch.clone(),
+            Value::Array(
+                self.changed_fields
+                    .iter()
+                    .map(|field| Value::from(field.as_str()))
+                    .collect(),
+            ),
+            Value::from(self.takeover_of.as_deref()),
+        ])
+    }
+
+    /// Reads a record written by [`Self::cached`], or refuses a malformed cache.
+    pub fn from_cached(value: &Value) -> Option<Self> {
+        let [
+            id,
+            machine,
+            agent,
+            thread,
+            name,
+            operation,
+            issue,
+            branch,
+            fields,
+            takeover_of,
+        ] = value.as_array()?
+        else {
+            return None;
+        };
+        let text_or_null = |value: &Value| match value {
+            Value::Null => Some(None),
+            Value::Str(text) => Some(Some(text.clone())),
+            _ => None,
+        };
+        let issue = text_or_null(issue)?;
+        let takeover_of = text_or_null(takeover_of)?;
+        Some(Self {
+            id: EventId::parse(id.as_str()?)?,
+            machine: machine.as_str()?.to_owned(),
+            agent: agent.clone(),
+            thread: thread.clone(),
+            name: name.clone(),
+            operation: operation.as_str()?.to_owned(),
+            issue,
+            branch: branch.clone(),
+            changed_fields: fields
+                .as_array()?
+                .iter()
+                .map(|field| field.as_str().map(str::to_owned))
+                .collect::<Option<_>>()?,
+            takeover_of,
+        })
+    }
+}
+
 /// The bytes a cache keeps of `entries`, in order: no part of format 1, written in the codec a
 /// projection is ([`crate::projection`]), and read back only by the build that wrote them
 /// ([`from_cached`]). Returns `None` if a caller-built value exceeds the decoder's nesting limit.

@@ -1891,11 +1891,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
     `State::dependency_summary` supplies the dependency-only rows `dep list` needs without
     building a full detail or loading texts. The existing golden and projection edge tests
     caught that caller's reliance on the old partial-detail behavior during migration.
-  - `Projection::prepare_extension` owns a projection and its record batch as `Extension`.
+  - `Projection::prepare_extension` and `prepare_appended` return an `Extension` that owns
+    the projection and the batch it will try to apply.
     Its requested locations are derived once from that pair. Only requested locations can be
     loaded; `apply` consumes both and requests replay if loading is incomplete or the existing
-    extension checks decline. `beadroll_store::extend_projection` is the shared loading path
-    for cached reads and transaction materialization. The transaction retains its existing
+    extension checks decline. Cached reads and transaction materialization use
+    `beadroll_store::extend_appended`. It shares its text-loading logic with
+    `extend_projection`, which takes a vector of records. The transaction retains its existing
     replay-needed fallback on errors, applied prefix and destruction ordering.
   - `Projection::prepare_append` borrows a projection for a write in its current text generation.
     `prepare_rewrite` first requires every text, marks them for writing and derives a new
@@ -2429,8 +2431,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   read it into values by (a last line not yet whole skipped, any other unreadable line reported;
   an attempt whole or not at all). A projection catching up reads those bytes into a journal of
   its own (`projection::Appended`, roll-0668). It declines an incomplete segment tail so the
-  caller cannot advance past it. For in-memory records, `ExtensionBatch::is_empty` lets a
-  projection that requires replay decline a nonempty batch before serializing any record.
+  caller cannot advance past it. For in-memory records, `prepare_extension` checks the vector's
+  length before serializing any record for a projection that requires replay. `prepare_appended`
+  takes an already-read batch. The store keeps the projection's eligibility in its checksummed
+  source metadata so it can verify unchanged files or choose replay before reading the index.
   The digest is two SipHash-1-3 hashes under keys drawn at random
   for each journal, over the bytes of the line, whitespace around it left out, and for a record
   built in memory over the compact line bead writes of it: the same content is the same bytes,

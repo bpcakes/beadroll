@@ -19,6 +19,7 @@ use super::{
 use crate::id::EventId;
 use crate::journal::{Journal, JournalOrder};
 use crate::json::{Format, Object, Value, write};
+use crate::projection::Appended;
 use crate::replay::replay;
 use crate::state::{Ended, EndedClaim, LostClaim, Provisional, Stale, State, Texts};
 
@@ -250,14 +251,15 @@ fn an_event_that_can_add_to_an_issues_history_waits_for_its_texts_and_has_them_w
             HERE,
             JournalOrder::Sequenced,
         )];
-        let declined = read.clone().extend(batch.clone()).unwrap();
+        let appended = Appended::from(batch.clone());
+        let declined = read.clone().extend(appended.clone()).unwrap();
         assert!(matches!(declined, Extended::Replay), "{op}");
         let mut texts = read.clone();
         let file = encoded.texts.clone();
-        let about = texts.about_records(&batch);
+        let about = texts.about(&appended);
         assert_eq!(about, [uid], "{op}");
         read_in(texts.state_mut(), &file, Some(about));
-        let Extended::Applied(extended) = texts.extend(batch.clone()).unwrap() else {
+        let Extended::Applied(extended) = texts.extend(appended).unwrap() else {
             panic!("{op}: its texts were read in");
         };
         let mut all = records.clone();
@@ -446,13 +448,13 @@ fn a_world_heavy_in_ownership_answers_what_it_did_replayed_extended_and_read_bac
             let reading_back = world.rng.chance(50);
             held.extend(&batch);
             let full = project(load(&world, &held)).unwrap();
-            let records = records(&world, &batch);
+            let records = Appended::from(records(&world, &batch));
             for (projection, file, back, read) in &mut tracks {
                 if reading_back {
                     *projection = read_back(projection, file, *back);
                     *read = true;
                 }
-                let about = projection.about_records(&records);
+                let about = projection.about(&records);
                 read_in(projection.state_mut(), file, Some(about.clone()));
                 let before = histories(projection.state(), &about);
                 *projection = match projection.clone().extend(records.clone()).unwrap() {

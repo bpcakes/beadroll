@@ -5,7 +5,7 @@ use beadroll_core::journal::JournalOrder;
 use beadroll_core::projection::{Appended, Extended, Projection, Record};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
-use beadroll_store::{Workspace, extend_projection, load_journal};
+use beadroll_store::{Workspace, extend_appended, load_journal};
 
 use crate::error::Error;
 
@@ -71,7 +71,7 @@ impl Materialized {
             && projection.extendable()
         {
             let records: Appended = emitted.clone().skip(applied).cloned().collect();
-            if let Extended::Applied(projection) = extend_projection(ws, *projection, records)? {
+            if let Extended::Applied(projection) = extend_appended(ws, *projection, records)? {
                 *self = Self::Projected {
                     projection,
                     applied: count,

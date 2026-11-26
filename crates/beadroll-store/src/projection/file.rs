@@ -18,7 +18,7 @@ use crate::projection::JournalFile;
 const MAGIC: &[u8; 16] = b"bead projection\n";
 
 /// The version of this layout.
-const LAYOUT: u32 = 2;
+const LAYOUT: u32 = 3;
 
 /// The header's length: the magic, the two versions, three lengths and three sums.
 const HEADER: usize = 16 + 4 + 4 + 3 * 8 + 3 * 16;
@@ -51,11 +51,30 @@ pub(super) struct Made {
     pub(super) texts: [u8; 16],
 }
 
+/// Whether catch-up may read new records. Saved with the source checksums so a cache miss
+/// can be rejected without reading its index. Core still decides whether an extension applies.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum CatchUp {
+    Verify,
+    Extend,
+}
+
+impl CatchUp {
+    pub(super) fn of(projection: &Projection) -> Self {
+        if projection.extendable() {
+            Self::Extend
+        } else {
+            Self::Verify
+        }
+    }
+}
+
 /// A projection file read as far as its state: what it was made from, when it was written, how
 /// many bytes it holds, its state, and where its index is in the file it was read from, which
 /// stays open, whatever replaces it on disk.
 pub(super) struct Stored {
     pub(super) made: Made,
+    pub(super) catch_up: CatchUp,
     /// When the projection itself was written: a file not settled by then is read again.
     pub(super) written: i128,
     /// The file's length: what writing it again costs, near enough.
@@ -68,21 +87,21 @@ pub(super) struct Stored {
 }
 
 impl Stored {
-    /// The projection and the journal files it was made from, with the index read and checked.
-    pub(super) fn decode(mut self) -> Option<(Projection, Made)> {
+    /// The projection, with the index read and checked.
+    pub(super) fn decode(mut self, points: &crate::failpoint::Failpoints) -> Option<Projection> {
+        points.hit("projection.read-index");
         self.file.seek(SeekFrom::Start(self.index_at)).ok()?;
         let mut index = vec![0; self.index_len];
         self.file.read_exact(&mut index).ok()?;
         if sum(&index) != self.index_sum {
             return None;
         }
-        let projection = Projection::decode(Encoded {
+        Projection::decode(Encoded {
             state: self.state,
             index,
             texts: Vec::new(),
         })
-        .ok()?;
-        Some((projection, self.made))
+        .ok()
     }
 }
 
@@ -116,8 +135,15 @@ pub(super) fn read(path: &Path) -> Option<Stored> {
     if sum(&parts) != made_sum || sum(&state) != state_sum {
         return None;
     }
+    let (flag, sources) = parts.split_last()?;
+    let catch_up = match flag {
+        0 => CatchUp::Verify,
+        1 => CatchUp::Extend,
+        _ => return None,
+    };
     Some(Stored {
-        made: unmade(&parts)?,
+        made: unmade(sources)?,
+        catch_up,
         written,
         size,
         state,
@@ -138,8 +164,9 @@ impl Made {
 /// The bytes of a projection made from `made`, its parts `encoded`, before its state: the header
 /// and what it was made from. The state and the index follow as they are ([`parts`]), not copied
 /// behind them first (roll-lqjj.44).
-pub(super) fn head(made: &Made, encoded: &Encoded) -> Vec<u8> {
-    let made = made_bytes(made);
+pub(super) fn head(made: &Made, encoded: &Encoded, catch_up: CatchUp) -> Vec<u8> {
+    let mut made = made_bytes(made);
+    made.push(u8::from(catch_up == CatchUp::Extend));
     let mut out = Vec::with_capacity(HEADER + made.len());
     out.extend_from_slice(MAGIC);
     out.extend_from_slice(&ENCODING.to_le_bytes());

@@ -3,12 +3,12 @@
 use crate::id::EventId;
 use crate::state::{KeySpace, TextPlace};
 
-use super::{Appended, Extended, ExtensionBatch, Projection, Unreadable};
+use super::{Appended, Extended, Projection, Record, Unreadable};
 
 /// An owned projection with the exact batch and text locations it can try to apply.
 /// A projection that already requires replay discards a nonempty batch before conversion.
-/// Obtain this from [`Projection::prepare_extension`], load [`Self::wanted_texts`], then
-/// consume it with [`Self::apply`].
+/// Obtain this from [`Projection::prepare_extension`] or [`Projection::prepare_appended`],
+/// load [`Self::wanted_texts`], then consume it with [`Self::apply`].
 ///
 /// ```compile_fail,E0382
 /// use beadroll_core::projection::{Projection, Record};
@@ -30,8 +30,18 @@ pub struct Extension {
 impl Projection {
     /// Prepares these records alone for application to this projection. Missing texts or an
     /// unsafe batch make [`Extension::apply`] request replay; preparation never invents data.
-    pub fn prepare_extension(self, records: impl ExtensionBatch) -> Extension {
+    pub fn prepare_extension(self, records: Vec<Record>) -> Extension {
         let records = (self.extendable() || records.is_empty()).then(|| records.into());
+        self.prepare(records)
+    }
+
+    /// Prepares an already-read journal batch for the same text loading and application.
+    pub fn prepare_appended(self, records: Appended) -> Extension {
+        let records = (self.extendable() || records.is_empty()).then_some(records);
+        self.prepare(records)
+    }
+
+    fn prepare(self, records: Option<Appended>) -> Extension {
         let mut wanted = records
             .as_ref()
             .map_or_else(Vec::new, |batch| self.state.wanted_texts(self.about(batch)));

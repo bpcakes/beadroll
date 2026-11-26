@@ -38,8 +38,9 @@ same thing*) and the variables bead reads (*Configuration*).
   state. Application consumes the preparation. Incomplete loading or an unsafe batch requests
   replay. The store can reuse an unchanged cache even when the projection cannot extend. A
   journal file from the cache's own timestamp tick is verified against its saved checksum before
-  reuse. The store checks that the projection can extend before preparing new records. Store
-  reads and sync transactions use the same text-loading path.
+  reuse. The checksummed source metadata tells the store whether it can prepare new records.
+  A source mismatch triggers replay before the store reads the saved index. Store reads and
+  sync transactions use the same text-loading path.
 - A prepared writeback holds an exclusive borrow of its projection, its encoded bytes, text
   locations and text-file generation. Acknowledgement consumes that preparation and updates
   only its source projection. The store acknowledges after both writes succeed. A failed write

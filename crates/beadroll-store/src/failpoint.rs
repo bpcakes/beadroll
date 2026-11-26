@@ -46,6 +46,7 @@
 //! read of the store's state through `projection::current` (by `projection`, `state` and the
 //! views, whether it decodes the stored projection or replays the journal because none fits), and
 //! never for the journal a transaction loads and replays itself (`Tx::state` with no projection);
+//! `projection.read-index`, before the saved index is read to reconstruct a full projection;
 //! `sync.keys-before`, which a test counts, once a reporting sync keeps every key of the state
 //! it began with, to report the keys it changed: before its merge's first write to a journal file,
 //! or as a round that wrote nothing gives way to another;
@@ -67,7 +68,7 @@ use beadroll_core::code::Code;
 use crate::error::Error;
 
 /// The points bead has, besides the path-qualified atomic write and flush points above.
-pub const POINTS: [&str; 28] = [
+pub const POINTS: [&str; 29] = [
     "ownership.before-publish",
     "ownership.before-transaction",
     "ownership.after-publish-ok",
@@ -91,6 +92,7 @@ pub const POINTS: [&str; 28] = [
     "projection.before-save",
     "projection.texts-appended",
     "projection.read",
+    "projection.read-index",
     "sync.keys-before",
     "view.before-load-pending",
     "identity.before-link",

@@ -48,6 +48,18 @@ fn a_cache_reads_back_as_the_entries_written() {
     assert_eq!(from_cached(&cached(&[]).unwrap()), Some(Vec::new()));
 }
 
+/// The public single-row JSON representation remains readable alongside the binary batch codec (AU16).
+#[test]
+fn individual_rows_round_trip_through_their_json_arrays() {
+    for row in entries() {
+        let value = row.cached();
+        assert_eq!(value.as_array().unwrap().len(), 10);
+        assert_eq!(value[0].as_str(), Some(row.id.to_string().as_str()));
+        assert_eq!(HistoryEntry::from_cached(&value), Some(row));
+    }
+    assert_eq!(HistoryEntry::from_cached(&Value::Array(Vec::new())), None);
+}
+
 /// The decoder accepts structurally equivalent count encodings (AU12).
 #[test]
 fn an_empty_history_can_have_a_redundant_count_byte() {

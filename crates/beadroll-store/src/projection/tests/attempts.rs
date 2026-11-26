@@ -234,6 +234,82 @@ fn a_waiting_projection_only_verifies_the_file_of_its_own_tick() {
     }
 }
 
+/// A removed or replaced attempt invalidates the saved sources before the index is read (AU15).
+#[test]
+fn a_changed_attempt_replays_without_reading_the_saved_index() {
+    for replacement in [None, Some("replaced")] {
+        let home = tempfile::tempdir().unwrap();
+        let ws = store(home.path(), Some("this build"));
+        begun(&ws);
+        let event = [title(5, &[4], 2, "initial")];
+        let path = crate::attempt_path(&ws, &event);
+        write_attempt_file(&ws, &path, &event).unwrap();
+        assert!(projection(&ws).unwrap().extendable());
+        settle(&ws);
+        let reader = failing(
+            home.path(),
+            Some("this build"),
+            Some("projection.read-index@always=sleep(0);journal.before-read@always=sleep(0)"),
+        );
+        assert!(answers(projection(&reader).unwrap().state()).contains("initial"));
+        let reads = |point| reader.settings.failpoints.hits(point);
+        assert_eq!(reads("projection.read-index"), 1);
+        assert_eq!(reads("journal.before-read"), 0);
+
+        match replacement {
+            Some(text) => write_attempt_file(&ws, &path, &[title(5, &[4], 2, text)]).unwrap(),
+            None => std::fs::remove_file(&path).unwrap(),
+        }
+        let answer = answers(projection(&reader).unwrap().state());
+        assert!(!answer.contains("initial"));
+        if let Some(text) = replacement {
+            assert!(answer.contains(text));
+        }
+        assert_eq!(reads("projection.read-index"), 1);
+        assert_eq!(reads("journal.before-read"), 1);
+    }
+}
+
+/// Even when the file identity still matches, a waiting cache must verify its attempt's saved
+/// checksum before reuse (AU20).
+#[test]
+fn a_waiting_projection_replays_on_an_attempt_checksum_mismatch() {
+    let home = tempfile::tempdir().unwrap();
+    let ws = store(home.path(), Some("this build"));
+    begun(&ws);
+    let waiting = [title(6, &[4, 99], 2, "waiting")];
+    let path = crate::attempt_path(&ws, &waiting);
+    write_attempt_file(&ws, &path, &waiting).unwrap();
+    let tick = std::time::SystemTime::now() + Duration::from_secs(60);
+    crate::testing::set_modified(&path, tick);
+    let mut cached = projection(&ws).unwrap();
+    assert!(!cached.extendable());
+    let mut made = file::read(&projection_path(&ws)).unwrap().made;
+    let attempt = made
+        .files
+        .iter_mut()
+        .find(|f| f.kind == JournalFile::Attempt)
+        .unwrap();
+    assert_eq!(FileKey::of(&path), Some(attempt.key));
+    attempt.sum.as_mut().unwrap()[0] ^= 1;
+    super::super::save(&ws, made, &mut cached);
+    crate::testing::set_modified(&projection_path(&ws), tick);
+
+    let reader = failing(
+        home.path(),
+        Some("this build"),
+        Some("projection.read-index@always=sleep(0);journal.read-attempt@always=sleep(0)"),
+    );
+    assert!(
+        view(&reader)
+            .unwrap()
+            .pending()
+            .contains(&EventId::parse(&id(6)).unwrap())
+    );
+    assert_eq!(reader.settings.failpoints.hits("journal.read-attempt"), 1);
+    assert_eq!(reader.settings.failpoints.hits("projection.read-index"), 0);
+}
+
 /// Under the store lock each attempt file is stat-ed once a phase, whoever asks, and again once
 /// bead writes it: an attempt replaced under the lock, at the same length, is read as it is now
 /// (roll-lqjj.30). Outside the lock nothing is kept, and a new phase stats every file again.

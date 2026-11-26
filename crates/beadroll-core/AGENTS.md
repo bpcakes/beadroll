@@ -36,7 +36,8 @@ consumer on tokio calls through `spawn_blocking`.
   `add_attempt`), a transaction and a test build it of `Record`s (roll-0668).
 - `projection/extension.rs`: `prepare_extension` checks whether the projection can take a
   nonempty batch before converting its records. It owns the projection and any batch it will
-  try to apply, selects the texts to load and checks them on application. `projection/writeback.rs`:
+  try to apply, selects the texts to load and checks them on application. `prepare_appended`
+  prepares a batch already read into a journal. `projection/writeback.rs`:
   `prepare_append` and `prepare_rewrite` lend `Writeback`, freezing a projection alongside its
   bytes, places and generation. Only its consuming `written` acknowledges those locations.
   Callers must write both parts before acknowledging; this pure crate cannot verify I/O.
@@ -48,7 +49,8 @@ consumer on tokio calls through `spawn_blocking`.
 - `src/lib.rs`: the crate root, listing the modules.
 - `src/history.rs`: `HistoryEntry`, display metadata derived from a settled event, and its
   disposable cache encoding (`cached`, `from_cached`), in the projection's codec. Both return
-  `None` for values beyond the codec's nesting limit. A history row has no
+  `None` for values beyond the codec's nesting limit. The methods on `HistoryEntry` convert
+  individual rows to and from their existing JSON arrays. A history row has no
   operation payload or authority to enter replay; issue and machine ids stay unresolved for the
   caller's current keys and aliases.
 - `src/json.rs` (`json/read.rs`, `json/write.rs`, `json/int.rs`): `Value` and its `Deserialize`,

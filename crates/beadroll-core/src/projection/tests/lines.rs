@@ -2,9 +2,7 @@
 //! lines are: a projection reads the same issues' texts for it, and extends by it as it extends by
 //! the records built in memory, or declines both alike.
 
-use super::super::{
-    Appended, Extended, ExtensionBatch as _, Projection, Record, journal_of, project,
-};
+use super::super::{Appended, Extended, Projection, Record, journal_of, project};
 use super::{HistoryKind, history};
 use crate::json::{Format, write};
 

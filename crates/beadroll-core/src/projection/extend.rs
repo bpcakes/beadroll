@@ -46,7 +46,7 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use indexmap::IndexMap;
 
-use super::{Appended, ExtensionBatch as _, Projection};
+use super::{Appended, Projection};
 use crate::id::EventId;
 use crate::journal::{Event, Parts, Rest};
 use crate::op::Op;

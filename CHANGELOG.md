@@ -10,7 +10,8 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   as a whole journal is read (roll-lqjj.53.1), where it built a value for each line and printed it
   again to hash it (roll-0668). `bead log`'s history cache is kept in the projection's binary
   codec rather than as JSON, ids as their 16 bytes (`bead history 2`; an older cache is rebuilt
-  once). Output and format 1 are unchanged.
+  once). The local projection cache also rebuilds once to record whether it can accept new
+  events alongside its source checksums. Output and format 1 are unchanged.
 - Journal replay and strict reads of `meta.json` report an `IO` error naming the file if
   bead cannot allocate its buffer. Lenient metadata reads use empty metadata in that case.
 

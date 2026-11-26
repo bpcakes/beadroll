@@ -11,7 +11,7 @@ use super::*;
 /// The projection the store holds, read back.
 fn stored(ws: &Workspace) -> Projection {
     let stored = file::read(&projection_path(ws)).unwrap();
-    stored.decode().unwrap().0
+    stored.decode(&ws.settings.failpoints).unwrap()
 }
 
 #[test]

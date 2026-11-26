@@ -78,7 +78,7 @@ fn preparation_loads_only_its_batch_and_a_written_extension_reloads_as_replay() 
             .unwrap(),
         Extended::Replay
     ));
-    let mut extension = read.prepare_extension(vec![record(changed())]);
+    let mut extension = read.prepare_extension(std::iter::once(record(changed())).collect());
     let [(issue, place)] = extension.wanted_texts() else {
         panic!("one issue requested")
     };

@@ -22,6 +22,7 @@ pub(super) fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) 
     // and then, so a copy left beside it would otherwise wait for that
     abandoned::remove(&[&projection_path(ws), &texts_path(ws)]);
     ws.settings.failpoints.hit("projection.before-save");
+    let catch_up = file::CatchUp::of(projection);
     let generation = projection.state().texts_file();
     if let Some(generation) = generation
         && let Some(file) = texts::open(ws, generation, TextFileAccess::Append)
@@ -44,7 +45,7 @@ pub(super) fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) 
             if texts::append(ws, &file, len, &encoded.texts)
                 && write_cache_parts(
                     &projection_path(ws),
-                    &file::parts(&file::head(&made, encoded), encoded),
+                    &file::parts(&file::head(&made, encoded, catch_up), encoded),
                     &ws.settings.failpoints,
                 )
                 .is_ok()
@@ -63,7 +64,7 @@ pub(super) fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) 
     if texts::start(ws, generation, &encoded.texts)
         && write_cache_parts(
             &projection_path(ws),
-            &file::parts(&file::head(&made, encoded), encoded),
+            &file::parts(&file::head(&made, encoded, catch_up), encoded),
             &ws.settings.failpoints,
         )
         .is_ok()
