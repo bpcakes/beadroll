@@ -428,7 +428,7 @@ pub(crate) fn load_listed(
 
 /// The attempt's bytes and file identity. Keep the error kind so replay can distinguish a
 /// failure to allocate its buffer from damage to the attempt.
-fn read_accepted(ws: &Workspace, path: &Path) -> io::Result<(Vec<u8>, Option<FileKey>)> {
+pub(crate) fn read_accepted(ws: &Workspace, path: &Path) -> io::Result<(Vec<u8>, Option<FileKey>)> {
     if let Some(Fired::Errno(errno)) = ws.settings.failpoints.hit("journal.read-attempt") {
         return Err(io::Error::from_raw_os_error(errno));
     }

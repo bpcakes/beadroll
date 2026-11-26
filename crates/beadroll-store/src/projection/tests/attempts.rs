@@ -148,6 +148,51 @@ fn settle(ws: &Workspace) {
     crate::testing::set_modified(&projection_path(ws), later);
 }
 
+/// A stored projection waiting for a missing cause can answer an unchanged read. When a
+/// segment grows or an attempt arrives, only full replay reads the new records (AU11).
+#[test]
+fn a_waiting_projection_reads_changed_records_only_during_replay() {
+    for kind in [JournalFile::Segment, JournalFile::Attempt] {
+        let home = tempfile::tempdir().unwrap();
+        let ws = store(home.path(), Some("this build"));
+        begun(&ws);
+        append_events(&ws, HERE, &[title(6, &[4, 99], 2, "waiting")]).unwrap();
+        assert!(!projection(&ws).unwrap().extendable());
+        settle(&ws);
+
+        let reader = failing(
+            home.path(),
+            Some("this build"),
+            Some("journal.before-read@always=sleep(0);journal.read-attempt@always=sleep(0)"),
+        );
+        let reads = |point| reader.settings.failpoints.hits(point);
+        assert!(!projection(&reader).unwrap().extendable());
+        assert_eq!(reads("journal.before-read"), 0);
+        assert_eq!(reads("journal.read-attempt"), 0);
+
+        let next = [title(7, &[6], 3, "also waiting")];
+        match kind {
+            JournalFile::Segment => append_events(&ws, HERE, &next).unwrap(),
+            JournalFile::Attempt => {
+                write_attempt_file(&ws, &crate::attempt_path(&ws, &next), &next).unwrap();
+            }
+        }
+        let projected = projection(&reader).unwrap();
+        let replayed = replay(load_journal(&ws).unwrap()).unwrap();
+        assert!(
+            replayed
+                .pending()
+                .contains(&EventId::parse(&id(7)).unwrap())
+        );
+        assert_eq!(projected.state().pending(), replayed.pending());
+        assert_eq!(reads("journal.before-read"), 1, "{kind:?}");
+        assert_eq!(
+            reads("journal.read-attempt"),
+            u64::from(kind == JournalFile::Attempt)
+        );
+    }
+}
+
 /// Under the store lock each attempt file is stat-ed once a phase, whoever asks, and again once
 /// bead writes it: an attempt replaced under the lock, at the same length, is read as it is now
 /// (roll-lqjj.30). Outside the lock nothing is kept, and a new phase stats every file again.

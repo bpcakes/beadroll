@@ -36,6 +36,8 @@ pub(crate) enum Work {
     /// compared with what is asked for, a search of their index, which compares the edges it finds
     /// besides, and an edge placed in an index built of them.
     Probe,
+    /// In-memory records serialized and hashed for a journal.
+    RecordDigest,
 }
 
 /// Counts `n` units of `work`, in this crate's tests; anywhere else it does nothing.
@@ -59,7 +61,7 @@ mod counter {
     use super::Work;
 
     /// How many kinds of work there are.
-    const KINDS: usize = 6;
+    const KINDS: usize = 7;
 
     thread_local! {
         static COUNTS: [Cell<usize>; KINDS] = const { [const { Cell::new(0) }; KINDS] };
@@ -74,6 +76,7 @@ mod counter {
             Work::Waiting => 3,
             Work::Key => 4,
             Work::Probe => 5,
+            Work::RecordDigest => 6,
         }
     }
 

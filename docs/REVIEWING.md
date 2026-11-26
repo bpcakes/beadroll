@@ -2427,9 +2427,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   envelope (`Envelope::from_value`), so there is one reader of events, and a journal's
   `add_segment` and `add_attempt` read a file by the rules `read_segment` and `read_attempt`
   read it into values by (a last line not yet whole skipped, any other unreadable line reported;
-  an attempt whole or not at all). A projection catching up reads the bytes the journal's files
-  grew by so too, into a journal of its own (`projection::Appended`, roll-0668), as the whole
-  journal is read; only the records a transaction writes, and a test's, are added as values. The digest is two SipHash-1-3 hashes under keys drawn at random
+  an attempt whole or not at all). A projection catching up reads those bytes into a journal of
+  its own (`projection::Appended`, roll-0668). It declines an incomplete segment tail so the
+  caller cannot advance past it. For in-memory records, `ExtensionBatch::is_empty` lets a
+  projection that requires replay decline a nonempty batch before serializing any record.
+  The digest is two SipHash-1-3 hashes under keys drawn at random
   for each journal, over the bytes of the line, whitespace around it left out, and for a record
   built in memory over the compact line bead writes of it: the same content is the same bytes,
   since bead writes every record once, compact and with its members in one order, and copies it
@@ -2529,7 +2531,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   journal reader's ordering; pending attempts never enter it. A miss uses `load_listed` and
   `causal_order`, fingerprinting the identities actually read, never later stats that could bless
   old rows as a replacement's. Missing, damaged, foreign or stale caches rebuild, and failed cache
-  writes do not fail the command. Cache writes use private atomic replacement without fsync,
+  writes do not fail the command. The history writer checks caller-built JSON fields against
+  the reader's nesting limit. A row outside that limit can still be displayed and skips the
+  optional cache write. Cache writes use private atomic replacement without fsync,
   sweep their own abandoned temporaries, and never create an absent store. The current outline
   and aliases are read afterwards, keeping the earlier two-moment display behavior. Any journal
   change invalidates the entire cache. Hits still decode all metadata: a small limit saves

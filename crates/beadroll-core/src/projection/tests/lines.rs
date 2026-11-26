@@ -2,7 +2,9 @@
 //! lines are: a projection reads the same issues' texts for it, and extends by it as it extends by
 //! the records built in memory, or declines both alike.
 
-use super::super::{Appended, Extended, Projection, Record, journal_of, project};
+use super::super::{
+    Appended, Extended, ExtensionBatch as _, Projection, Record, journal_of, project,
+};
 use super::{HistoryKind, history};
 use crate::json::{Format, write};
 
@@ -116,4 +118,42 @@ fn an_unreadable_line_leaves_the_batch_unreadable() {
     let mut appended = Appended::new();
     appended.add_segment(b"", "a", "segment");
     assert!(appended.is_readable() && appended.is_empty());
+}
+
+/// A public caller with raw records pays no serialization cost when the projection is already
+/// committed to replay. An empty batch still leaves that projection alone (AU08).
+#[test]
+fn preparation_checks_for_replay_before_hashing_in_memory_records() {
+    use super::hostile::{HERE, base, event, fields, record};
+    use crate::journal::JournalOrder;
+    use crate::work::{Work, counted};
+
+    let next = |deps: &[u128]| {
+        record(
+            event(4, HERE, deps, "set", 2, fields("next")),
+            HERE,
+            JournalOrder::Sequenced,
+        )
+    };
+    let open = project(journal_of(base())).unwrap();
+    let mut held = base();
+    held.push(next(&[99]));
+    let waiting = project(journal_of(held)).unwrap();
+    assert!(!waiting.extendable());
+
+    let prepare = |projection: Projection, records: Vec<Record>| {
+        counted(|| {
+            let extension = projection.prepare_extension(records);
+            assert!(extension.wanted_texts().is_empty());
+            extension.apply().unwrap()
+        })
+    };
+    let (result, work) = prepare(waiting.clone(), vec![next(&[3])]);
+    assert!(matches!(result, Extended::Replay));
+    assert_eq!(work.of(Work::RecordDigest), 0);
+    let (result, _) = prepare(waiting, Vec::new());
+    assert!(matches!(result, Extended::Applied(p) if !p.extendable()));
+    let (result, work) = prepare(open, vec![next(&[3])]);
+    assert!(matches!(result, Extended::Applied(_)));
+    assert_eq!(work.of(Work::RecordDigest), 1);
 }

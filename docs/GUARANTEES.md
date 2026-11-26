@@ -32,9 +32,13 @@ same thing*) and the variables bead reads (*Configuration*).
   recap results carry the same snapshot and their own placed set for joining frontiers. A later
   read does not change an existing snapshot. `Tree::snapshot` reads one supplied git tree; it does
   not fetch or claim that a mutable store's files were read atomically.
-- A prepared projection extension owns its projection and exact record batch, and selects the
-  texts to load from that state. Application consumes the preparation; incomplete loading or an
-  unsafe batch requests replay. Store reads and sync transactions use the same loading path.
+- A projection that already requires replay declines a nonempty batch before converting its
+  records. An empty batch leaves the projection as it was. For a batch it will try to apply,
+  the preparation owns the projection and exact records and selects the texts to load from that
+  state. Application consumes the preparation. Incomplete loading or an unsafe batch requests
+  replay. The store can answer from a settled, unchanged cache even when the projection cannot
+  extend. When records have changed, it checks that the projection can extend before preparing
+  those records. Store reads and sync transactions use the same text-loading path.
 - A prepared writeback holds an exclusive borrow of its projection, its encoded bytes, text
   locations and text-file generation. Acknowledgement consumes that preparation and updates
   only its source projection. The store acknowledges after both writes succeed. A failed write
@@ -703,8 +707,9 @@ it, and the file is committed again.
   journal payloads. A changed journal, missing or damaged cache, different
   build or unsettled file timestamp rebuilds it from the whole journal.
   The public history decoder rejects array and object counts whose combined
-  slots exceed the input length, including counts in nested values. Keys
-  and machine aliases are resolved afresh. This remains work proportional to
+  slots exceed the input length, including counts in nested values. The public history
+  writer and reader both return `None` for values deeper than the codec's nesting limit.
+  Keys and machine aliases are resolved afresh. This remains work proportional to
   the history's metadata, even for `--limit 1`; it is not a history boundary.
   First sync into an empty store flushes up to eight independent journal files
   concurrently, then installs them in listing order. Every file is still

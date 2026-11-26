@@ -1,6 +1,6 @@
 //! Load the exact texts selected by an owned core extension before applying it.
 
-use beadroll_core::projection::{Appended, Extended, Projection};
+use beadroll_core::projection::{Extended, ExtensionBatch, Projection};
 use beadroll_core::state::KeySpace;
 
 use super::texts::{self, TextFileAccess};
@@ -11,7 +11,7 @@ use crate::workspace::Workspace;
 pub fn extend_projection(
     ws: &Workspace,
     projection: Projection,
-    records: impl Into<Appended>,
+    records: impl ExtensionBatch,
 ) -> Result<Extended, KeySpace> {
     let mut extension = projection.prepare_extension(records);
     if !extension.wanted_texts().is_empty() {

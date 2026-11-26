@@ -1,4 +1,4 @@
-//! A history cache's bytes read back as the entries written, and no other bytes read as any.
+//! History entries round-trip and the decoder checks the structure and bounds of its input.
 
 use super::*;
 use crate::json::Object;
@@ -44,13 +44,74 @@ fn entries() -> Vec<HistoryEntry> {
 #[test]
 fn a_cache_reads_back_as_the_entries_written() {
     let entries = entries();
-    assert_eq!(from_cached(&cached(&entries)), Some(entries));
-    assert_eq!(from_cached(&cached(&[])), Some(Vec::new()));
+    assert_eq!(from_cached(&cached(&entries).unwrap()), Some(entries));
+    assert_eq!(from_cached(&cached(&[]).unwrap()), Some(Vec::new()));
+}
+
+/// The decoder accepts structurally equivalent count encodings (AU12).
+#[test]
+fn an_empty_history_can_have_a_redundant_count_byte() {
+    assert_eq!(cached(&[]).unwrap(), [0]);
+    assert_eq!(from_cached(&[0x80, 0]), Some(Vec::new()));
+}
+
+/// The reader enforces its limit on bytes supplied independently of the writer (AU13).
+#[test]
+fn a_field_one_container_too_deep_is_no_cache() {
+    use crate::projection::codec::NESTING;
+
+    let row = entries().remove(0);
+    let base = cached(&[row]).unwrap();
+    let mut r = Reader::new(&base);
+    assert_eq!(r.count(), Ok(1));
+    r.id().unwrap();
+    r.text().unwrap();
+    let agent = r.at(); // The null leaf stays in place after all the single-child containers.
+    for prefix in [&[7, 1][..], &[8, 1, 1, b'k'][..]] {
+        let mut bytes = base.clone();
+        bytes.splice(agent..agent, prefix.repeat(NESTING));
+        assert!(from_cached(&bytes).is_some());
+        bytes.splice(agent..agent, prefix.iter().copied());
+        assert_eq!(read_cache(&bytes), Err(Unreadable("nesting")));
+        assert!(from_cached(&bytes).is_none());
+    }
+}
+
+/// All four caller-built values share the reader's nesting limit (AU09).
+#[test]
+fn only_readable_nesting_can_be_written_to_a_history_cache() {
+    use crate::projection::codec::NESTING;
+
+    let nested = |depth, container: fn(Value) -> Value| {
+        (0..depth).fold(Value::Null, |value, _| container(value))
+    };
+    let containers: [fn(Value) -> Value; 2] = [
+        |value| Value::Array(vec![value]),
+        |value| Value::from(Object::from_iter([("k".to_owned(), value)])),
+    ];
+    let fields: [fn(&mut HistoryEntry) -> &mut Value; 4] = [
+        |row| &mut row.agent,
+        |row| &mut row.thread,
+        |row| &mut row.name,
+        |row| &mut row.branch,
+    ];
+    for container in containers {
+        for field in fields {
+            let mut row = entries().remove(0);
+            *field(&mut row) = nested(NESTING, container);
+            let bytes = cached(std::slice::from_ref(&row)).unwrap();
+            let decoded = from_cached(&bytes).unwrap();
+            assert_eq!(cached(&decoded).unwrap(), bytes);
+            let slot = field(&mut row);
+            *slot = container(std::mem::replace(slot, Value::Null));
+            assert!(cached(&[row]).is_none());
+        }
+    }
 }
 
 #[test]
 fn bytes_cut_short_or_running_on_are_no_cache() {
-    let bytes = cached(&entries());
+    let bytes = cached(&entries()).unwrap();
     for cut in 0..bytes.len() {
         assert_eq!(from_cached(&bytes[..cut]), None, "cut at {cut}");
     }
@@ -98,7 +159,7 @@ fn nested_containers_cannot_reserve_the_same_history_bytes_twice() {
     items[0] = Value::from(members);
     let mut row = entries().remove(0);
     row.agent = Value::Array(items);
-    let bytes = cached(std::slice::from_ref(&row));
+    let bytes = cached(std::slice::from_ref(&row)).unwrap();
     assert_eq!(from_cached(&bytes), Some(vec![row]));
 
     // Both counts fit separately, but even one value tag per slot needs 164 bytes.

@@ -22,7 +22,7 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
-## Journal replay and history cache reviews (roll-0668.1 through roll-0668.3, ids AU)
+## Journal replay and history cache reviews (roll-0668.1 through roll-0668.4, ids AU)
 
 | Id | Severity | Finding | Status | Resolution | Tests |
 |---|---|---|---|---|---|
@@ -33,6 +33,12 @@ Reviewers: propose new rows in your report using the next free id for your revie
 | AU05 | Low | Records without event IDs masked a failure to report malformed JSON in the unreadable-line test | fixed | The malformed line is the only input to the batch under test | `beadroll-core`: `projection::tests::lines::an_unreadable_line_leaves_the_batch_unreadable` |
 | AU06 | Medium | Nested arrays and objects in a damaged history cache could each reserve against the same remaining bytes | fixed | The codec charges each container slot against a shared limit before its fallible reservation. Each slot needs a distinct value tag in the input | `beadroll-core`: `history::tests::nested_containers_cannot_reserve_the_same_history_bytes_twice` |
 | AU07 | Low | The AU03 test called the projection selection helper directly and could miss premature batch preparation in the transaction | fixed | The test calls `Materialized::ensure` with a missing cause as its emitted record and checks that replay has begun at the only visit to that record | `beadroll-sync`: `tx::tests::a_projection_waiting_for_a_cause_is_set_aside_before_batch_preparation` |
+| AU08 | Medium | The public extension still converted every in-memory record when the projection already required replay | fixed | Preparation checks the batch's emptiness before conversion on a closed projection. The public API test counts record digests on the replay and application paths and applies an empty batch to the waiting projection | `beadroll-core`: `projection::tests::lines::preparation_checks_for_replay_before_hashing_in_memory_records` |
+| AU09 | Low | The public history writer produced bytes that its reader rejected for deeply nested caller-built fields | fixed | The writer checks the reader's nesting limit for all four JSON fields and returns `None` when a field exceeds it. The test round-trips arrays and objects at the limit and checks refusal one level beyond | `beadroll-core`: `history::tests::only_readable_nesting_can_be_written_to_a_history_cache` |
+| AU10 | Low | The release note promised a visible allocation error for lenient metadata reads | fixed | The release note distinguishes strict reads, which report the file error, from lenient reads, which use empty metadata | Documentation correction checked against `Workspace::metadata` |
+| AU11 | Medium | Store catch-up converted changed segments and new attempts before checking whether the saved projection could extend | fixed | An unchanged store can answer from the cache. On a miss the store checks the projection before reading records for extension. A waiting-projection test counts file reads for both a growing segment and a new attempt | `beadroll-store`: `projection::tests::attempts::a_waiting_projection_reads_changed_records_only_during_replay` |
+| AU12 | Low | The public history decoder's documentation promised that successful input had the writer's exact encoding | fixed | Its contract describes structural validation. A redundant zero count decodes to the same empty history as the writer's single byte | `beadroll-core`: `history::tests::an_empty_history_can_have_a_redundant_count_byte` |
+| AU13 | Low | The nesting test exercised only the writer one level beyond the shared limit | fixed | A decoder test constructs array and object fields directly in a complete encoded row, reads each at the limit and checks the nesting error one level beyond | `beadroll-core`: `history::tests::a_field_one_container_too_deep_is_no_cache` |
 
 ## Weeding audit (2026-11-17, ids AT)
 

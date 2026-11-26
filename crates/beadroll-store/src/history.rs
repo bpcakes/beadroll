@@ -38,8 +38,8 @@ pub fn history(ws: &Workspace) -> Result<Vec<HistoryEntry>, Error> {
     if ws.dir.is_dir()
         && loaded.whole
         && let Some(stamp) = loaded_stamp(ws, &segments, &loaded)
+        && let Some(bytes) = entries::cached(&rows)
     {
-        let bytes = entries::cached(&rows);
         let mut header = MAGIC.to_vec();
         header.extend_from_slice(&stamp);
         header.extend_from_slice(&content_sum(&bytes));

@@ -9,7 +9,7 @@ use std::fs::File;
 use std::io::{Read as _, Seek as _, SeekFrom};
 use std::path::Path;
 
-use beadroll_core::projection::{ENCODING, Encoded, sum};
+use beadroll_core::projection::{ENCODING, Encoded, Projection, sum};
 
 use crate::memo::FileKey;
 use crate::projection::JournalFile;
@@ -68,16 +68,21 @@ pub(super) struct Stored {
 }
 
 impl Stored {
-    /// Its parts, the index read now. `None` when the index is not as written.
-    pub(super) fn encoded(mut self) -> Option<Encoded> {
+    /// The projection and the journal files it was made from, with the index read and checked.
+    pub(super) fn decode(mut self) -> Option<(Projection, Made)> {
         self.file.seek(SeekFrom::Start(self.index_at)).ok()?;
         let mut index = vec![0; self.index_len];
         self.file.read_exact(&mut index).ok()?;
-        (sum(&index) == self.index_sum).then_some(Encoded {
+        if sum(&index) != self.index_sum {
+            return None;
+        }
+        let projection = Projection::decode(Encoded {
             state: self.state,
             index,
             texts: Vec::new(),
         })
+        .ok()?;
+        Some((projection, self.made))
     }
 }
 

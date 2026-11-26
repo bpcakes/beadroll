@@ -36,7 +36,7 @@
 //! `claim.before-push`, between a claim's fetch and
 //! push; `pending.after-list`, between listing and reading `pending/`; `journal.after-enumerate`,
 //! `journal.before-read` (before each segment is read), `journal.read-attempt` (each accepted
-//! attempt read during full replay), `view.before-load-pending` and
+//! attempt read for its events during catch-up or full replay), `view.before-load-pending` and
 //! `identity.before-link`, for readers racing writers; `recap.before-save`, once a recap's answer
 //! is written and before it takes the cursor's lock;
 //! `projection.before-save`, once a projection to write back is caught up or made and before its

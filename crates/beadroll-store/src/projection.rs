@@ -52,7 +52,7 @@ use sources::Sources;
 use crate::fs::{content_sum, read_keyed};
 use crate::journal::{
     ContentSums, ViewError, claim_files_afresh, claim_keys, folder_name, load_journal, load_listed,
-    segment_files,
+    read_accepted, segment_files,
 };
 use crate::layout;
 use crate::listing::{Keys, Stamp};
@@ -197,52 +197,9 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
     let stored = file::read(&projection_path(ws)).filter(|stored| stored.made.build == build);
     if let (Some(stored), Some(seen)) = (stored, held(ws, &segments, JournalFile::Segment))
         && let Some(tails) = grown(&stored.made, &seen, stored.written)
-        && let Some((mut records, read)) = read_tails(ws, &tails)
-        // listed once the segments are read: an attempt file is in place before a record built on
-        // it is appended
-        && let Some(listed) = attempts(ws)?
+        && let Some(now) = from_stored(ws, stored, seen, &tails, want)?
     {
-        let file = Some(stored.made.texts);
-        let settled = stored.written;
-        let (size, was) = (stored.size, stored.made.journal_bytes());
-        if tails.is_empty() && same(&stored.made, &seen, &listed.held, settled) {
-            if want != Want::Projection
-                && let Ok(mut state) = decode_state(&stored.state)
-            {
-                state.set_texts_file(file);
-                // texts that cannot be read have the journal replayed
-                if want == Want::Outline || read_all(ws, &mut state) {
-                    return Ok(Now::State(Box::new(state)));
-                }
-            } else if let Some(mut projection) =
-                stored.encoded().and_then(|e| Projection::decode(e).ok())
-            {
-                projection.state_mut().set_texts_file(file);
-                projection.let_go(); // nothing to write back
-                let seen = (seen.into_iter())
-                    .map(|held| (held.path, held.key))
-                    .collect();
-                let sources = Sources::of(seen, listed.paths, listed.keys, listed.stamp);
-                return Ok(Now::Projection(Box::new(projection), sources));
-            }
-        } else if let Some((now, sources)) =
-            appended(ws, &stored.made, read, listed, &mut records, build, settled)
-            && let Some(mut projection) = stored.encoded().and_then(|e| Projection::decode(e).ok())
-        {
-            projection.state_mut().set_texts_file(file);
-            // the records applied: the bytes the journal's files grew by, only appended to
-            let tail = now.journal_bytes().saturating_sub(was);
-            if let Extended::Applied(mut projection) = extend_projection(ws, projection, records)? {
-                if kept_for(want, tail, size) {
-                    save(ws, now, &mut projection);
-                }
-                // written back or not, the command goes on without the bytes it was read from
-                projection.let_go();
-                if want != Want::Texts || read_all(ws, projection.state_mut()) {
-                    return Ok(Now::Projection(projection, sources));
-                }
-            }
-        }
+        return Ok(now);
     }
     let loaded = load_listed(ws, &segments, ContentSums::Compute)?;
     let sources = Sources::read(ws, &segments, &loaded);
@@ -271,6 +228,86 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
         );
     }
     Ok(Now::Projection(Box::new(projection), sources))
+}
+
+/// Reads the unchanged cache or applies the journal records that grew after it. When there
+/// are segment tails, the fresh attempt listing must follow the read of those segments.
+fn from_stored(
+    ws: &Workspace,
+    stored: file::Stored,
+    seen: Vec<Held>,
+    tails: &[Tail],
+    want: Want,
+) -> Result<Option<Now>, ViewError> {
+    let file = Some(stored.made.texts);
+    let settled = stored.written;
+    let size = stored.size;
+    let listed = if tails.is_empty() {
+        let Some(listed) = attempts(ws)? else {
+            return Ok(None);
+        };
+        if same(&stored.made, &seen, &listed.held, settled) {
+            return Ok(unchanged(ws, stored, seen, listed, want));
+        }
+        Some(listed)
+    } else {
+        None
+    };
+    let Some((mut projection, made)) = stored.decode() else {
+        return Ok(None);
+    };
+    if !projection.extendable() {
+        return Ok(None);
+    }
+    let Some((mut records, read)) = read_tails(ws, tails) else {
+        return Ok(None);
+    };
+    let listed = match listed {
+        None => attempts(ws)?,
+        known => known,
+    };
+    let Some(listed) = listed else {
+        return Ok(None);
+    };
+    let Some((now, sources)) = appended(ws, &made, read, listed, &mut records, settled) else {
+        return Ok(None);
+    };
+    projection.state_mut().set_texts_file(file);
+    let Extended::Applied(mut projection) = extend_projection(ws, projection, records)? else {
+        return Ok(None);
+    };
+    let tail = now.journal_bytes().saturating_sub(made.journal_bytes());
+    if kept_for(want, tail, size) {
+        save(ws, now, &mut projection);
+    }
+    projection.let_go();
+    Ok(
+        (want != Want::Texts || read_all(ws, projection.state_mut()))
+            .then_some(Now::Projection(projection, sources)),
+    )
+}
+
+/// Answers from settled, unchanged files. An outline or full state needs only the state section.
+fn unchanged(
+    ws: &Workspace,
+    stored: file::Stored,
+    seen: Vec<Held>,
+    listed: Listed,
+    want: Want,
+) -> Option<Now> {
+    let file = Some(stored.made.texts);
+    if want != Want::Projection {
+        let mut state = decode_state(&stored.state).ok()?;
+        state.set_texts_file(file);
+        return (want == Want::Outline || read_all(ws, &mut state))
+            .then(|| Now::State(Box::new(state)));
+    }
+    let (mut projection, _) = stored.decode()?;
+    projection.state_mut().set_texts_file(file);
+    projection.let_go();
+    let seen = seen.into_iter().map(|held| (held.path, held.key)).collect();
+    let sources = Sources::of(seen, listed.paths, listed.keys, listed.stamp);
+    Some(Now::Projection(Box::new(projection), sources))
 }
 
 /// Whether a projection of `size` bytes, extended by records that `tail` bytes of the journal's
@@ -492,7 +529,6 @@ fn appended(
     read: Vec<Held>,
     listed: Listed,
     records: &mut Appended,
-    build: &str,
     settled: i128,
 ) -> Option<(Made, Option<Sources>)> {
     let before: HashMap<&str, &Held> = (made.files.iter())
@@ -519,7 +555,7 @@ fn appended(
             }
             None => {}
         }
-        let Ok((data, Some(key))) = read_keyed(path) else {
+        let Ok((data, Some(key))) = read_accepted(ws, path) else {
             return None;
         };
         let origin = path.display().to_string();
@@ -549,9 +585,8 @@ fn appended(
     segments.extend(read.into_values());
     segments.sort_by(|a, b| a.path.cmp(&b.path));
     segments.extend(files);
-    let build = build.to_owned();
     let made = Made {
-        build,
+        build: made.build.clone(),
         files: segments,
         texts: made.texts,
     };

@@ -31,6 +31,7 @@ impl Digester {
     /// memory fails to print (a float that is not finite, nesting too deep); an iterative encoding
     /// keeps those contents distinct without asking the call stack to follow their depth.
     pub(crate) fn digest_of(&self, value: &Value) -> Digest {
+        crate::work::tally(crate::work::Work::RecordDigest, 1);
         match write(value, Format::COMPACT) {
             Ok(line) => self.digest(line.as_bytes()),
             Err(_) => self.keys.each_ref().map(|key| fallback(key, value)),

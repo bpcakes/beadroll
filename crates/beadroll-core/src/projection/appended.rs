@@ -32,6 +32,25 @@ pub struct Appended {
     journal: Journal,
 }
 
+/// Input to a projection extension. Emptiness can be checked before converting in-memory
+/// records to a journal. An unreadable record still counts as input.
+pub trait ExtensionBatch: Into<Appended> {
+    /// Whether the batch contains neither records nor read errors.
+    fn is_empty(&self) -> bool;
+}
+
+impl ExtensionBatch for Vec<Record> {
+    fn is_empty(&self) -> bool {
+        Vec::is_empty(self)
+    }
+}
+
+impl ExtensionBatch for Appended {
+    fn is_empty(&self) -> bool {
+        self.journal.raw().is_empty() && self.journal.invalid.is_empty()
+    }
+}
+
 impl Appended {
     /// No records.
     pub fn new() -> Appended {
@@ -77,11 +96,6 @@ impl Appended {
     /// one, as it does one whose events fail as the journal settles them.
     pub fn is_readable(&self) -> bool {
         self.journal.invalid.is_empty()
-    }
-
-    /// Whether nothing at all was added, readable or not.
-    pub(crate) fn is_empty(&self) -> bool {
-        self.journal.raw().is_empty() && self.journal.invalid.is_empty()
     }
 
     /// Every record with a readable id, in the order added.

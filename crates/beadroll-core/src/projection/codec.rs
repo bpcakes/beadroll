@@ -22,7 +22,7 @@ use crate::order::position;
 /// projection's format was fixed (512 levels, until roll-lqjj.53), and the few levels replay wraps
 /// an event's values in (a dependency's metadata, an imported comment), so that no projection
 /// written then is unreadable now.
-const NESTING: usize = 512 + 8;
+pub(crate) const NESTING: usize = 512 + 8;
 
 /// Why bytes are no projection: what was being read when they ran out or did not fit.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -262,6 +262,15 @@ impl Writer {
         if let Some(value) = value {
             self.shared(value);
         }
+    }
+
+    /// Writes a caller-built value only if a reader can decode its nesting depth.
+    pub(crate) fn checked_value(&mut self, value: &Value) -> Option<()> {
+        if matches!(value, Value::Array(_) | Value::Object(_)) && value.deeper_than(NESTING) {
+            return None;
+        }
+        self.value(value);
+        Some(())
     }
 
     /// A JSON value: its kind, then what it holds.
