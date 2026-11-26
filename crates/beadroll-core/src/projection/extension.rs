@@ -3,7 +3,7 @@
 use crate::id::EventId;
 use crate::state::{KeySpace, TextPlace};
 
-use super::appended::ReadableAppended;
+use super::appended::{OwnedRecords, ReadableAppended};
 use super::{Appended, Extended, Projection, Record, Unreadable};
 
 /// An owned projection with the exact batch and text locations it can try to apply.
@@ -57,7 +57,7 @@ impl Projection {
     /// Prepares these records alone for application to this projection. Missing texts or an
     /// unsafe batch make [`Extension::apply`] request replay; preparation never invents data.
     pub fn prepare_extension(self, records: Vec<Record>) -> Extension {
-        self.prepare((!records.is_empty()).then_some(records))
+        self.prepare((!records.is_empty()).then(|| OwnedRecords::from(records)))
     }
 
     /// Prepares an already-read journal batch for the same text loading and application.

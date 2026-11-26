@@ -2439,8 +2439,14 @@ These were decided deliberately. Report problems *with* them, not their existenc
   before parsing the segment. For complete input, catch-up uses the journal's line parser
   and record installation but stops at the first unreadable line. Full replay continues to
   collect diagnostics and recover later records. Later additions to the rejected batch do
-  no work on the records. When collecting a lazy iterator, the batch consumes the first
-  unreadable record and stops. A transaction keeps the original iterator for full replay.
+  no work on the records. A batch borrows a lazy iterator and consumes through the first
+  unreadable record. A caller with an eager vector can transfer it whole or hold its
+  suffix in an `OwnedRecords` buffer for borrowed inspection or another batch. For both attempt representations the journal admits a record
+  only after its envelope and payload pass the same check. A segment can retain a malformed
+  record with a readable id for settlement. A caller-built value outside the JSON reader's
+  depth, number range or precision requires replay. The compact writer checks these bounds
+  as it serializes for the digest. A rejected record and the skipped tail of a caller-supplied
+  vector are disposed of iteratively. A transaction keeps its validated emitted records for full replay, where `JournalOrder` describes their placement.
   For in-memory records, `prepare_extension` checks the vector's
   length before serializing any record for a projection that requires replay. `prepare_appended`
   takes an already-read batch. The store keeps the projection's eligibility in its checksummed

@@ -15,7 +15,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use content::Digest;
-use event::{Shared, Source};
+use event::{Admitted, Shared, Source};
 use indexmap::IndexMap;
 
 use crate::event::Envelope;
@@ -152,7 +152,7 @@ impl Journal {
     /// the rest is judged when the journal settles.
     pub fn add(&mut self, event: Value, replica: &str, origin: &str, journal_order: JournalOrder) {
         let digest = self.shared.digester.digest_of(&event);
-        self.add_read(
+        self.add_for_replay(
             Envelope::from_value(event),
             digest,
             replica,
@@ -161,34 +161,28 @@ impl Journal {
         );
     }
 
-    /// Adds what was read of a record found in `replica`'s journal at `origin`, its content's
-    /// digest being `digest`.
-    fn add_read(
+    fn add_for_replay(
         &mut self,
         envelope: Envelope,
         digest: Digest,
         replica: &str,
         origin: &str,
-        journal_order: JournalOrder,
+        order: JournalOrder,
     ) {
-        let Some(id) = envelope.id else {
-            let problem = envelope
-                .problem()
-                .unwrap_or_else(|| "id is not a UUID".to_owned());
-            self.invalid
-                .push(Problem::new(None, origin.to_owned(), problem));
-            return;
-        };
+        match Admitted::for_replay(envelope, order) {
+            Ok(record) => self.add_read(record, digest, replica, origin),
+            Err(problem) => self
+                .invalid
+                .push(Problem::new(None, origin.to_owned(), problem)),
+        }
+    }
+
+    /// Adds one admitted record with the order and digest of its source.
+    fn add_read(&mut self, record: Admitted, digest: Digest, replica: &str, origin: &str) {
         self.counter += 1;
-        let source = self.source(replica, origin, journal_order);
-        let record = Event::read(
-            id,
-            envelope,
-            digest,
-            &source,
-            self.counter,
-            &mut self.shared,
-        );
+        let source = self.source(replica, origin, record.order);
+        let record = Event::read(record, digest, &source, self.counter, &mut self.shared);
+        let id = record.id();
         // The first record of an id is the common case: a fresh, valid event, installed at once.
         let first = !self.events.contains_key(&id) && !self.unplaced.contains(&id);
         let fresh = first && record.own();

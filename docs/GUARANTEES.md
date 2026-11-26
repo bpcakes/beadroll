@@ -38,8 +38,12 @@ same thing*) and the variables bead reads (*Configuration*).
   requests replay before selecting any saved texts, even when earlier records were readable.
   An incomplete segment discards the batch before its complete lines are parsed. Catch-up
   stops at the first unreadable line in a complete segment. Full replay reports the error
-  and reads the later lines. Collecting in-memory records into `Appended` consumes the
-  first unreadable record and leaves the rest of a borrowed iterator available.
+  and reads the later lines. `Appended::read_records` borrows its source, consumes the first
+  unreadable record and leaves the remaining records in the iterator. `OwnedRecords`
+  releases the unused portion of a caller-built vector safely at any depth. An attempt
+  must pass envelope and payload validation at that point whether supplied as bytes or as
+  records. Catch-up requests replay for caller-built values that journal JSON cannot
+  represent exactly.
   For a batch it will try to apply,
   the preparation owns the projection and exact records and selects the texts to load from that
   state. Application consumes the preparation. Incomplete loading or an unsafe batch requests

@@ -12,6 +12,9 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   codec rather than as JSON, ids as their 16 bytes (`bead history 2`; an older cache is rebuilt
   once). The local projection cache also rebuilds once to record whether it can accept new
   events alongside its source checksums. Output and format 1 are unchanged.
+- In-memory projection batches reject malformed attempt records as soon as a file reader
+  would, before consuming another record or requesting saved texts. JSON output preserves
+  the exact float at binary exponent boundaries, including 2⁻²⁴.
 - Journal replay and strict reads of `meta.json` report an `IO` error naming the file if
   bead cannot allocate its buffer. Lenient metadata reads use empty metadata in that case.
 

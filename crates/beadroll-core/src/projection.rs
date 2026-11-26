@@ -54,7 +54,7 @@ use text_codec::read_texts;
 
 #[cfg(test)]
 pub(crate) use appended::journal_of;
-pub use appended::{Appended, Record};
+pub use appended::{Appended, OwnedRecords, Record};
 pub use codec::Unreadable;
 pub use extend::Extended;
 pub use extension::Extension;

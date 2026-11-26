@@ -40,8 +40,12 @@ consumer on tokio calls through `spawn_blocking`.
   Empty batches and batches already known to require replay request no texts. `prepare_appended`
   prepares a batch already read into a journal. An incomplete segment discards the batch
   before parsing its prefix. `Journal::try_add_segment` stops at the first unreadable line
-  in complete input. Later additions to an unreadable batch do no parsing. Collecting
-  in-memory records stops pulling from the iterator at the first unreadable record.
+  in complete input. Later additions to an unreadable batch do no parsing. `Appended::read_records`
+  borrows the iterator and stops at the first unreadable record. Use `OwnedRecords` for a
+  vector whose unvisited suffix can contain over-depth values.
+  Both attempt readers and in-memory attempt admission check the same borrowed envelope
+  and payload before installation. Segment records with a readable id are judged at settlement.
+  Catch-up requires caller-built values to round-trip exactly through journal JSON.
   `projection/writeback.rs`:
   `prepare_append` and `prepare_rewrite` lend `Writeback`, freezing a projection alongside its
   bytes, places and generation. Only its consuming `written` acknowledges those locations.

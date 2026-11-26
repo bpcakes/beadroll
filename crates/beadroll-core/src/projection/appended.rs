@@ -27,13 +27,12 @@ pub struct Record {
 }
 
 impl Record {
-    fn add_to(self, journal: &mut Journal) {
-        let order = if self.sequenced {
+    fn order(&self) -> JournalOrder {
+        if self.sequenced {
             JournalOrder::Sequenced
         } else {
             JournalOrder::Attempt
-        };
-        journal.add(self.value, &self.replica, &self.origin, order);
+        }
     }
 }
 
@@ -123,18 +122,20 @@ impl Appended {
     /// Adds the events of `data`, an attempt file found in `replica`'s journal at `origin`, as a
     /// journal reads one ([`Journal::add_attempt`]).
     pub fn add_attempt(&mut self, data: &[u8], replica: &str, origin: &str) {
-        self.read(|journal| {
-            journal.add_attempt(data, replica, origin);
-            journal.invalid.is_empty()
-        });
+        self.read(|journal| journal.try_add_attempt(data, replica, origin).is_ok());
     }
 
     /// Adds a record built in memory, with the order its file gives it (a journal's records
-    /// sequenced, an attempt file's not).
+    /// sequenced, an attempt file's not). Catch-up requires a value that journal JSON reads
+    /// back exactly. An attempt record must also pass its envelope and payload checks here.
     pub fn add(&mut self, record: Record) {
+        if !self.is_readable() {
+            record.value.discard();
+            return;
+        }
         self.read(|journal| {
-            record.add_to(journal);
-            journal.invalid.is_empty()
+            let order = record.order();
+            journal.try_add_record(record.value, &record.replica, &record.origin, order)
         });
     }
 
@@ -144,25 +145,68 @@ impl Appended {
     pub fn is_readable(&self) -> bool {
         self.readable.is_some()
     }
-}
 
-/// Collects through the first unreadable record, leaving the rest of a borrowed iterator available.
-impl FromIterator<Record> for Appended {
-    fn from_iter<I: IntoIterator<Item = Record>>(records: I) -> Appended {
-        let mut appended = Appended::new();
+    /// Reads through the first unreadable record, leaving the caller's iterator at the
+    /// next one. For a vector of caller-built values, [`OwnedRecords`] can keep that
+    /// suffix and dispose of it at any depth. An owned vector can go directly to `from`.
+    ///
+    /// ```compile_fail,E0308
+    /// use beadroll_core::projection::{Appended, Record};
+    /// fn collect_lazy(records: impl Iterator<Item = Record>) {
+    ///     Appended::read_records(records);
+    /// }
+    /// ```
+    pub fn read_records(records: &mut (impl Iterator<Item = Record> + ?Sized)) -> Self {
+        let mut batch = Self::new();
         for record in records {
-            appended.add(record);
-            if !appended.is_readable() {
+            batch.add(record);
+            if !batch.is_readable() {
                 break;
             }
         }
-        appended
+        batch
+    }
+}
+
+/// A vector of caller-built records with an unread suffix. Inspection borrows the
+/// records. Dropping the buffer releases even over-depth values without recursion.
+pub struct OwnedRecords(std::vec::IntoIter<Record>);
+
+impl OwnedRecords {
+    /// Reads through the first unreadable record. The rest stay in this buffer.
+    pub fn read_batch(&mut self) -> Appended {
+        Appended::read_records(&mut self.0)
+    }
+
+    /// Records still available after the last batch, in their original order.
+    pub fn remaining(&self) -> &[Record] {
+        self.0.as_slice()
+    }
+}
+
+impl From<Vec<Record>> for OwnedRecords {
+    fn from(records: Vec<Record>) -> Self {
+        Self(records.into_iter())
+    }
+}
+
+impl Drop for OwnedRecords {
+    fn drop(&mut self) {
+        for record in &mut self.0 {
+            record.value.discard();
+        }
+    }
+}
+
+impl From<OwnedRecords> for Appended {
+    fn from(mut records: OwnedRecords) -> Self {
+        records.read_batch()
     }
 }
 
 impl From<Vec<Record>> for Appended {
     fn from(records: Vec<Record>) -> Appended {
-        records.into_iter().collect()
+        OwnedRecords::from(records).into()
     }
 }
 
@@ -172,7 +216,8 @@ impl From<Vec<Record>> for Appended {
 pub(crate) fn journal_of(records: impl IntoIterator<Item = Record>) -> Journal {
     let mut journal = Journal::new();
     for record in records {
-        record.add_to(&mut journal);
+        let order = record.order();
+        journal.add(record.value, &record.replica, &record.origin, order);
     }
     journal
 }

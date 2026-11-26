@@ -36,6 +36,14 @@ impl Text {
         }
     }
 
+    /// The owned text retained by an admitted event.
+    pub(crate) fn into_string(self) -> Option<String> {
+        match self {
+            Self::Str(text) => Some(text),
+            _ => None,
+        }
+    }
+
     /// `value`'s text, null, or neither.
     fn of(value: Value) -> Text {
         match value {
@@ -156,7 +164,12 @@ impl Envelope {
 
     /// Why this envelope cannot be used, or `None`: the rules of `event_problem`, in its order.
     pub(crate) fn problem(&self) -> Option<String> {
-        self.borrowed().problem()
+        self.borrowed().checked_id().err()
+    }
+
+    /// The id after checking all the rules for admission to an attempt.
+    pub(crate) fn attempt_id(&self) -> Result<EventId, String> {
+        self.borrowed().attempt_id()
     }
 
     /// Why its payload cannot be applied, or `None` (`payload_problem`). Asked only of an

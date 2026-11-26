@@ -84,20 +84,50 @@ const WRITE_DEPTH: usize = 2 * super::MAX_DEPTH;
 
 /// Serializes value using format.
 pub fn write(value: &Value, format: Format) -> Result<String, WriteError> {
+    encode(value, format, &|_, _| Ok(()))
+}
+
+/// A compact journal line only if reading it would recover the exact value. Check the
+/// reader's depth and integer bounds during serialization, including unknown members.
+pub(crate) fn record_line(value: &Value) -> Option<String> {
+    struct Inexact;
+    impl From<WriteError> for Inexact {
+        fn from(_: WriteError) -> Self {
+            Self
+        }
+    }
+    encode(value, Format::COMPACT, &|value, level| {
+        let exact = match value {
+            Value::Object(_) | Value::Array(_) => level < super::MAX_DEPTH,
+            Value::Int(i) => (i128::from(i64::MIN)..=i128::from(u64::MAX)).contains(&i.as_i128()),
+            _ => true,
+        };
+        exact.then_some(()).ok_or(Inexact)
+    })
+    .ok()
+}
+
+fn encode<E: From<WriteError>>(
+    value: &Value,
+    format: Format,
+    check: &impl Fn(&Value, usize) -> Result<(), E>,
+) -> Result<String, E> {
     let mut out = String::new();
-    write_value(&mut out, value, format, 0)?;
+    write_value(&mut out, value, format, 0, check)?;
     Ok(out)
 }
 
-fn write_value(
+fn write_value<E: From<WriteError>>(
     out: &mut String,
     value: &Value,
     format: Format,
     level: usize,
-) -> Result<(), WriteError> {
+    check: &impl Fn(&Value, usize) -> Result<(), E>,
+) -> Result<(), E> {
     if level > WRITE_DEPTH {
-        return Err(WriteError::TooDeep);
+        return Err(WriteError::TooDeep.into());
     }
+    check(value, level)?;
     match value {
         Value::Null => out.push_str("null"),
         Value::Bool(true) => out.push_str("true"),
@@ -115,7 +145,7 @@ fn write_value(
             out.push('[');
             for (index, item) in items.iter().enumerate() {
                 separate(out, format.style, index, level + 1);
-                write_value(out, item, format, level + 1)?;
+                write_value(out, item, format, level + 1, check)?;
             }
             close(out, format.style, level, ']');
         }
@@ -137,7 +167,7 @@ fn write_value(
                 } else {
                     ": "
                 });
-                write_value(out, item, format, level + 1)?;
+                write_value(out, item, format, level + 1, check)?;
             }
             close(out, format.style, level, '}');
         }
@@ -267,42 +297,17 @@ fn shortest_digits(value: f64) -> (String, i32) {
             exponent.parse().unwrap_or(0),
         )
     };
-    let (digits, exponent) = split(&format!("{value:e}"));
-    let n = digits.len();
-    // The exact value, well past those digits: a tie leaves exactly one 5 after the last.
-    let (exact, exact_exponent) = split(&format!("{:.*e}", n + 20, value));
-    let tail = exact.as_bytes().get(n..).unwrap_or_default();
-    let tie = exact_exponent == exponent
-        && tail.first() == Some(&b'5')
-        && tail.iter().skip(1).all(|d| *d == b'0');
-    if !tie {
-        return (digits, exponent);
+    let shortest = format!("{value:e}");
+    let (digits, exponent) = split(&shortest);
+    // At the shortest precision, explicit precision rounds ties to even. At a power of
+    // two the adjacent floats have unequal spacing, so that rounded decimal can belong
+    // to the other float. Rust's shortest form already round-trips in that case.
+    let even = format!("{:.*e}", digits.len() - 1, value);
+    if even != shortest && even.parse::<f64>() == Ok(value) {
+        split(&even)
+    } else {
+        (digits, exponent)
     }
-    let low = exact.get(..n).unwrap_or_default();
-    if low
-        .bytes()
-        .last()
-        .is_some_and(|d| (d - b'0').is_multiple_of(2))
-    {
-        return (low.to_owned(), exponent);
-    }
-    // The upper candidate, one more in the last place; it is even.
-    let mut up: Vec<u8> = low.bytes().collect();
-    let mut at = up.len();
-    while at > 0 {
-        at -= 1;
-        match up.get_mut(at) {
-            Some(digit) if *digit == b'9' => *digit = b'0',
-            Some(digit) => {
-                *digit += 1;
-                return (String::from_utf8(up).unwrap_or_default(), exponent);
-            }
-            None => break,
-        }
-    }
-    up.insert(0, b'1');
-    up.pop();
-    (String::from_utf8(up).unwrap_or_default(), exponent + 1)
 }
 
 #[cfg(test)]
@@ -323,6 +328,26 @@ mod tests {
             ("4503599627370497.5", "4503599627370498.0"),
         ] {
             assert_eq!(float_repr(text.parse().unwrap()).unwrap(), repr, "{text}");
+        }
+    }
+
+    /// Either side of a power of two can have a different gap to the next float (AU30).
+    #[test]
+    fn the_shortest_float_at_an_exponent_boundary_reads_back_exactly() {
+        let exact = 2.0_f64.powi(-24);
+        assert_eq!(float_repr(exact).unwrap(), "5.960464477539063e-08");
+        for exponent in 1_u64..2047 {
+            let power = exponent << 52;
+            for bits in [power - 1, power, power + 1] {
+                let value = f64::from_bits(bits);
+                for signed in [value, -value] {
+                    let text = float_repr(signed).unwrap();
+                    let Value::Float(read) = parse(text.as_bytes()).unwrap().value else {
+                        panic!("float {text}");
+                    };
+                    assert_eq!(read.to_bits(), signed.to_bits(), "{text}");
+                }
+            }
         }
     }
 

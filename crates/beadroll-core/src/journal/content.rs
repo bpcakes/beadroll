@@ -8,7 +8,7 @@
 
 use std::hash::{BuildHasher as _, Hash as _, Hasher as _, RandomState};
 
-use crate::json::{Format, Value, write};
+use crate::json::{Format, Value, record_line, write};
 
 /// A record's content: equal for two records of one journal exactly when they hold the same
 /// content.
@@ -36,6 +36,12 @@ impl Digester {
             Ok(line) => self.digest(line.as_bytes()),
             Err(_) => self.keys.each_ref().map(|key| fallback(key, value)),
         }
+    }
+
+    /// Catch-up can only substitute a value for its line if the reader recovers it exactly.
+    pub(super) fn readable_digest(&self, value: &Value) -> Option<Digest> {
+        crate::work::tally(crate::work::Work::RecordDigest, 1);
+        Some(self.digest(record_line(value)?.as_bytes()))
     }
 }
 

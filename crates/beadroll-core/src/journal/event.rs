@@ -9,10 +9,11 @@ use std::sync::{Arc, LazyLock};
 
 use crate::event::{Data, Envelope, FORMAT};
 use crate::id::EventId;
-use crate::json::{self, Format, Value};
+use crate::json::{self, Format, Object, Value};
 use crate::op::{IntegerField, Op};
 use crate::text::str_of;
 
+use super::JournalOrder;
 use super::content::{Digest, Digester};
 
 /// An event as replay sees it: a valid event, or the stand-in for an id that cannot be used (`op`
@@ -105,29 +106,114 @@ impl Rest {
     }
 }
 
-impl Event {
-    /// What the record read as `envelope`, the `counter`-th added and found in `source`, holds
-    /// under `id`, its content's digest being `digest`.
-    pub(crate) fn read(
-        id: EventId,
+/// A record ready to install. Replay retains a malformed record with an id for
+/// settlement. Attempt admission requires a valid envelope and payload first.
+pub(super) struct Admitted {
+    pub(super) order: JournalOrder,
+    id: EventId,
+    deps: Vec<EventId>,
+    op: String,
+    replica: String,
+    data: Object,
+    issue: Option<String>,
+    actor: Option<Value>,
+    place: Option<Value>,
+    trouble: Option<PendingTrouble>,
+}
+
+impl Admitted {
+    // Whole-file admission buffers these fields until the last line passes. Release the
+    // validation-only members now so each staged event keeps one id and one verdict.
+    fn new(
         envelope: Envelope,
+        order: JournalOrder,
+        id: EventId,
+        trouble: Option<PendingTrouble>,
+    ) -> Self {
+        Self {
+            order,
+            id,
+            trouble,
+            deps: envelope.deps,
+            op: envelope.op.unwrap_or_default(),
+            replica: envelope.replica.unwrap_or_default(),
+            data: match envelope.data {
+                Data::Object(data) => data,
+                _ => Object::new(),
+            },
+            issue: envelope.issue.into_string(),
+            actor: envelope.actor,
+            place: envelope.place,
+        }
+    }
+
+    pub(super) fn for_replay(mut envelope: Envelope, order: JournalOrder) -> Result<Self, String> {
+        let problem = envelope.problem();
+        let Some(id) = envelope.id else {
+            return Err(problem.unwrap_or_else(|| "id is not a UUID".into()));
+        };
+        let trouble = match problem {
+            Some(problem) => Some(PendingTrouble::Known(Trouble::Invalid(problem))),
+            None => future_format(&mut envelope).or_else(|| {
+                envelope
+                    .payload_problem()
+                    .map(Trouble::Flaw)
+                    .map(PendingTrouble::Known)
+            }),
+        };
+        Ok(Self::new(envelope, order, id, trouble))
+    }
+
+    /// All catch-up sources use the file's order to select its admission rule.
+    pub(super) fn for_batch(mut envelope: Envelope, order: JournalOrder) -> Result<Self, String> {
+        match order {
+            JournalOrder::Sequenced => Self::for_replay(envelope, order),
+            JournalOrder::Attempt => {
+                let id = envelope.attempt_id()?;
+                let trouble = future_format(&mut envelope);
+                Ok(Self::new(envelope, order, id, trouble))
+            }
+        }
+    }
+}
+
+/// Defer formatting a version diagnostic until the whole file is admitted.
+enum PendingTrouble {
+    Known(Trouble),
+    FutureFormat(Value),
+}
+
+impl PendingTrouble {
+    fn report(self) -> Trouble {
+        match self {
+            Self::Known(problem) => problem,
+            Self::FutureFormat(version) => Trouble::Flaw(format!(
+                "event format v{} is not one this version of bead reads",
+                str_of(&version)
+            )),
+        }
+    }
+}
+
+fn future_format(envelope: &mut Envelope) -> Option<PendingTrouble> {
+    envelope
+        .v
+        .take()
+        .filter(|v| !same_int(v, FORMAT))
+        .map(PendingTrouble::FutureFormat)
+}
+
+impl Event {
+    /// Installs the already-judged record without validating its payload a second time.
+    pub(super) fn read(
+        admitted: Admitted,
         digest: Digest,
         source: &Arc<Source>,
         counter: u64,
         shared: &mut Shared,
     ) -> Event {
-        let trouble = match envelope.problem() {
-            Some(problem) => Some(Trouble::Invalid(problem)),
-            None => match envelope.v.as_ref().filter(|v| !same_int(v, FORMAT)) {
-                Some(version) => Some(format!(
-                    "event format v{} is not one this version of bead reads",
-                    str_of(version)
-                )),
-                None => envelope.payload_problem(),
-            }
-            .map(Trouble::Flaw),
-        };
-        let Envelope {
+        let Admitted {
+            id,
             deps,
             op,
             replica,
@@ -135,18 +221,15 @@ impl Event {
             issue,
             actor,
             place,
+            trouble,
             ..
-        } = envelope;
-        let data = match data {
-            Data::Object(data) => data,
-            _ => Default::default(),
-        };
+        } = admitted;
         let rest = Rest {
             imported: data.get("imported").is_some_and(Value::truthy),
-            op: Op::read(op.as_deref().unwrap_or_default(), data),
-            issue: issue.as_str().map(|issue| shared.text(issue)),
+            op: Op::read(&op, data),
+            issue: issue.as_deref().map(|issue| shared.text(issue)),
             place: place.as_ref().map(|place| shared.value(place)),
-            trouble: trouble.map(Box::new),
+            trouble: trouble.map(|problem| Box::new(problem.report())),
             digest,
             source: Arc::clone(source),
             counter,
@@ -154,7 +237,7 @@ impl Event {
         Event(Arc::new(Read {
             id,
             deps: deps.into_boxed_slice(),
-            replica: shared.text(replica.as_deref().unwrap_or_default()),
+            replica: shared.text(&replica),
             actor: actor.as_ref().map(|actor| shared.value(actor)),
             rest: Some(Box::new(rest)),
         }))

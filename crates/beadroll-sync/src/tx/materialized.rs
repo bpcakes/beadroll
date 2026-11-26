@@ -70,7 +70,7 @@ impl Materialized {
         } = std::mem::take(self)
             && projection.extendable()
         {
-            let records: Appended = emitted.clone().skip(applied).cloned().collect();
+            let records = Appended::read_records(&mut emitted.clone().skip(applied).cloned());
             if let Extended::Applied(projection) = extend_appended(ws, *projection, records)? {
                 *self = Self::Projected {
                     projection,

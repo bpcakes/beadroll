@@ -17,6 +17,7 @@ use indexmap::IndexMap;
 pub use int::Int;
 pub(crate) use read::deserialize;
 pub use read::{MAX_DEPTH, ParseError, Parsed, parse};
+pub(crate) use write::record_line;
 pub use write::{Format, Style, WriteError, float_repr, write};
 
 /// A JSON object with members in insertion order.
@@ -119,6 +120,53 @@ impl Value {
             Value::Str(text) => !text.is_empty(),
             Value::Array(items) => !items.is_empty(),
             Value::Object(members) => !members.is_empty(),
+        }
+    }
+
+    /// Releases a caller-built value of unbounded depth without recursive container drops.
+    pub(crate) fn discard(self) {
+        self.discard_to(16);
+    }
+
+    // Ordinary event objects fit within this fixed stack budget. Consume each container
+    // in place so shallow values and wide arrays of scalars need no auxiliary storage.
+    fn discard_to(self, levels: usize) {
+        let child = |value| {
+            if matches!(value, Self::Array(_) | Self::Object(_)) {
+                value.discard_to(levels - 1);
+            }
+        };
+        match self {
+            Self::Array(_) | Self::Object(_) if levels == 0 => self.discard_deep(),
+            Self::Array(items) => items.into_iter().for_each(child),
+            Self::Object(members) => members.into_values().for_each(child),
+            _ => {}
+        }
+    }
+
+    fn discard_deep(mut self) {
+        let mut parents = Vec::new();
+        loop {
+            let child = match &mut self {
+                Self::Array(items) => items.pop().map(|child| (child, !items.is_empty())),
+                Self::Object(members) => {
+                    members.pop().map(|(_, child)| (child, !members.is_empty()))
+                }
+                _ => None,
+            };
+            if let Some((child, siblings_remain)) = child {
+                if !matches!(child, Self::Array(_) | Self::Object(_)) {
+                    continue;
+                }
+                if siblings_remain {
+                    parents.push(self);
+                }
+                self = child;
+            } else if let Some(parent) = parents.pop() {
+                self = parent;
+            } else {
+                return;
+            }
         }
     }
 

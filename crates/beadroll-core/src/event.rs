@@ -245,7 +245,7 @@ fn object_or_none(value: Option<&Value>) -> bool {
 /// Why an event's envelope cannot be used, or `None`: [`Envelope::problem`] of what is read of
 /// `event`.
 pub fn event_problem(event: &Value) -> Option<String> {
-    borrowed::Borrowed::of(event).problem()
+    borrowed::Borrowed::of(event).checked_id().err()
 }
 
 /// Why `fields` cannot be written, or `None`. A create's fields (`FieldScope::Create`) may hold
@@ -301,6 +301,12 @@ pub(crate) fn status_shaped(status: &str) -> bool {
 /// The `data` object of a valid event; null or absent data yields `None` and is treated as empty.
 pub(crate) fn data_of(event: &Value) -> Option<&Object> {
     event.get("data").and_then(Value::as_object)
+}
+
+/// The attempt event as written, including unknown members, after admission.
+pub(crate) fn checked_attempt(value: Value) -> Result<Value, String> {
+    borrowed::Borrowed::of(&value).attempt_id()?;
+    Ok(value)
 }
 
 /// Why an event's content cannot be applied, or `None`. Called only after envelope validation.

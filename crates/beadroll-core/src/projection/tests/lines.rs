@@ -51,7 +51,12 @@ fn extended_alike(kind: HistoryKind) -> usize {
             };
             let batch = &records[held..held + BATCH];
             let lines = read_from_lines(batch);
-            let built: Appended = batch.iter().cloned().collect();
+            let built = Appended::read_records(&mut batch.iter().cloned());
+            assert_eq!(
+                lines.is_readable(),
+                built.is_readable(),
+                "seed {seed}, held {held}"
+            );
             assert_eq!(
                 projection.about(&lines),
                 projection.about(&built),
