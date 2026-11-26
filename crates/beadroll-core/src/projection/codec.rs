@@ -410,6 +410,10 @@ impl<'a> Reader<'a> {
         let mut n: u64 = 0;
         for shift in (0..64).step_by(7) {
             let byte = self.byte()?;
+            // The tenth byte can supply only bit 63 and must end the number.
+            if shift == 63 && byte > 1 {
+                return Err(Unreadable("a number"));
+            }
             n |= u64::from(byte & 0x7f) << shift;
             if byte & 0x80 == 0 {
                 return Ok(n);

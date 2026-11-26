@@ -107,10 +107,11 @@ fn a_tail_ending_in_a_line_not_yet_whole_is_declined() {
     }
 }
 
+/// A malformed JSON line alone rules out extension (AU05).
 #[test]
 fn an_unreadable_line_leaves_the_batch_unreadable() {
     let mut appended = Appended::new();
-    appended.add_segment(b"{\"v\":1}\nnot json\n{}\n", "a", "segment");
+    appended.add_segment(b"not json\n", "a", "segment");
     assert!(!appended.is_readable());
     let mut appended = Appended::new();
     appended.add_segment(b"", "a", "segment");

@@ -46,6 +46,19 @@ impl Materialized {
         }
     }
 
+    /// Takes the projection and its applied prefix only if it can accept more events.
+    /// A failed extension or journal read must leave the next request ready to replay.
+    fn take_extendable(&mut self) -> Option<(Box<Projection>, usize)> {
+        match std::mem::take(self) {
+            Self::Projected {
+                projection,
+                applied,
+                ..
+            } if projection.extendable() => Some((projection, applied)),
+            _ => None,
+        }
+    }
+
     pub(super) fn ensure(
         &mut self,
         ws: &Workspace,
@@ -60,14 +73,7 @@ impl Materialized {
             }
             _ => {}
         }
-        // Application consumes the projection. On any error the next request must replay,
-        // rather than reuse a view that may contain only part of the emitted prefix.
-        if let Self::Projected {
-            projection,
-            applied,
-            ..
-        } = std::mem::take(self)
-        {
+        if let Some((projection, applied)) = self.take_extendable() {
             let records = emitted.get(applied..).unwrap_or_default().to_vec();
             if let Extended::Applied(projection) = extend_projection(ws, *projection, records)? {
                 *self = Self::Projected {
@@ -115,5 +121,33 @@ impl Materialized {
             Self::Replayed { state, .. } => Ok(*state),
             Self::ReplayNeeded => Err(Error::Validation("no state".to_owned())),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use beadroll_core::projection::project;
+    use beadroll_test_support::events::{Event, id, journal};
+
+    /// A transaction with new records chooses replay before preparing its batch when the
+    /// projection is waiting for a cause (AU03).
+    #[test]
+    fn a_projection_waiting_for_a_cause_is_set_aside_before_batch_preparation() {
+        let cause = Event::new(&id(1), "init")
+            .data(beadroll_test_support::json!({"prefix": "ex"}))
+            .json();
+        let waiting = Event::new(&id(2), "create")
+            .deps(&[&id(1)])
+            .data(beadroll_test_support::json!({"key": "ex-one", "fields": {}}))
+            .json();
+        let projection = project(journal(std::slice::from_ref(&waiting))).unwrap();
+        assert_eq!(projection.state().pending().len(), 1);
+        let mut view = Materialized::projected(projection);
+        assert!(view.take_extendable().is_none());
+        assert!(matches!(view, Materialized::ReplayNeeded));
+
+        let mut view = Materialized::projected(project(journal(&[cause, waiting])).unwrap());
+        assert!(view.take_extendable().is_some());
     }
 }

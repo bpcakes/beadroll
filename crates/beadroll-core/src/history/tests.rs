@@ -75,3 +75,16 @@ fn a_count_beyond_what_the_bytes_hold_is_no_cache() {
     bytes.push(0);
     assert_eq!(from_cached(&bytes).unwrap().len(), 2);
 }
+
+/// A count of 2⁶⁴ must fail in the varint reader before it can wrap to an empty history (AU04).
+#[test]
+fn an_overflowing_count_is_no_cache() {
+    let mut bytes = [0x80; 10];
+    bytes[9] = 2;
+    assert_eq!(Reader::new(&bytes).number(), Err(Unreadable("a number")));
+    assert_eq!(from_cached(&bytes), None);
+
+    let mut w = Writer::default();
+    w.number(u64::MAX);
+    assert_eq!(Reader::new(&w.finish()).number(), Ok(u64::MAX));
+}
