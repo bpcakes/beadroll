@@ -11,6 +11,8 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   again to hash it (roll-0668). `bead log`'s history cache is kept in the projection's binary
   codec rather than as JSON, ids as their 16 bytes (`bead history 2`; an older cache is rebuilt
   once). Output and format 1 are unchanged.
+- A journal file or `meta.json` larger than the memory bead can have for it is reported as an
+  `IO` error naming the file, where reading it into a buffer sized at once aborted the process.
 
 - Actor detection recognises Cursor sessions (`CURSOR_CONVERSATION_ID` and `CURSOR_AGENT`),
   recording `agent: "cursor"` and the conversation id as the thread so concurrent Cursor threads

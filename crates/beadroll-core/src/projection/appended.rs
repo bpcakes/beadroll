@@ -4,7 +4,7 @@
 //! own, and a test's, are [`Record`]s built in memory, each read as the line bead writes of it
 //! would be ([`Journal::add`]).
 
-use crate::journal::{Event, Journal, JournalOrder};
+use crate::journal::{Event, Journal, JournalOrder, Problem};
 use crate::json::Value;
 
 #[cfg(doc)]
@@ -39,8 +39,18 @@ impl Appended {
     }
 
     /// Adds the records of `data`, the bytes a segment found in `replica`'s journal at `origin`
-    /// grew by, as a journal reads a segment ([`Journal::add_segment`]).
+    /// grew by, as a journal reads a segment ([`Journal::add_segment`]). Bytes that end in a line
+    /// not yet whole are unreadable here: a journal skips such a line as one still being appended,
+    /// but a batch that skipped it would be applied without it, and its reader would go on after
+    /// bytes the projection never took in.
     pub fn add_segment(&mut self, data: &[u8], replica: &str, origin: &str) {
+        if data.last().is_some_and(|last| *last != b'\n') {
+            self.journal.report(Problem {
+                event: None,
+                origin: origin.to_owned(),
+                problem: "segment ends in a line not yet whole".to_owned(),
+            });
+        }
         self.journal.add_segment(data, replica, origin);
     }
 

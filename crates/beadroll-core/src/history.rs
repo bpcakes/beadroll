@@ -82,12 +82,16 @@ pub fn cached(entries: &[HistoryEntry]) -> Vec<u8> {
     w.finish()
 }
 
+/// The fewest bytes an entry is written in: its id's 16, and one for each of its other nine fields.
+const ENTRY_BYTES: usize = 16 + 9;
+
 /// The entries of bytes [`cached`] wrote; `None` for any other bytes, which a cache that is
-/// damaged holds.
+/// damaged holds. Room is made for no more entries than the bytes can hold, whatever count they
+/// claim.
 pub fn from_cached(bytes: &[u8]) -> Option<Vec<HistoryEntry>> {
     let mut r = Reader::new(bytes);
     let count = r.count().ok()?;
-    let mut entries = Vec::with_capacity(count);
+    let mut entries = Vec::with_capacity(count.min(bytes.len() / ENTRY_BYTES));
     for _ in 0..count {
         entries.push(HistoryEntry::read(&mut r).ok()?);
     }
@@ -122,14 +126,10 @@ impl HistoryEntry {
             operation: r.text()?,
             issue: r.optional_text()?,
             branch: r.value()?,
-            changed_fields: {
-                let count = r.count()?;
-                let mut fields = Vec::with_capacity(count);
-                for _ in 0..count {
-                    fields.push(r.text()?);
-                }
-                fields
-            },
+            // grown as they are read: a field takes a byte at least, and its text 24 in memory
+            changed_fields: (0..r.count()?)
+                .map(|_| r.text())
+                .collect::<Result<_, _>>()?,
             takeover_of: r.optional_text()?,
         })
     }

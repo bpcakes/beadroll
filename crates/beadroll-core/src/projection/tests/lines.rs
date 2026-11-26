@@ -86,6 +86,27 @@ fn a_flawed_batch_read_from_lines_is_declined_or_applied_as_its_records_are() {
     assert!(extended_alike(HistoryKind::Flawed) > 0, "nothing applied");
 }
 
+/// Bytes a segment grew by that end in a line not yet whole: the batch is unreadable, and a
+/// projection declines it, rather than applying it without that line as a journal skips it.
+#[test]
+fn a_tail_ending_in_a_line_not_yet_whole_is_declined() {
+    let records = history(20_261_126, 8, HistoryKind::Valid);
+    let (held, next) = records.split_at(records.len() - 1);
+    let projection = project(journal_of(held.iter().cloned())).unwrap();
+    let line = write(&next[0].value, Format::COMPACT).unwrap();
+    let whole = read_from_lines(next);
+    assert!(whole.is_readable());
+    for cut in [1, line.len() / 2, line.len()] {
+        let mut appended = Appended::new();
+        appended.add_segment(&line.as_bytes()[..cut], &next[0].replica, &next[0].origin);
+        assert!(!appended.is_readable(), "cut at {cut}");
+        assert!(matches!(
+            projection.clone().extend(appended).unwrap(),
+            Extended::Replay
+        ));
+    }
+}
+
 #[test]
 fn an_unreadable_line_leaves_the_batch_unreadable() {
     let mut appended = Appended::new();

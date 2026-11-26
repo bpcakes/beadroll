@@ -58,3 +58,15 @@ fn bytes_cut_short_or_running_on_are_no_cache() {
     longer.push(0);
     assert_eq!(from_cached(&longer), None);
 }
+
+/// Bytes that claim more entries than they can hold are no cache, the room made for the entries
+/// bounded by the bytes rather than by the count they claim.
+#[test]
+fn a_count_beyond_what_the_bytes_hold_is_no_cache() {
+    let mut w = Writer::default();
+    w.count(1 << 20);
+    let mut bytes = w.finish();
+    // every one of them, as zeros, a readable entry, until the bytes run out
+    bytes.resize(bytes.len() + (1 << 20) - 8, 0);
+    assert_eq!(from_cached(&bytes), None);
+}

@@ -8,7 +8,7 @@ pub use prepared::{PreparedAtomic, prepare_atomic};
 
 use std::ffi::OsStr;
 use std::fs::{DirBuilder, File};
-use std::io::{self, Read as _};
+use std::io::{self, Read};
 use std::os::unix::ffi::OsStrExt as _;
 use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
@@ -243,15 +243,30 @@ pub fn read(path: &Path) -> Result<Vec<u8>, IoError> {
 /// the open file's, up to those bytes, so that a file replaced or appended to while it was read
 /// is never taken for what was read (roll-lqjj.2).
 pub(crate) fn read_keyed(path: &Path) -> Result<(Vec<u8>, Option<FileKey>), IoError> {
-    let file = File::open(path).map_err(|e| IoError::at(&e, path))?;
-    let meta = file.metadata().map_err(|e| IoError::at(&e, path))?;
-    // the length is known: a file of 15 MB is not copied again at each doubling of its buffer
-    let mut data = Vec::with_capacity(usize::try_from(meta.len()).unwrap_or(0));
-    file.take(meta.len())
-        .read_to_end(&mut data)
-        .map_err(|e| IoError::at(&e, path))?;
+    read_opened(path).map_err(|e| IoError::at(&e, path))
+}
+
+/// The bytes of `path` up to its length when it was opened, and the identity of what was read
+/// ([`read_keyed`]).
+fn read_opened(path: &Path) -> io::Result<(Vec<u8>, Option<FileKey>)> {
+    let file = File::open(path)?;
+    let meta = file.metadata()?;
+    let data = read_up_to(file, meta.len())?;
     let key = FileKey::of_meta(&meta).map(|key| key.up_to(data.len() as u64));
     Ok((data, key))
+}
+
+/// At most `len` bytes of `from`, into a buffer of that length made at once: a file of 15 MB is not
+/// copied again at each doubling of its buffer. Room that cannot be had is an error to report
+/// (`OutOfMemory`), never an abort.
+fn read_up_to(from: impl Read, len: u64) -> io::Result<Vec<u8>> {
+    let mut data = Vec::new();
+    usize::try_from(len)
+        .ok()
+        .and_then(|len| data.try_reserve_exact(len).ok())
+        .ok_or_else(|| io::Error::from(io::ErrorKind::OutOfMemory))?;
+    from.take(len).read_to_end(&mut data)?;
+    Ok(data)
 }
 
 /// A 128-bit sum of `bytes`, the projection's ([`beadroll_core::projection::sum`]): it finds damage
@@ -286,16 +301,9 @@ pub(crate) fn read_json_keyed<T>(
     path: &Path,
     parse: impl FnOnce(&[u8]) -> Result<T, String>,
 ) -> (Result<T, Unreadable>, Option<FileKey>) {
-    // up to its length when it was opened, into a buffer of that length, as `read_keyed` reads:
-    // bytes appended after are not what the identity measured
-    let read = File::open(path).and_then(|file| {
-        let meta = file.metadata()?;
-        let mut data = Vec::with_capacity(usize::try_from(meta.len()).unwrap_or(0));
-        file.take(meta.len()).read_to_end(&mut data)?;
-        let key = FileKey::of_meta(&meta).map(|key| key.up_to(data.len() as u64));
-        Ok((data, key))
-    });
-    match read {
+    // up to its length when it was opened, as `read_keyed` reads: bytes appended after are not
+    // what the identity measured
+    match read_opened(path) {
         Ok((data, key)) => {
             let read = match std::str::from_utf8(&data) {
                 Ok(_) => parse(&data),
@@ -424,6 +432,15 @@ mod tests {
         let now = FileKey::of(&path).unwrap();
         assert!(!now.same_file(&key), "the replacement is another file");
         assert_eq!(read_keyed(&path).unwrap().1, Some(now));
+    }
+
+    /// A file is read up to its length when opened, into room made for that length at once; a
+    /// length there is no room for is reported as an error to act on, never an abort.
+    #[test]
+    fn a_read_with_no_room_for_its_length_is_an_error_not_an_abort() {
+        assert_eq!(read_up_to(&b"first\nmore"[..], 6).unwrap(), b"first\n");
+        let error = read_up_to(&b"first\n"[..], u64::MAX).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::OutOfMemory);
     }
 
     #[test]
