@@ -117,7 +117,8 @@ storage, protocol behavior and fault recovery.
   the command answers from it and keeps it (roll-e3pu). A `close` or `delete` naming the claim it
   ends lets go of it and reads the store for `superseded`, exchanged or not (replay can put the
   end before its claim even with nothing exchanged), unless its publish failed: it then answers
-  with the warning, looks nothing up and keeps what it held (roll-wrw2). The one slot of `Outcome::held` limits
+  with the warning and looks nothing up (roll-wrw2), having let go of what it held when a remote
+  was chosen and the exchange failed, and keeping it only when none could be chosen. The one slot of `Outcome::held` limits
   what the outcome carries, not what a command holds on the way to it: that no state is read
   beside what a command holds is the order of its code (`finish` chooses the write's
   `destination`, calls `ended_with`, then `publish_soon_at`; a command answers from what it held
