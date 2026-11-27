@@ -1515,9 +1515,15 @@ These were decided deliberately. Report problems *with* them, not their existenc
   to answer (`superseded`, the child's key); when none is, nothing came in, so the store holds what
   the write left and the command answers from the write and keeps what it held, as an offline
   write does: no free, and no state read (an offline child peaked 3.72 MB on 1,500 issues where
-  an offline create peaks 3.17 MB, and now peaks there too). A child whose publish fails keeps
-  the publish's words in its `--json` answer's `unpublished`, where the count replaces them
-  whenever one can be made: they are not dead, since where none can (a remote that cannot be
+  an offline create peaks 3.17 MB, and now peaks there too). A `close` or `delete` that names the
+  claim it ends is the exception: it lets go of what it held and asks the store's state whether
+  replay took the end (`superseded`) whether or not anything was exchanged, since even offline
+  replay can put the end before its claim, when an event waiting in a cycle of causes keeps the
+  claim off the frontier the end builds on and the clock is behind the claim; that the end went
+  stale is in the issue's ownership history, with its texts, which the transaction need not
+  have. A child whose publish fails keeps the publish's words in its `--json` answer's
+  `unpublished` (the detail; `--silent` answers with the key alone), where the count replaces
+  them whenever one can be made: they are not dead, since where none can (a remote that cannot be
   chosen, a store that never counted) they are all `--json` has to say the child was not
   published (AV02, rejected; a plain create's silence there is roll-gy2j). `update` without a claim already answered from its
   transaction's state (roll-lqjj.29) and keeps that; its transaction's index, the event ids and
@@ -1540,7 +1546,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   the flag), and that a write that publishes has freed it by the time the publish first reads the
   store, held at `projection.read`; `commands::held` that each command above hands its
   transaction over and the `close` that ends a claim and a failed write hand over nothing, and
-  that `create --parent` and a `close` or `update` ending a claim, `--offline`, hand it over and
+  that `create --parent` and a `reopen` or `update` ending a claim, `--offline`, hand it over and
   read the store's state no more often than the same write that publishes nothing (counted at
   `projection.read`); `commands::publish` each of `publish_first`'s three ways;
   `xtask`'s `heap` tests, which run `cargo xtask bead` through the sandbox on a tracker of 1,500

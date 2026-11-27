@@ -197,10 +197,12 @@ fn closing_update(key: &OsString, network: NetworkMode) -> UpdateArgs {
 }
 
 /// A write that publishes itself before it answers has nothing to publish to `--offline`, and the
-/// store then holds what the write left it: `create --parent`, and a close and an `update --status
+/// store then holds what the write left it: `create --parent`, and a reopen and an `update --status
 /// closed` that end a claim, read the store's state no more often than the same write that
 /// publishes nothing, and hand over what they held (roll-e3pu). They let go of it and read the
-/// store again, as though a merge could have renumbered the child or taken the claim over.
+/// store again, as though a merge could have renumbered the child or taken the claim over. A
+/// close or delete that names the claim it ends still asks the store whether replay took it
+/// (`superseded_owner_close_says_so`).
 #[test]
 fn a_write_with_nowhere_to_publish_itself_reads_no_state_after_it() {
     let (sandbox, machine) = tracker();
@@ -252,20 +254,21 @@ fn a_write_with_nowhere_to_publish_itself_reads_no_state_after_it() {
         "the answer of create --parent"
     );
     assert_eq!(child, alone, "create --parent read the store again");
-    let (unclaimed, closed) = reads(&ws, || {
-        transit(&ctx, Transition::Close, &plain, NetworkMode::Offline)
+    machine.bead(["close", plain.to_str().expect("a key")]);
+    let (unclaimed, reopened) = reads(&ws, || {
+        transit(&ctx, Transition::Reopen, &plain, NetworkMode::Offline)
     });
-    assert!(holds(closed), "close");
-    let (ending, closed) = reads(&ws, || {
-        transit(&ctx, Transition::Close, &claimed, NetworkMode::Offline)
+    assert!(holds(reopened), "reopen");
+    let (ending, reopened) = reads(&ws, || {
+        transit(&ctx, Transition::Reopen, &claimed, NetworkMode::Offline)
     });
     assert!(
-        holds(closed),
-        "a close that ends a claim handed nothing over"
+        holds(reopened),
+        "a reopen that ends a claim handed nothing over"
     );
     assert_eq!(
         ending, unclaimed,
-        "a close that ends a claim read the store again"
+        "a reopen that ends a claim read the store again"
     );
     let (unclaimed, closed) = reads(&ws, || {
         update(&ctx, &closing_update(&other, NetworkMode::Offline))

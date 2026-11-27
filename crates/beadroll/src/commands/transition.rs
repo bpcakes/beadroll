@@ -162,18 +162,18 @@ pub(crate) fn transition(
     })?;
     let ((mut result, ended, named, unchanged, plan), spent) = written;
     // An ended claim is published here, and its answer reads the store again: the transaction is
-    // let go of before either, as the command line lets go of it before a publish (roll-lqjj.42),
-    // and kept when nothing is exchanged, which leaves nothing to read. That a read made after the
-    // publish is not made beside the transaction, the types do not say: `xtask/tests/heap` peaks a
-    // close or delete that ends a claim against the claim, and fails when it is a whole
-    // projection above.
-    let (spent, warning, exchanged) = if ended {
+    // let go of before either, as the command line lets go of it before a publish (roll-lqjj.42).
+    // With nowhere to publish to it is kept, unless a claim the events name is to be looked up in
+    // the store. That a read made after the publish is not made beside the transaction, the types
+    // do not say: `xtask/tests/heap` peaks a close or delete that ends a claim against the claim,
+    // and fails when it is a whole projection above.
+    let (mut spent, warning) = if ended {
         match publish_first(ctx.ws, args.network, args.remote.as_deref(), spent) {
-            Published::Unsent { held, warning } => (Some(held), warning, false),
-            Published::Exchanged { warning } => (None, warning, true),
+            Published::Unsent { held, warning } => (Some(held), warning),
+            Published::Exchanged { warning } => (None, warning),
         }
     } else {
-        (Some(spent), None, false)
+        (Some(spent), None)
     };
     let mut notes = Vec::new();
     if let Some(warning) = &warning {
@@ -182,9 +182,11 @@ pub(crate) fn transition(
             // --json is told too: the other machines do not know yet
             item.insert("unpublished".into(), Value::from(warning.as_str()));
         }
-    } else if exchanged && !named.is_empty() {
-        // published: answer with what the remote made of it; unsent, the claims it named are still
-        // this owner's, as the write found them
+    } else if !named.is_empty() {
+        // answer with what replay made of the ends the events name, published or not: even with
+        // nothing exchanged it may have put one before its claim, which an event kept off the
+        // frontier leaves out of what the end builds on (roll-e3pu)
+        spent = None;
         superseded(ctx, op, &plan.issues, &named, &mut result, &mut notes)?;
     }
     let mut lines = answer(

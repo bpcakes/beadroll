@@ -114,7 +114,9 @@ storage, protocol behavior and fault recovery.
   it through `commands::publish::publish_first`, which chooses the write's destination first and
   takes what the write held by value: freed before an exchange, after which the command reads the
   store to answer; handed back when nothing is exchanged, which leaves nothing to read, so that
-  the command answers from it and keeps it (roll-e3pu). The one slot of `Outcome::held` limits
+  the command answers from it and keeps it (roll-e3pu). A `close` or `delete` naming the claim it
+  ends lets go of it and reads the store either way, for `superseded`: replay can put the end
+  before its claim even with nothing exchanged. The one slot of `Outcome::held` limits
   what the outcome carries, not what a command holds on the way to it: that no state is read
   beside what a command holds is the order of its code (`finish` chooses the write's
   `destination`, calls `ended_with`, then `publish_soon_at`; a command answers from what it held
