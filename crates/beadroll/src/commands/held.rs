@@ -265,7 +265,10 @@ fn a_write_with_nowhere_to_publish_itself_reads_no_state_after_it() {
     let (ending, closed) = reads(&ws, || {
         update(&ctx, &closing_update(&updated, NetworkMode::Offline))
     });
-    closed.expect("an update that ends a claim");
+    assert!(
+        holds(closed),
+        "an update that ends a claim handed nothing over"
+    );
     assert_eq!(
         ending, unclaimed,
         "an update that ends a claim read the store again"

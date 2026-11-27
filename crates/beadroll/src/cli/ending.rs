@@ -9,11 +9,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use beadroll_core::json::{Object, Value};
 use beadroll_store::{PublicationState, Workspace};
 use beadroll_sync::{NetworkMode, Spent};
-use beadroll_test_support::{Machine, Sandbox, built_bead, git};
+use beadroll_test_support::{Gate, Machine, Sandbox, built_bead, git};
 
 use super::{Answer, Failure, Held, Line, Outcome, Tone, ended_with, finish};
 use crate::cli::{AfterCommand, RunLifetime};
-use crate::testing::{meet, tracker, without_origin, workspace};
+use crate::testing::{tracker, without_origin, workspace};
 
 /// Something a command held, which counts how often it was freed.
 #[derive(Debug)]
@@ -263,8 +263,8 @@ fn a_write_given_an_unreachable_remote_tries_it_and_lets_go_of_what_it_held() {
 #[test]
 fn a_write_that_publishes_lets_go_of_what_it_held_before_the_publish_reads_a_state() {
     let (sandbox, machine) = tracker();
-    let gate = sandbox.root().join("publish-reads");
-    let held = format!("projection.read=pause-until({})", gate.display());
+    let gate = Gate::new(&sandbox, "publish-reads");
+    let held = gate.at("projection.read");
     let ws = workspace(&machine, sandbox.origin(), &[("BEAD_FAILPOINTS", &held)]);
     let (outcome, freed) = holding_a_probe();
     ws.set_wrote(PublicationState::Unpublished);
@@ -272,7 +272,7 @@ fn a_write_that_publishes_lets_go_of_what_it_held_before_the_publish_reads_a_sta
     let (answer, met) = std::thread::scope(|scope| {
         let meeting = scope.spawn(|| {
             let done = || finished.load(Ordering::SeqCst) > 0;
-            meet(&gate, &done, || freed.load(Ordering::SeqCst))
+            gate.meet(&done, || freed.load(Ordering::SeqCst))
         });
         let answer = finish(
             outcome,

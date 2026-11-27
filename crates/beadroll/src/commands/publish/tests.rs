@@ -6,10 +6,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use beadroll_core::json::{Object, Value};
 use beadroll_sync::NetworkMode;
-use beadroll_test_support::{Machine, Sandbox, built_bead, git};
+use beadroll_test_support::{Gate, Machine, Sandbox, built_bead, git};
 
 use super::{Published, publish_first};
-use crate::testing::{meet, tracker, without_origin, workspace};
+use crate::testing::{tracker, without_origin, workspace};
 
 /// What a write held, which counts in `freed` the times it is let go of.
 struct Probe(Arc<AtomicUsize>);
@@ -93,15 +93,15 @@ fn a_remote_that_cannot_be_chosen_hands_it_back_and_says_why() {
 #[test]
 fn an_exchange_lets_go_of_what_the_write_held_before_it_reads_a_state() {
     let (sandbox, machine) = tracker();
-    let gate = sandbox.root().join("exchange-reads");
-    let held = format!("projection.read=pause-until({})", gate.display());
+    let gate = Gate::new(&sandbox, "exchange-reads");
+    let held = gate.at("projection.read");
     let ws = workspace(&machine, sandbox.origin(), &[("BEAD_FAILPOINTS", &held)]);
     let (probe, freed) = probe();
     let finished = AtomicUsize::new(0);
     let (published, met) = std::thread::scope(|scope| {
         let meeting = scope.spawn(|| {
             let done = || finished.load(Ordering::SeqCst) > 0;
-            meet(&gate, &done, || freed.load(Ordering::SeqCst))
+            gate.meet(&done, || freed.load(Ordering::SeqCst))
         });
         let published = publish_first(&ws, NetworkMode::Online, None, probe);
         finished.store(1, Ordering::SeqCst);

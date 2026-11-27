@@ -3,9 +3,8 @@
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use beadroll_core::json::Object;
 use beadroll_store::{Actor, Settings, Workspace};
@@ -62,30 +61,4 @@ pub(crate) fn tracker() -> (Sandbox, Machine) {
     let machine = Machine::new(&sandbox, "a").with_bead(built_bead());
     machine.bead(["init", "--prefix", "ex"]);
     (sandbox, machine)
-}
-
-/// The handshake of a `pause-until` failpoint (`crates/beadroll-store/src/failpoint.rs`): the
-/// paused run touches `PATH.ready`, then waits for `PATH.go`. Once it has reached the gate (or
-/// `done` says it will not), runs `step`, then opens the gate, whatever `step` came to.
-pub(crate) fn meet<T>(gate: &Path, done: &dyn Fn() -> bool, step: impl FnOnce() -> T) -> Option<T> {
-    struct Open(PathBuf);
-    impl Drop for Open {
-        fn drop(&mut self) {
-            let _ = std::fs::write(&self.0, b"");
-        }
-    }
-    let with = |suffix: &str| {
-        let mut name = gate.as_os_str().to_owned();
-        name.push(suffix);
-        PathBuf::from(name)
-    };
-    let _open = Open(with(".go"));
-    let deadline = Instant::now() + Duration::from_secs(120);
-    while !with(".ready").exists() {
-        if done() || Instant::now() > deadline {
-            return None;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    Some(step())
 }
