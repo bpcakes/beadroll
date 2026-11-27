@@ -1516,8 +1516,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   the write left and the command answers from the write and keeps what it held, as an offline
   write does: no free, and no state read (an offline child peaked 3.72 MB on 1,500 issues where
   an offline create peaks 3.17 MB, and now peaks there too). A `close` or `delete` that names the
-  claim it ends is the exception: it lets go of what it held and asks the store's state whether
-  replay took the end (`superseded`) whether or not anything was exchanged, since even offline
+  claim it ends is the exception: unless its publish failed (a warning, which it answers with
+  and keeps what it held, as before; roll-wrw2), it lets go of what it held and asks the store's
+  state whether replay took the end (`superseded`), whether or not anything was exchanged, since even offline
   replay can put the end before its claim, when an event waiting in a cycle of causes keeps the
   claim off the frontier the end builds on and the clock is behind the claim; that the end went
   stale is in the issue's ownership history, with its texts, which the transaction need not
