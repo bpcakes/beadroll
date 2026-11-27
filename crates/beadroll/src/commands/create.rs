@@ -69,18 +69,26 @@ pub(crate) fn create(ctx: &Context<'_>, args: &CreateArgs) -> Result<Outcome, Fa
     // names the key the issue has once its publish has merged, never one that names another
     let published = publish_first(ctx.ws, args.network, args.remote.as_deref(), spent);
     let warning = published.warning().map(str::to_owned);
+    // --json is told too, in the failed publish's words: the count of what is not yet published
+    // replaces them when there is one, and they are all it has where none can be made (a remote
+    // that cannot be chosen, a store that never counted)
+    let told = |mut result: Object| {
+        if let Some(warning) = &warning {
+            result.insert("unpublished".into(), Value::from(warning.as_str()));
+        }
+        result
+    };
     let mut outcome = match published {
         // nothing merged: the issue is as the write left it, and the answer is the write's
-        Published::Unsent { held, .. } => answer(args, key, &title, result).wrote_in(held),
+        Published::Unsent { held, .. } => answer(args, key, &title, told(result)).wrote_in(held),
         Published::Exchanged { .. } => {
             let st = view_outline(ctx.ws)?;
             let eid = st.issue_named(&uid).map(Issue::uid);
             let st = texts_in(ctx.ws, st, eid)?;
             let (key, title, result) = shown(&st, &uid)?;
-            answer(args, key, &title, result).answered_from(st)
+            answer(args, key, &title, told(result)).answered_from(st)
         }
     };
-    // said in the lines alone: --json counts what is not yet published, as after any create
     if let (Some(warning), Some(lines)) = (&warning, &mut outcome.lines) {
         lines.push(Line::toned(Tone::Warning, warning.clone()));
     }

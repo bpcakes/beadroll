@@ -185,44 +185,29 @@ fn a_failed_publish_of_a_child_is_said_once_and_counted() {
     );
 }
 
-/// A child's `--json` says what is not yet published as any create's does: by the count, or not at
-/// all when the count cannot be made, which standard error says. It never says it in the failed
-/// publish's words (roll-e3pu), which the count replaced whenever there was one. Here the count is
-/// made impossible by a published count in `meta.json` that is not a number.
+/// A child whose remote cannot be chosen is not published, and no count can be made: its `--json`
+/// answer says so in the failed publish's words, all it has to say it with. Here `.beadroll.json`
+/// names one remote where the store already coordinates through another.
 #[test]
-fn a_child_whose_publish_fails_is_answered_as_any_create_is() {
+fn a_child_whose_remote_cannot_be_chosen_says_so_in_json() {
     let sandbox = crate::sandbox();
-    let a = crate::rust_only(&sandbox, "a");
+    let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
     let parent = printed_id(a.bead(["create", "parent"]));
-    let meta = a.store().join("meta.json");
-    let original = std::fs::read_to_string(&meta).unwrap();
-    let journals = std::fs::read_dir(a.store().join("events")).unwrap();
-    let replica = journals.map(|entry| entry.unwrap().file_name()).next();
-    let segment = format!("events/{}/000001.jsonl", replica.unwrap().to_str().unwrap());
-    let published = format!("\"{segment}\": 2");
-    assert!(original.contains(&published), "{original}");
-    let edited = original.replacen(&published, &format!("\"{segment}\": \"x\""), 1);
-    std::fs::write(&meta, edited).unwrap();
-    let failing = (
-        "BEAD_FAILPOINTS",
-        "publish.result=error(REMOTE_UNREACHABLE)",
+    let other = sandbox.bare("other.git");
+    a.bead(["sync", "--remote", other.to_str().unwrap()]);
+    let elsewhere = sandbox.root().join("elsewhere.git");
+    let elsewhere = elsewhere.to_str().unwrap();
+    let tracked = json!({"remote": elsewhere});
+    std::fs::write(a.checkout().join(".beadroll.json"), json_line(&tracked)).unwrap();
+    let made = a.run(["create", "child", "--parent", &parent, "--json"]);
+    assert_eq!(made.returncode(), 0, "{}", made.stderr);
+    let made = parse_json(&made.stdout).unwrap();
+    assert_eq!(
+        made["unpublished"].as_str(),
+        Some("recorded locally, not yet published (CONFIG)"),
+        "{made:?}"
     );
-    for args in [
-        &["create", "alone", "--json"][..],
-        &["create", "child", "--parent", &parent, "--json"],
-    ] {
-        let made = a.cmd(args).env(failing.0, failing.1).run();
-        assert_eq!(made.returncode(), 0, "{args:?}: {}", made.stderr);
-        let unavailable = "unpublished count unavailable";
-        assert!(
-            made.stderr.contains(unavailable),
-            "{args:?}: {}",
-            made.stderr
-        );
-        let made = parse_json(&made.stdout).unwrap();
-        assert!(made.get("unpublished").is_none(), "{args:?}: {made:?}");
-    }
 }
 
 #[test]
