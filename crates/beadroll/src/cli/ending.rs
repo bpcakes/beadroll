@@ -3,10 +3,8 @@
 //! be freed (roll-lqjj.32, roll-lqjj.42); freed first when the run goes on to publish, which reads
 //! a state of its own, so that no command holds two.
 
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
 
 use beadroll_core::json::{Object, Value};
 use beadroll_store::{PublicationState, Workspace};
@@ -15,7 +13,7 @@ use beadroll_test_support::{Machine, Sandbox, built_bead, git};
 
 use super::{Answer, Failure, Held, Line, Outcome, Tone, ended_with, finish};
 use crate::cli::{AfterCommand, RunLifetime};
-use crate::testing::{tracker, without_origin, workspace};
+use crate::testing::{meet, tracker, without_origin, workspace};
 
 /// Something a command held, which counts how often it was freed.
 #[derive(Debug)]
@@ -256,32 +254,6 @@ fn a_write_given_an_unreachable_remote_tries_it_and_lets_go_of_what_it_held() {
         );
         assert_eq!(lines, Some(vec![said.clone()]));
     }
-}
-
-/// The handshake of a `pause-until` failpoint (`crates/beadroll-store/src/failpoint.rs`): the
-/// paused run touches `PATH.ready`, then waits for `PATH.go`. Once it has reached the gate (or
-/// `done` says it will not), runs `step`, then opens the gate, whatever `step` came to.
-fn meet<T>(gate: &Path, done: &dyn Fn() -> bool, step: impl FnOnce() -> T) -> Option<T> {
-    struct Open(PathBuf);
-    impl Drop for Open {
-        fn drop(&mut self) {
-            let _ = std::fs::write(&self.0, b"");
-        }
-    }
-    let with = |suffix: &str| {
-        let mut name = gate.as_os_str().to_owned();
-        name.push(suffix);
-        PathBuf::from(name)
-    };
-    let _open = Open(with(".go"));
-    let deadline = Instant::now() + Duration::from_secs(120);
-    while !with(".ready").exists() {
-        if done() || Instant::now() > deadline {
-            return None;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    Some(step())
 }
 
 /// A write that is published at once lets go of what it held before the publish begins to read the

@@ -9,7 +9,7 @@ use beadroll_sync::NetworkMode;
 use beadroll_test_support::{Machine, Sandbox, built_bead, git};
 
 use super::{Published, publish_first};
-use crate::testing::{tracker, without_origin, workspace};
+use crate::testing::{meet, tracker, without_origin, workspace};
 
 /// What a write held, which counts in `freed` the times it is let go of.
 struct Probe(Arc<AtomicUsize>);
@@ -43,7 +43,7 @@ fn with_nowhere_to_publish_what_the_write_held_is_handed_back() {
     assert_eq!(freed.load(Ordering::SeqCst), 0, "handed back whole");
     drop(held);
     let bare = Sandbox::new(built_bead());
-    let alone = Machine::new(&bare, "a");
+    let alone = Machine::new(&bare, "a").with_bead(built_bead());
     git(["remote", "remove", "origin"], Some(alone.checkout()));
     alone.bead(["init", "--prefix", "ex"]);
     let ws = without_origin(&alone, Object::new());
@@ -87,17 +87,38 @@ fn a_remote_that_cannot_be_chosen_hands_it_back_and_says_why() {
     drop(held);
 }
 
-/// A write with a remote is exchanged with it, and what the write held is let go of by then,
-/// once: the publish has it no more.
+/// A write with a remote is exchanged with it, and what the write held is let go of before the
+/// exchange first reads the store's state (`projection.read`, where the run is held), once: the
+/// exchange never holds it beside the state it reads.
 #[test]
-fn an_exchange_lets_go_of_what_the_write_held() {
+fn an_exchange_lets_go_of_what_the_write_held_before_it_reads_a_state() {
     let (sandbox, machine) = tracker();
-    let ws = workspace(&machine, sandbox.origin(), &[]);
-    let (held, freed) = probe();
-    let published = publish_first(&ws, NetworkMode::Online, None, held);
+    let gate = sandbox.root().join("exchange-reads");
+    let held = format!("projection.read=pause-until({})", gate.display());
+    let ws = workspace(&machine, sandbox.origin(), &[("BEAD_FAILPOINTS", &held)]);
+    let (probe, freed) = probe();
+    let finished = AtomicUsize::new(0);
+    let (published, met) = std::thread::scope(|scope| {
+        let meeting = scope.spawn(|| {
+            let done = || finished.load(Ordering::SeqCst) > 0;
+            meet(&gate, &done, || freed.load(Ordering::SeqCst))
+        });
+        let published = publish_first(&ws, NetworkMode::Online, None, probe);
+        finished.store(1, Ordering::SeqCst);
+        let met = meeting
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+        (published, met)
+    });
+    assert_eq!(
+        met,
+        Some(1),
+        "let go of by the time the exchange read a state"
+    );
+    assert_eq!(ws.settings.failpoints.hits("projection.read"), 1);
     assert!(
         matches!(published, Published::Exchanged { warning: None }),
         "published"
     );
-    assert_eq!(freed.load(Ordering::SeqCst), 1, "let go of, once");
+    assert_eq!(freed.load(Ordering::SeqCst), 1, "and not again");
 }
