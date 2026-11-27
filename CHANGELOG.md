@@ -6,6 +6,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `create --parent`, and a `close`, `delete` or `update --status closed` that ends a claim, ask
+  where the write goes before they let go of what it held, as every other write does: `--offline`
+  or on a tracker with no remote they keep it and answer from the write, where they freed it and
+  read the store again (roll-e3pu). A child whose publish failed answers `--json` as any create
+  does, with the count of events not yet published, never the publish's words. Output is
+  otherwise unchanged.
+
 - A projection catching up reads the bytes its journal's files grew by straight into a journal,
   as a whole journal is read (roll-lqjj.53.1), where it built a value for each line and printed it
   again to hash it (roll-0668). `bead log`'s history cache is kept in the projection's binary

@@ -37,6 +37,17 @@ pub(crate) fn workspace(machine: &Machine, origin: &Path, vars: &[(&str, &str)])
     Workspace::new(settings(machine, vars), id, None, origin, Object::new()).expect("the store")
 }
 
+/// Opens the machine's store as a checkout without an origin opens it, with `config` as what its
+/// `.beadroll.json` tracks.
+pub(crate) fn without_origin(machine: &Machine, config: Object) -> Workspace {
+    let store = machine.store();
+    let id = store
+        .file_name()
+        .and_then(OsStr::to_str)
+        .expect("a store id");
+    Workspace::new(settings(machine, &[]), id, None, None, config).expect("the store")
+}
+
 /// The actor of the machine's in-process runs.
 pub(crate) fn actor(machine: &Machine) -> Actor {
     let thread = format!("{}-thread-0001", machine.name());

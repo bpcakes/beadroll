@@ -147,6 +147,84 @@ fn a_failed_publish_of_an_ended_claim_is_said_once_and_not_tried_again() {
     }
 }
 
+/// A child is published by `create` itself, before it answers, so that its key is the one the
+/// merge leaves (roll-e3pu). When that publish fails, the answer says so once and `--json` counts
+/// its two events (the create and its parent edge), as for any create, and the command line does
+/// not try the remote again.
+#[test]
+fn a_failed_publish_of_a_child_is_said_once_and_counted() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let parent = printed_id(a.bead(["create", "parent"]));
+    let before = sandbox.remote_journal();
+    let failing = (
+        "BEAD_FAILPOINTS",
+        "publish.result=error(REMOTE_UNREACHABLE)",
+    );
+    let said = "recorded locally, not yet published (REMOTE_UNREACHABLE)";
+    let made = (a.cmd(["create", "child", "--parent", &parent, "--json"]))
+        .env(failing.0, failing.1)
+        .run();
+    assert_eq!(made.returncode(), 0, "{}", made.stderr);
+    let made = parse_json(&made.stdout).unwrap();
+    assert_eq!(made["unpublished"].as_i64(), Some(2), "{made:?}");
+    let text = (a.cmd(["create", "another", "--parent", &parent]))
+        .env(failing.0, failing.1)
+        .run();
+    assert_eq!(text.returncode(), 0, "{}", text.stderr);
+    assert_eq!(text.stdout.matches(said).count(), 1, "{}", text.stdout);
+    assert_eq!(
+        text.stdout.trim().lines().last(),
+        Some("4 events not yet published: bead sync")
+    );
+    assert_eq!(
+        sandbox.remote_journal(),
+        before,
+        "the remote was tried again"
+    );
+}
+
+/// A child's `--json` says what is not yet published as any create's does: by the count, or not at
+/// all when the count cannot be made, which standard error says. It never says it in the failed
+/// publish's words (roll-e3pu), which the count replaced whenever there was one. Here the count is
+/// made impossible by a published count in `meta.json` that is not a number.
+#[test]
+fn a_child_whose_publish_fails_is_answered_as_any_create_is() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let parent = printed_id(a.bead(["create", "parent"]));
+    let meta = a.store().join("meta.json");
+    let original = std::fs::read_to_string(&meta).unwrap();
+    let journals = std::fs::read_dir(a.store().join("events")).unwrap();
+    let replica = journals.map(|entry| entry.unwrap().file_name()).next();
+    let segment = format!("events/{}/000001.jsonl", replica.unwrap().to_str().unwrap());
+    let published = format!("\"{segment}\": 2");
+    assert!(original.contains(&published), "{original}");
+    let edited = original.replacen(&published, &format!("\"{segment}\": \"x\""), 1);
+    std::fs::write(&meta, edited).unwrap();
+    let failing = (
+        "BEAD_FAILPOINTS",
+        "publish.result=error(REMOTE_UNREACHABLE)",
+    );
+    for args in [
+        &["create", "alone", "--json"][..],
+        &["create", "child", "--parent", &parent, "--json"],
+    ] {
+        let made = a.cmd(args).env(failing.0, failing.1).run();
+        assert_eq!(made.returncode(), 0, "{args:?}: {}", made.stderr);
+        let unavailable = "unpublished count unavailable";
+        assert!(
+            made.stderr.contains(unavailable),
+            "{args:?}: {}",
+            made.stderr
+        );
+        let made = parse_json(&made.stdout).unwrap();
+        assert!(made.get("unpublished").is_none(), "{args:?}: {made:?}");
+    }
+}
+
 #[test]
 fn init_with_an_import_publishes_the_tracker_at_once() {
     let fresh = crate::sandbox();

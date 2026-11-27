@@ -1,10 +1,12 @@
 //! What a command hands the command line besides its answer (`Outcome::held`): a write that goes
 //! on to neither read a state nor publish hands over the transaction it was made in, to be kept
 //! until the process exits (roll-lqjj.42); one that publishes what it wrote itself, or fails,
-//! hands over nothing, having let go of it first.
+//! hands over nothing, having let go of it first, unless it had nowhere to publish to, which leaves
+//! nothing to read and lets it keep what it held (roll-e3pu).
 
 use std::ffi::OsString;
 
+use beadroll_store::Workspace;
 use beadroll_sync::NetworkMode;
 use beadroll_test_support::Machine;
 
@@ -160,4 +162,112 @@ fn a_write_that_publishes_or_fails_hands_over_nothing() {
     };
     assert!(comments(&ctx, &unknown).is_err(), "no such issue");
     drop(sandbox);
+}
+
+/// The times the store's state was read through `ws` (`projection.read`) while `run` ran, and
+/// what `run` came to.
+fn reads<T>(ws: &Workspace, run: impl FnOnce() -> T) -> (u64, T) {
+    let before = ws.settings.failpoints.hits("projection.read");
+    let done = run();
+    (
+        ws.settings.failpoints.hits("projection.read") - before,
+        done,
+    )
+}
+
+/// `update KEY --status closed`, published at once unless `network` is offline.
+fn closing_update(key: &OsString, network: NetworkMode) -> UpdateArgs {
+    let fields = super::ContentArgs {
+        status: Some("closed".into()),
+        ..Default::default()
+    };
+    UpdateArgs {
+        ids: vec![key.clone()],
+        title: None,
+        fields,
+        claim: false,
+        force: false,
+        add_label: Vec::new(),
+        remove_label: Vec::new(),
+        set_labels: None,
+        network,
+        remote: None,
+        asked: "{}".to_owned(),
+    }
+}
+
+/// A write that publishes itself before it answers has nothing to publish to `--offline`, and the
+/// store then holds what the write left it: `create --parent`, and a close and an `update --status
+/// closed` that end a claim, read the store's state no more often than the same write that
+/// publishes nothing, and hand over what they held (roll-e3pu). They let go of it and read the
+/// store again, as though a merge could have renumbered the child or taken the claim over.
+#[test]
+fn a_write_with_nowhere_to_publish_itself_reads_no_state_after_it() {
+    let (sandbox, machine) = tracker();
+    let parent = issue(&machine, "parent");
+    let [claimed, updated, plain, other] =
+        ["claimed", "updated", "plain", "other"].map(|title| issue(&machine, title));
+    for key in [&claimed, &updated] {
+        machine.bead(["claim", key.to_str().expect("a key")]);
+    }
+    let counted = [("BEAD_FAILPOINTS", "projection.read@nth(1000000)=sleep(0)")];
+    let ws = workspace(&machine, sandbox.origin(), &counted);
+    let actor = actor(&machine);
+    let ctx = Context {
+        ws: &ws,
+        actor: &actor,
+    };
+    let offline = |title: &str, parent: Option<&OsString>| {
+        let fields = super::ContentArgs {
+            parent: parent.cloned(),
+            ..Default::default()
+        };
+        CreateArgs {
+            title_pos: Some(title.into()),
+            fields,
+            network: NetworkMode::Offline,
+            ..CreateArgs::default()
+        }
+    };
+    let (alone, made) = reads(&ws, || create(&ctx, &offline("alone", None)));
+    assert!(holds(made), "create");
+    let (child, made) = reads(&ws, || create(&ctx, &offline("child", Some(&parent))));
+    let made = made.expect("create --parent");
+    assert!(made.held.is_some(), "create --parent handed nothing over");
+    let key = (made.result.as_ref())
+        .and_then(|result| match result {
+            beadroll_core::json::Value::Object(result) => result.get("id"),
+            _ => None,
+        })
+        .map(beadroll_core::text::str_of)
+        .expect("the child's key");
+    assert_eq!(machine.show(&key)["title"].as_str(), Some("child"), "{key}");
+    assert_eq!(child, alone, "create --parent read the store again");
+    let (unclaimed, closed) = reads(&ws, || {
+        transit(&ctx, Transition::Close, &plain, NetworkMode::Offline)
+    });
+    assert!(holds(closed), "close");
+    let (ending, closed) = reads(&ws, || {
+        transit(&ctx, Transition::Close, &claimed, NetworkMode::Offline)
+    });
+    assert!(
+        holds(closed),
+        "a close that ends a claim handed nothing over"
+    );
+    assert_eq!(
+        ending, unclaimed,
+        "a close that ends a claim read the store again"
+    );
+    let (unclaimed, closed) = reads(&ws, || {
+        update(&ctx, &closing_update(&other, NetworkMode::Offline))
+    });
+    closed.expect("update --status closed");
+    let (ending, closed) = reads(&ws, || {
+        update(&ctx, &closing_update(&updated, NetworkMode::Offline))
+    });
+    closed.expect("an update that ends a claim");
+    assert_eq!(
+        ending, unclaimed,
+        "an update that ends a claim read the store again"
+    );
 }

@@ -22,6 +22,13 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Mid-command publication (roll-e3pu, ids AV)
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AV01 | Low | `create --parent`, and a `close`, `delete` or `update` that ends a claim, publish inside the command and open-coded it: each let go of what the write held and read the store again without asking first whether there was a remote, as `cli::finish` asks since roll-lqjj.50. `--offline` or on a tracker with no remote, each freed its transaction (about 83 ms at 200,000 events) and read a state though nothing was exchanged; an offline child peaked 3.72 MB on 1,500 issues where an offline create peaks 3.17 MB | optimized | One helper, `commands::publish::publish_first`, chooses the destination first and takes what the write held by value: it frees it before an exchange, and hands it back when nothing is exchanged (offline, no remote, a remote that cannot be chosen), which the command then answers from and keeps. A close that sent nothing no longer asks the store whether its end was superseded. Output is unchanged | `beadroll` (in-crate): `commands::held::a_write_with_nowhere_to_publish_itself_reads_no_state_after_it`, `commands::publish::tests`; `xtask`: `heap::no_command_holds_its_transaction_beside_the_state_it_goes_on_to_read` (a child not published against a create not published) |
+| AV02 | Low | `create --parent` whose publish failed put the publish's words in its `--json` answer's `unpublished`, copied from `update`, whose answer is a list; the count replaced them whenever there was one, and where none could be made the child answered unlike any other create | fixed | The child's answer says it as any create's does: the count, or nothing in `--json` when the count cannot be made, which standard error says | `beadroll`: `commands::publish_on_write::a_child_whose_publish_fails_is_answered_as_any_create_is`, `::a_failed_publish_of_a_child_is_said_once_and_counted` |
+
 ## Journal replay and history cache reviews (roll-0668.1 through roll-0668.4, ids AU)
 
 | Id | Severity | Finding | Status | Resolution | Tests |

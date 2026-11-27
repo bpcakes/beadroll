@@ -3,7 +3,6 @@
 //! be freed (roll-lqjj.32, roll-lqjj.42); freed first when the run goes on to publish, which reads
 //! a state of its own, so that no command holds two.
 
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -16,7 +15,7 @@ use beadroll_test_support::{Machine, Sandbox, built_bead, git};
 
 use super::{Answer, Failure, Held, Line, Outcome, Tone, ended_with, finish};
 use crate::cli::{AfterCommand, RunLifetime};
-use crate::testing::{settings, tracker, workspace};
+use crate::testing::{tracker, without_origin, workspace};
 
 /// Something a command held, which counts how often it was freed.
 #[derive(Debug)]
@@ -153,17 +152,6 @@ fn a_command_that_wrote_nothing_keeps_what_it_held_though_it_is_not_offline() {
         1,
         "freed: the process goes on"
     );
-}
-
-/// Opens the machine's store as a checkout without an origin opens it, with `config` as what its
-/// `.beadroll.json` tracks.
-fn without_origin(machine: &Machine, config: Object) -> Workspace {
-    let store = machine.store();
-    let id = store
-        .file_name()
-        .and_then(OsStr::to_str)
-        .expect("a store id");
-    Workspace::new(settings(machine, &[]), id, None, None, config).expect("the store")
 }
 
 /// A write on a tracker with no remote publishes nothing, as an offline write publishes nothing,

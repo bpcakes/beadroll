@@ -11,8 +11,9 @@ use beadroll_core::query::blocking;
 use beadroll_core::state::{Issue, State};
 
 use beadroll_store::view_outline;
-use beadroll_sync::{NetworkMode, Tx, publish_soon, writing_spent};
+use beadroll_sync::{NetworkMode, Tx, writing_spent};
 
+use super::publish::{Published, publish_first};
 use super::{
     ContentArgs, Context, Failure, Line, Outcome, Payload, Tone, arg_text, arg_texts, edge_data,
     encodable, field_args, holds_nothing, need_tracker, resolve_arg, rpartition, split_args,
@@ -66,23 +67,24 @@ pub(crate) fn create(ctx: &Context<'_>, args: &CreateArgs) -> Result<Outcome, Fa
     // A child's key is the one a merge renumbers when another machine gave its parent a child of
     // the same number first: published here rather than after the answer, so that the answer
     // names the key the issue has once its publish has merged, never one that names another
-    drop(spent);
-    let warning = publish_soon(ctx.ws, args.network, args.remote.as_deref());
-    let st = view_outline(ctx.ws)?;
-    let eid = st.issue_named(&uid).map(Issue::uid);
-    let st = texts_in(ctx.ws, st, eid)?;
-    let (key, title, mut result) = shown(&st, &uid)?;
-    if let Some(warning) = &warning {
-        // --json is told too, as `update` tells it: the other machines do not know yet
-        result.insert("unpublished".into(), Value::from(warning.as_str()));
-    }
-    let mut outcome = answer(args, key, &title, result);
+    let published = publish_first(ctx.ws, args.network, args.remote.as_deref(), spent);
+    let warning = published.warning().map(str::to_owned);
+    let mut outcome = match published {
+        // nothing merged: the issue is as the write left it, and the answer is the write's
+        Published::Unsent { held, .. } => answer(args, key, &title, result).wrote_in(held),
+        Published::Exchanged { .. } => {
+            let st = view_outline(ctx.ws)?;
+            let eid = st.issue_named(&uid).map(Issue::uid);
+            let st = texts_in(ctx.ws, st, eid)?;
+            let (key, title, result) = shown(&st, &uid)?;
+            answer(args, key, &title, result).answered_from(st)
+        }
+    };
+    // said in the lines alone: --json counts what is not yet published, as after any create
     if let (Some(warning), Some(lines)) = (&warning, &mut outcome.lines) {
         lines.push(Line::toned(Tone::Warning, warning.clone()));
     }
-    outcome
-        .answered_from(st)
-        .after_its_publish(ctx.ws, warning.as_deref())
+    outcome.after_its_publish(ctx.ws, warning.as_deref())
 }
 
 /// What `create` answers of the issue it made, `key`: its key alone (`--silent`), or its detail.
