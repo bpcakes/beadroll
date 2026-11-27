@@ -9,29 +9,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use beadroll_core::json::{Object, Value};
 use beadroll_store::{PublicationState, Workspace};
 use beadroll_sync::{NetworkMode, Spent};
-use beadroll_test_support::{Gate, Machine, Sandbox, built_bead, git};
+use beadroll_test_support::Gate;
 
 use super::{Answer, Failure, Held, Line, Outcome, Tone, ended_with, finish};
 use crate::cli::{AfterCommand, RunLifetime};
-use crate::testing::{tracker, without_origin, workspace};
-
-/// Something a command held, which counts how often it was freed.
-#[derive(Debug)]
-struct Probe(Arc<AtomicUsize>);
-
-impl Held for Probe {}
-
-impl Drop for Probe {
-    fn drop(&mut self) {
-        self.0.fetch_add(1, Ordering::SeqCst);
-    }
-}
+use crate::testing::{probe, tracker, tracker_without_remote, without_origin, workspace};
 
 /// An outcome that holds a probe, and the count of its being freed.
 fn holding_a_probe() -> (Outcome, Arc<AtomicUsize>) {
-    let freed = Arc::new(AtomicUsize::new(0));
+    let (probe, freed) = probe();
     let mut outcome = Outcome::new(Value::Null, Vec::<String>::new());
-    outcome.held = Some(Box::new(Probe(Arc::clone(&freed))));
+    outcome.held = Some(Box::new(probe));
     (outcome, freed)
 }
 
@@ -158,10 +146,7 @@ fn a_command_that_wrote_nothing_keeps_what_it_held_though_it_is_not_offline() {
 /// first for a publish with nowhere to go: about 83 ms at 200,000 events.
 #[test]
 fn a_write_on_a_tracker_with_no_remote_keeps_what_it_held_when_the_process_ends_with_it() {
-    let sandbox = Sandbox::new(built_bead());
-    let machine = Machine::new(&sandbox, "a");
-    git(["remote", "remove", "origin"], Some(machine.checkout()));
-    machine.bead(["init", "--prefix", "ex"]);
+    let (_sandbox, machine) = tracker_without_remote();
     let ws = without_origin(&machine, Object::new());
     assert!(
         matches!(ws.endpoint(None), Ok(None)),

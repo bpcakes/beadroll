@@ -1,30 +1,14 @@
 //! Where a write's own publish goes decides what becomes of what the write held: kept and handed
 //! back when nothing is exchanged, let go of before an exchange.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use beadroll_core::json::{Object, Value};
 use beadroll_sync::NetworkMode;
-use beadroll_test_support::{Gate, Machine, Sandbox, built_bead, git};
+use beadroll_test_support::Gate;
 
 use super::{Published, publish_first};
-use crate::testing::{tracker, without_origin, workspace};
-
-/// What a write held, which counts in `freed` the times it is let go of.
-struct Probe(Arc<AtomicUsize>);
-
-impl Drop for Probe {
-    fn drop(&mut self) {
-        self.0.fetch_add(1, Ordering::SeqCst);
-    }
-}
-
-/// A probe, and the count of the times it has been let go of.
-fn probe() -> (Probe, Arc<AtomicUsize>) {
-    let freed = Arc::new(AtomicUsize::new(0));
-    (Probe(Arc::clone(&freed)), freed)
-}
+use crate::testing::{probe, tracker, tracker_without_remote, without_origin, workspace};
 
 /// `--offline`, and a tracker with no remote, publish nothing: what the write held comes back
 /// as it was, never let go of, and nothing is said of publishing.
@@ -42,10 +26,7 @@ fn with_nowhere_to_publish_what_the_write_held_is_handed_back() {
     };
     assert_eq!(freed.load(Ordering::SeqCst), 0, "handed back whole");
     drop(held);
-    let bare = Sandbox::new(built_bead());
-    let alone = Machine::new(&bare, "a").with_bead(built_bead());
-    git(["remote", "remove", "origin"], Some(alone.checkout()));
-    alone.bead(["init", "--prefix", "ex"]);
+    let (_bare, alone) = tracker_without_remote();
     let ws = without_origin(&alone, Object::new());
     let (held, freed) = probe();
     let Published::Unsent {

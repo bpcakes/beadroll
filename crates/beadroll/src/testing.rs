@@ -1,14 +1,17 @@
 //! What the unit tests that run bead in this process share: a machine of the sandbox with a
-//! tracker, its store opened as its runs open it, and its actor.
+//! tracker, its store opened as its runs open it, its actor, and a probe that counts its frees.
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use beadroll_core::json::Object;
 use beadroll_store::{Actor, Settings, Workspace};
-use beadroll_test_support::{Machine, Sandbox, built_bead, json};
+use beadroll_test_support::{Machine, Sandbox, built_bead, git, json};
+
+use crate::commands::Held;
 
 /// The settings of `machine`'s runs, from its checkout, with `vars` set besides.
 pub(crate) fn settings(machine: &Machine, vars: &[(&str, &str)]) -> Arc<Settings> {
@@ -61,4 +64,32 @@ pub(crate) fn tracker() -> (Sandbox, Machine) {
     let machine = Machine::new(&sandbox, "a").with_bead(built_bead());
     machine.bead(["init", "--prefix", "ex"]);
     (sandbox, machine)
+}
+
+/// A machine with a tracker (prefix `ex`) and no remote: its checkout has no origin, and it runs
+/// this build's bead, as [`tracker`]'s does. Its store opens with [`without_origin`].
+pub(crate) fn tracker_without_remote() -> (Sandbox, Machine) {
+    let sandbox = Sandbox::new(built_bead());
+    let machine = Machine::new(&sandbox, "a").with_bead(built_bead());
+    git(["remote", "remove", "origin"], Some(machine.checkout()));
+    machine.bead(["init", "--prefix", "ex"]);
+    (sandbox, machine)
+}
+
+/// Something a command or a write held, which counts the times it is freed.
+#[derive(Debug)]
+pub(crate) struct Probe(Arc<AtomicUsize>);
+
+impl Held for Probe {}
+
+impl Drop for Probe {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+/// A probe, and the count of the times it has been freed.
+pub(crate) fn probe() -> (Probe, Arc<AtomicUsize>) {
+    let freed = Arc::new(AtomicUsize::new(0));
+    (Probe(Arc::clone(&freed)), freed)
 }

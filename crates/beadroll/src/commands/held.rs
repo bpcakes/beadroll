@@ -199,8 +199,8 @@ fn closing_update(key: &OsString, network: NetworkMode) -> UpdateArgs {
 /// A write that publishes itself before it answers has nothing to publish to `--offline`, and the
 /// store then holds what the write left it: `create --parent`, and a reopen and an `update --status
 /// closed` that end a claim, read the store's state no more often than the same write that
-/// publishes nothing, and hand over what they held (roll-e3pu). They let go of it and read the
-/// store again, as though a merge could have renumbered the child or taken the claim over. A
+/// publishes nothing, and hand over what they held. Before roll-e3pu they let go of it and read
+/// the store again, as though a merge could have renumbered the child or taken the claim over. A
 /// close or delete that names the claim it ends still asks the store whether replay took it
 /// (`superseded_owner_close_says_so`).
 #[test]

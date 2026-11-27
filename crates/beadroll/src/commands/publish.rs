@@ -1,7 +1,7 @@
-//! A write that publishes itself before it answers: `create` of a child, and `update`, `close` and
-//! `delete` ending a claim. Each chooses where the write goes before it lets go of what the write
-//! held, as `cli::finish` does (roll-lqjj.50), and lets go of it only when a remote is to be
-//! exchanged with; with nowhere to go, it gets it back to answer from and keep.
+//! A write that publishes itself before it answers: `create` of a child, and a `close`, `delete`,
+//! `reopen` or `update` ending a claim. Each chooses where the write goes before it lets go of
+//! what the write held, as `cli::finish` does (roll-lqjj.50), and lets go of it only when a remote
+//! is to be exchanged with; with nowhere to go, it gets it back to answer from and keep.
 
 use std::ffi::OsStr;
 

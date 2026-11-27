@@ -1520,7 +1520,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   with and looks nothing up, as before, roll-wrw2: what it held was let go of when a remote was
   chosen and the exchange failed, and is kept only when none could be chosen), it lets go of what
   it held and asks the store's
-  state whether replay took the end (`superseded`), whether or not anything was exchanged, since even offline
+  state whether replay took the end (`superseded`), whether or not anything was exchanged, since
+  even offline
   replay can put the end before its claim, when an event waiting in a cycle of causes keeps the
   claim off the frontier the end builds on and the clock is behind the claim; that the end went
   stale is in the issue's ownership history, with its texts, which the transaction need not
@@ -1528,7 +1529,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `unpublished` (the detail; `--silent` answers with the key alone), where the count replaces
   them whenever one can be made: they are not dead, since where none can (a remote that cannot be
   chosen, a store that never counted) they are all `--json` has to say the child was not
-  published (AV02, rejected; a plain create's silence there is roll-gy2j). `update` without a claim already answered from its
+  published (AV02, rejected; a plain create's silence there is roll-gy2j). `update` without a claim
+  already answered from its
   transaction's state (roll-lqjj.29) and keeps that; its transaction's index, the event ids and
   the machines' lengths, is let go of as the state is taken out, about a millisecond at 200,000
   events (a `BTreeSet` of 200,000 ids drops in 1.2 ms), so that it was not given a type of its
@@ -1540,7 +1542,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   be held through the exchange; nothing in the types makes a command let go before it reads a
   state of its own: the order of its code does (`finish` calls `ended_with` before
   `publish_soon_at`; a command answers from what it held, or from a state read after the
-  exchange, never both), and the tests below pin that order and its heap. `writing`, `writing_state`, `coordinated` and every library free as before, `run_with`
+  exchange, never both), and the tests below pin that order and its heap. `writing`,
+  `writing_state`, `coordinated` and every library free as before, `run_with`
   frees what the outcome holds, and a write that fails frees its transaction where it fails, as a
   read that fails frees its state: the cost of the free is paid there, and nowhere else. Output,
   format 1 and the projection (`projection::ENCODING`) are unchanged. The tests:

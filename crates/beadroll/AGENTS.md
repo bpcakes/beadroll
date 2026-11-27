@@ -52,8 +52,8 @@ storage, protocol behavior and fault recovery.
   `log` uses the store's validated history metadata cache, then reads the current outline and
   aliases; the cache does not capture display keys or names. `recap` retains its journal reader.
 - `src/cli/ending.rs`, `src/commands/held.rs`, `src/commands/publish/tests.rs`: unit tests that
-  run `finish`, the commands and `publish_first` in this process, on a machine of the sandbox that `src/testing.rs` opens: what a command's outcome holds
-  and when the run frees it (roll-lqjj.42).
+  run `finish`, the commands and `publish_first` in this process, on a machine of the sandbox that
+  `src/testing.rs` opens: what a command's outcome holds and when the run frees it (roll-lqjj.42).
 - `tests/cli/main.rs`: the one test binary's root; `sandbox()` hands test support the binary Cargo
   built (`env!("CARGO_BIN_EXE_bead")`), as `rust_only` does; `tests/cli/support.rs` names the same
   binary only to check which one a test chose.
@@ -118,15 +118,15 @@ storage, protocol behavior and fault recovery.
   ends lets go of it and reads the store for `superseded`, exchanged or not (replay can put the
   end before its claim even with nothing exchanged), unless its publish failed: it then answers
   with the warning and looks nothing up (roll-wrw2), having let go of what it held when a remote
-  was chosen and the exchange failed, and keeping it only when none could be chosen. The one slot of `Outcome::held` limits
-  what the outcome carries, not what a command holds on the way to it: that no state is read
-  beside what a command holds is the order of its code (`finish` chooses the write's
-  `destination`, calls `ended_with`, then `publish_soon_at`; a command answers from what it held
-  or from a state read after the exchange, never both), and the tests that pin it: `cli::ending`
-  and `commands::publish` the order, `commands::held` the hand-over, `xtask/tests/heap` the heap
-  (`xtask/AGENTS.md`). Library code never leaks (`docs/REVIEWING.md`
-  §2, roll-lqjj.32, roll-lqjj.42), which the same heap tests see: nothing of the tracker is held
-  when `run_with` returns, whether the command answered or failed.
+  was chosen and the exchange failed, and keeping it only when none could be chosen. The one slot of
+  `Outcome::held` limits what the outcome carries, not what a command holds on the way to it: that
+  no state is read beside what a command holds is the order of its code (`finish` chooses the
+  write's `destination`, calls `ended_with`, then `publish_soon_at`; a command answers from what it
+  held or from a state read after the exchange, never both), and the tests that pin it:
+  `cli::ending` and `commands::publish` the order, `commands::held` the hand-over,
+  `xtask/tests/heap` the heap (`xtask/AGENTS.md`). Library code never leaks (`docs/REVIEWING.md` §2,
+  roll-lqjj.32, roll-lqjj.42), which the same heap tests see: nothing of the tracker is held when
+  `run_with` returns, whether the command answered or failed.
 - No `print!`, `println!` or `eprintln!`: every write goes through `cli/output.rs`, where a closed
   pipe or a hung-up terminal is a quiet exit 0 and a failed write to stderr keeps the status.
 - Output preserves its established formats: `--json` results spaced with raw UTF-8, errors and
