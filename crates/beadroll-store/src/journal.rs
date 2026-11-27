@@ -210,7 +210,10 @@ fn ends_whole(path: &Path) -> Result<bool, Error> {
 }
 
 /// The next append target: the last segment, or a new segment once it reaches the rotation size.
-/// Full segments are never modified. A nonnumeric last-segment name returns IO.
+/// Full segments are never modified. A nonnumeric last-segment name returns IO, and so does a new
+/// segment whose name would sort before the last's (`1000000.jsonl` after `999999.jsonl`): every
+/// reader takes a journal's segments in name order, so its events would be read before the ones
+/// they follow, and the chain would break (roll-9lux).
 pub fn active_segment(ws: &Workspace, replica: &str) -> Result<PathBuf, Error> {
     let folder = ws.events_dir.join(replica);
     let segments = glob_ending(&folder, ".jsonl");
@@ -235,7 +238,16 @@ pub fn active_segment(ws: &Workspace, replica: &str) -> Result<PathBuf, Error> {
     let next = parse_integer(stem)
         .and_then(|number| number.plus_one())
         .ok_or_else(unnumbered)?;
-    Ok(folder.join(format!("{}.jsonl", next.zero_padded(6))))
+    let next = folder.join(format!("{}.jsonl", next.zero_padded(6)));
+    if next.file_name() <= last.file_name() {
+        return Err(Error::io_message(format!(
+            "{} would sort before {}, this journal's last segment, and be read before it: set \
+             BEAD_ROTATE_BYTES above its {size} bytes to go on appending to it",
+            next.display(),
+            last.display()
+        )));
+    }
+    Ok(next)
 }
 
 /// Appends sequential events to this machine's journal, after repairing any torn tail. Called with

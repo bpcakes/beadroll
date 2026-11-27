@@ -253,6 +253,8 @@ fn a_write_with_nowhere_to_publish_itself_reads_no_state_after_it() {
         Some(&shown),
         "the answer of create --parent"
     );
+    // the one read is the transaction's own, of the projection it writes on
+    assert_eq!(alone, 1, "create read the store's state again");
     assert_eq!(child, alone, "create --parent read the store again");
     machine.bead(["close", plain.to_str().expect("a key")]);
     let (unclaimed, reopened) = reads(&ws, || {
@@ -266,6 +268,7 @@ fn a_write_with_nowhere_to_publish_itself_reads_no_state_after_it() {
         holds(reopened),
         "a reopen that ends a claim handed nothing over"
     );
+    assert_eq!(unclaimed, 1, "reopen read the store's state again");
     assert_eq!(
         ending, unclaimed,
         "a reopen that ends a claim read the store again"
@@ -281,6 +284,7 @@ fn a_write_with_nowhere_to_publish_itself_reads_no_state_after_it() {
         holds(closed),
         "an update that ends a claim handed nothing over"
     );
+    assert_eq!(unclaimed, 1, "update read the store's state again");
     assert_eq!(
         ending, unclaimed,
         "an update that ends a claim read the store again"

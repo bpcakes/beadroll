@@ -11,6 +11,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   tracker with no remote they keep it and answer from the write, where they freed it and read the
   store again (roll-e3pu). A `close` or `delete` naming the claim it ends still reads the store,
   to say whether replay took the end. Output is unchanged.
+- A journal no longer rotates past `999999.jsonl` into `1000000.jsonl`, which sorts before it and
+  was read first, breaking the journal after a write that answered success: the write is refused
+  (`IO`) before anything is written, and says to raise `BEAD_ROTATE_BYTES` above the last
+  segment's size, which goes on appending to it (roll-9lux).
 
 - A projection catching up reads the bytes its journal's files grew by straight into a journal,
   as a whole journal is read (roll-lqjj.53.1), where it built a value for each line and printed it
