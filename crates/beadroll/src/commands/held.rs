@@ -205,6 +205,7 @@ fn closing_update(key: &OsString, network: NetworkMode) -> UpdateArgs {
 fn a_write_with_nowhere_to_publish_itself_reads_no_state_after_it() {
     let (sandbox, machine) = tracker();
     let parent = issue(&machine, "parent");
+    machine.bead(["claim", parent.to_str().expect("a key"), "--offline"]);
     let [claimed, updated, plain, other] =
         ["claimed", "updated", "plain", "other"].map(|title| issue(&machine, title));
     for key in [&claimed, &updated] {
@@ -234,14 +235,22 @@ fn a_write_with_nowhere_to_publish_itself_reads_no_state_after_it() {
     let (child, made) = reads(&ws, || create(&ctx, &offline("child", Some(&parent))));
     let made = made.expect("create --parent");
     assert!(made.held.is_some(), "create --parent handed nothing over");
-    let key = (made.result.as_ref())
-        .and_then(|result| match result {
-            beadroll_core::json::Value::Object(result) => result.get("id"),
-            _ => None,
-        })
-        .map(beadroll_core::text::str_of)
-        .expect("the child's key");
-    assert_eq!(machine.show(&key)["title"].as_str(), Some("child"), "{key}");
+    // the answer is the detail the store's view gives once the write is in, as it was when the
+    // child read the store again: with what the view lists of this machine's attempts, the
+    // parent's offline claim among them
+    let shown = {
+        let st = beadroll_store::view_outline(&ws).expect("the store's state");
+        let named = |issue: &&beadroll_core::state::Issue| issue.title() == "child";
+        let uid = st.issues().find(named).expect("the child").uid();
+        let st = super::texts_in(&ws, st, [uid]).expect("its texts");
+        let issue = st.issue(uid).expect("the child");
+        beadroll_core::json::Value::from(st.detail(issue.hydrated().expect("its texts")))
+    };
+    assert_eq!(
+        made.result.as_ref(),
+        Some(&shown),
+        "the answer of create --parent"
+    );
     assert_eq!(child, alone, "create --parent read the store again");
     let (unclaimed, closed) = reads(&ws, || {
         transit(&ctx, Transition::Close, &plain, NetworkMode::Offline)

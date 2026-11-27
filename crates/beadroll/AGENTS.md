@@ -45,13 +45,14 @@ storage, protocol behavior and fault recovery.
   `queries.rs` blocked, search and lint; `history.rs` log and machines, and `logged`, the row and
   line of an event that `recap.rs` builds on, whose `recap/layout.rs` lays activity out by
   `--format`; `ownership.rs` claim, takeover and release, the claim step `update` shares, and
-  `command_signature`, the receipt). `recap` is the one command of `Scope::Home` (`cli/spec.rs`):
+  `command_signature`, the receipt; `publish.rs` not a command but `publish_first`, the publish a
+  write makes before it answers). `recap` is the one command of `Scope::Home` (`cli/spec.rs`):
   every tracker under `BEAD_HOME`, no checkout and no git; it hands `cli` a `Delivered`, its
   cursor's save, which `run` does only once the answer is written.
   `log` uses the store's validated history metadata cache, then reads the current outline and
   aliases; the cache does not capture display keys or names. `recap` retains its journal reader.
-- `src/cli/ending.rs`, `src/commands/held.rs`: unit tests that run `finish` and the commands in this
-  process, on a machine of the sandbox that `src/testing.rs` opens: what a command's outcome holds
+- `src/cli/ending.rs`, `src/commands/held.rs`, `src/commands/publish/tests.rs`: unit tests that
+  run `finish`, the commands and `publish_first` in this process, on a machine of the sandbox that `src/testing.rs` opens: what a command's outcome holds
   and when the run frees it (roll-lqjj.42).
 - `tests/cli/main.rs`: the one test binary's root; `sandbox()` hands test support the binary Cargo
   built (`env!("CARGO_BIN_EXE_bead")`), as `rust_only` does; `tests/cli/support.rs` names the same
@@ -108,14 +109,18 @@ storage, protocol behavior and fault recovery.
   `comments add`, `dep add`/`remove`, `close`/`reopen`/`delete` and `import`). `run` (the process)
   keeps it until exit rather than freeing it, a quarter of a reading command's time on a large
   tracker and 83 ms of a write's at 200,000 events, and frees it first when the run publishes what
-  the command wrote; `run_with` (xtask, tests) frees it. A command that publishes or reads a state
-  of its own before it answers lets go of its transaction before either (`transition`, when it ends
-  a claim), so that none is held beside another. The one slot of `Outcome::held` does not see to
-  that: it limits what the outcome carries, not what a command holds on the way to it. The order
-  of the code does (`finish` chooses the write's `destination`, calls `ended_with`, then
-  `publish_soon_at`; `transition` drops its
-  transaction before it publishes), and the tests that pin it: `cli::ending` the order,
-  `xtask/tests/heap` the heap (`xtask/AGENTS.md`). Library code never leaks (`docs/REVIEWING.md`
+  the command wrote; `run_with` (xtask, tests) frees it. A command that publishes what it wrote
+  before it answers (`create` of a child, a `close`, `delete` or `update` that ends a claim) does
+  it through `commands::publish::publish_first`, which chooses the write's destination first and
+  takes what the write held by value: freed before an exchange, after which the command reads the
+  store to answer; handed back when nothing is exchanged, which leaves nothing to read, so that
+  the command answers from it and keeps it (roll-e3pu). The one slot of `Outcome::held` limits
+  what the outcome carries, not what a command holds on the way to it: that no state is read
+  beside what a command holds is the order of its code (`finish` chooses the write's
+  `destination`, calls `ended_with`, then `publish_soon_at`; a command answers from what it held
+  or from a state read after the exchange, never both), and the tests that pin it: `cli::ending`
+  and `commands::publish` the order, `commands::held` the hand-over, `xtask/tests/heap` the heap
+  (`xtask/AGENTS.md`). Library code never leaks (`docs/REVIEWING.md`
   §2, roll-lqjj.32, roll-lqjj.42), which the same heap tests see: nothing of the tracker is held
   when `run_with` returns, whether the command answered or failed.
 - No `print!`, `println!` or `eprintln!`: every write goes through `cli/output.rs`, where a closed

@@ -1515,7 +1515,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   to answer (`superseded`, the child's key); when none is, nothing came in, so the store holds what
   the write left and the command answers from the write and keeps what it held, as an offline
   write does: no free, and no state read (an offline child peaked 3.72 MB on 1,500 issues where
-  an offline create peaks 3.17 MB, and now peaks there too). `update` without a claim already answered from its
+  an offline create peaks 3.17 MB, and now peaks there too). A child whose publish fails keeps
+  the publish's words in its `--json` answer's `unpublished`, where the count replaces them
+  whenever one can be made: they are not dead, since where none can (a remote that cannot be
+  chosen, a store that never counted) they are all `--json` has to say the child was not
+  published (AV02, rejected; a plain create's silence there is roll-gy2j). `update` without a claim already answered from its
   transaction's state (roll-lqjj.29) and keeps that; its transaction's index, the event ids and
   the machines' lengths, is let go of as the state is taken out, about a millisecond at 200,000
   events (a `BTreeSet` of 200,000 ids drops in 1.2 ms), so that it was not given a type of its
