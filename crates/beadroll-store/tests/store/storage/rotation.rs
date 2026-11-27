@@ -55,8 +55,8 @@ fn rotation_accepts_the_last_number_and_refuses_exhaustion_without_writing() {
 
 /// A new segment is named so that it sorts after the last: `999999.jsonl` rotates into nothing,
 /// since `1000000.jsonl` would be read before it and its events before the ones they follow
-/// (roll-9lux). The write is refused with IO before anything is written, saying how to go on;
-/// with the rotation size above the last segment's, it is appended to.
+/// (roll-9lux). The write is refused with IO, no event appended and no segment started, saying
+/// how to go on; with the rotation size above the last segment's, it is appended to.
 #[test]
 fn a_rotation_whose_name_would_sort_before_the_last_is_refused_without_writing() {
     let root = tempfile::tempdir().unwrap();
@@ -96,4 +96,34 @@ fn a_rotation_whose_name_would_sort_before_the_last_is_refused_without_writing()
     let mut both = bytes;
     both.extend(encode_events(&[next]).unwrap());
     assert_eq!(std::fs::read(&path).unwrap(), both);
+}
+
+/// The append target is a segment the readers take: a file named `.jsonl` alone, which
+/// `segment_files` passes over, is no journal's last segment, and a write goes to the first
+/// numbered segment instead of to a file nobody reads.
+#[test]
+fn a_bare_jsonl_file_is_never_appended_to() {
+    let root = tempfile::tempdir().unwrap();
+    let ws = Workspace::new(
+        crate::settings(root.path(), &[]),
+        "rotation",
+        None,
+        None,
+        Object::new(),
+    )
+    .unwrap();
+    let folder = ws.events_dir.join("a");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join(".jsonl"), b"").unwrap();
+    let first = folder.join("000001.jsonl");
+    assert_eq!(active_segment(&ws, "a").unwrap(), first);
+    let init = Event::new(&id(1), "init")
+        .data(json!({"prefix": "ex"}))
+        .json();
+    append_events(&ws, "a", [&init]).unwrap();
+    assert_eq!(
+        std::fs::read(&first).unwrap(),
+        encode_events(&[init]).unwrap()
+    );
+    assert_eq!(std::fs::read(folder.join(".jsonl")).unwrap(), b"");
 }

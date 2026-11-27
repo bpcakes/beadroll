@@ -213,10 +213,15 @@ fn ends_whole(path: &Path) -> Result<bool, Error> {
 /// Full segments are never modified. A nonnumeric last-segment name returns IO, and so does a new
 /// segment whose name would sort before the last's (`1000000.jsonl` after `999999.jsonl`): every
 /// reader takes a journal's segments in name order, so its events would be read before the ones
-/// they follow, and the chain would break (roll-9lux).
+/// they follow, and the chain would break (roll-9lux). Only a name the readers take is a segment:
+/// a bare `.jsonl` is not.
 pub fn active_segment(ws: &Workspace, replica: &str) -> Result<PathBuf, Error> {
     let folder = ws.events_dir.join(replica);
-    let segments = glob_ending(&folder, ".jsonl");
+    // the segments a reader takes (`segment_files`): a bare `.jsonl` is none, and a write to it
+    // would be read by nobody
+    let segments: Vec<PathBuf> = (glob_ending(&folder, ".jsonl").into_iter())
+        .filter(|path| has_suffix(path, ".jsonl"))
+        .collect();
     let Some(last) = segments.last() else {
         return Ok(folder.join("000001.jsonl"));
     };
