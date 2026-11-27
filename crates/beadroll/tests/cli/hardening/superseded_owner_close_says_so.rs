@@ -50,7 +50,8 @@ fn close_superseded_by_a_takeover_does_not_answer_closed() {
 /// what replay made of it as well, though nothing was exchanged (roll-e3pu): replay can put it
 /// before the claim it names, when an event of a cycle of causes, waiting forever, keeps that
 /// claim off the frontier the close builds on and the clock is behind the claim. The close is then
-/// ignored, the issue still in progress, and the answer says it was superseded.
+/// ignored, the issue still in progress, and the answer says so: the close superseded, the issue
+/// in progress. What words it says it in is not this test's: no other owner took over here.
 #[test]
 fn a_close_replay_ignores_is_superseded_with_nothing_published() {
     let sandbox = crate::sandbox();
@@ -95,9 +96,14 @@ fn a_close_replay_ignores_is_superseded_with_nothing_published() {
     assert_eq!(closed.returncode(), 0, "{}", closed.stderr);
     assert_eq!(a.show(&key)["status"].as_str(), Some("in_progress"));
     let result = parse_json(&closed.stdout).expect("close printed JSON");
-    let said = result[0]["superseded"].as_str().unwrap_or_default();
     assert!(
-        said.contains("another owner took over"),
+        result[0]["superseded"].as_str().is_some(),
+        "{}",
+        closed.stdout
+    );
+    assert_eq!(
+        result[0]["status"].as_str(),
+        Some("in_progress"),
         "{}",
         closed.stdout
     );

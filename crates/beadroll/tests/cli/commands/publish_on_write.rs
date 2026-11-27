@@ -191,7 +191,9 @@ fn a_failed_publish_of_a_child_is_said_once_and_counted() {
 #[test]
 fn a_child_whose_remote_cannot_be_chosen_says_so_in_json() {
     let sandbox = crate::sandbox();
-    let a = crate::rust_only(&sandbox, "a");
+    // any bead under test: the words have been in a child's answer since 2e01dd2, no failpoint
+    // or in-process read is needed, and an older bead without them is what such a run is to find
+    let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
     let parent = printed_id(a.bead(["create", "parent"]));
     let other = sandbox.bare("other.git");
