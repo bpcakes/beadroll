@@ -14,7 +14,7 @@ use crate::{Error, fs::FileMode, layout, private_dir, private_dirs};
 #[must_use = "dropping the guard releases the store lock"]
 pub struct WorkspaceLock<'a> {
     workspace: &'a Workspace,
-    _file: File,
+    file: File,
 }
 
 impl Workspace {
@@ -45,7 +45,7 @@ impl Workspace {
         self.set_holding(LockState::Locked);
         Ok(WorkspaceLock {
             workspace: self,
-            _file: file,
+            file,
         })
     }
 }
@@ -53,5 +53,14 @@ impl Workspace {
 impl Drop for WorkspaceLock<'_> {
     fn drop(&mut self) {
         self.workspace.set_holding(LockState::Unlocked);
+        // Unlocked here, not when the file closes: a lock taken with `flock` lasts until every
+        // descriptor of the open file is closed, and a child that another thread is starting holds
+        // a copy of each until its exec closes them, so that the store would stay locked for a
+        // moment after the guard is gone (roll-x9x5). Should the unlock fail, the close still
+        // releases it.
+        let _ = self.file.unlock();
     }
 }
+
+#[cfg(test)]
+mod tests;

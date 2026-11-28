@@ -1824,7 +1824,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   claim identities before releasing the lock, including on unwind. `set_holding` remains a
   compatibility interface for external lock managers, not the internal locking path.
   The guard is `must_use`: a bare `ws.lock()?;` warns that it releases the lock immediately;
-  explicitly discarding it remains possible.
+  explicitly discarding it remains possible. It unlocks the file before it closes it, so that the
+  lock goes with the guard: a `flock` lasts until every descriptor of the open file is closed, and
+  a child that another thread is starting holds a copy of each until its exec. bead starts no
+  child beside a guard it drops, so this showed only in the tests (roll-x9x5): libtest runs a
+  crate's tests as threads of one process, and a lock probe found the store still locked while
+  another test started a `bead`.
   `Tx::attempt` borrows a writer that routes ordinary edits into the ownership attempt. Its
   lifetime cannot leak that routing into later sequential writes; the public `conditional`
   switch remains compatible. Claim and release events are always attempt events. Mixed writes
@@ -2735,6 +2740,15 @@ These were decided deliberately. Report problems *with* them, not their existenc
   coreutils dispatches by `argv[0]`: an `echo` symlink named `own-bead` fails on the Ubuntu 26.04
   CI image. The executable-selection test still uses its own sandbox path, named `echo`, to
   verify the machine override (roll-jg0k.1).
+- The suite runs the `bead` at `target/<profile>/bead` and does not pin it against another cargo
+  command run in the same target directory meanwhile (roll-t7ws). Every `cargo build`, `test` or
+  `nextest run` puts its own build there under a new inode, even with nothing to rebuild, `build`
+  and the test commands each their own: a test that starts `bead` in that moment finds no binary,
+  and bead's build identity (its executable's inode, which a stored projection records) changes,
+  so that the next write rewrites a projection a test expected kept. `./check.sh` builds before its
+  tests and not during them; the rule is to run no cargo command in the checkout while it runs.
+  Pinning a copy or a link for 1,500 tests would guard against a second session in the same
+  checkout, which nothing else here supports either.
 
 Decisions that changed while building, each with its reason:
 

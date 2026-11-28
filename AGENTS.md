@@ -57,6 +57,9 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   every push and pull request, and `.github/workflows/rust-nightly.yml` the tests under git 2.40,
   the oldest supported, the coverage report, the stress models with the full sweep, `xtask`'s
   growth guards timed in release, and the fuzz targets for a time budget each.
+- Run no other cargo command in the checkout while the tests run, from this session or another:
+  every `cargo build`, `test` or `nextest run` replaces `target/debug/bead`, and a test then finds
+  no binary or a projection rewritten by what bead takes for another build (roll-t7ws).
 - The default store `~/.local/state/beadroll` holds this repository's own real tracker. The tests
   give every machine a scratch `BEAD_HOME`; set one yourself for any manual experiment
   (`export BEAD_HOME=$(mktemp -d)`), and never run `bead`, `br` or `bv` inside other repositories

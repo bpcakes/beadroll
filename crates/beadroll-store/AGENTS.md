@@ -15,7 +15,9 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   `sync.git/journal-memo`); a path to one of them joins its constant, never a literal, in this
   crate and in sync.
 - `src/workspace/lock.rs`: `Workspace::lock` returns a `WorkspaceLock` owning the OS lock and
-  cache phase. Drop invalidates claim identities before releasing the file lock, including unwind.
+  cache phase. Drop invalidates claim identities before releasing the file lock, including unwind,
+  and unlocks the file before it closes it: a `flock` lasts until every descriptor of the open
+  file is closed, which a child another thread is starting delays until its exec (roll-x9x5).
   External callers managing their own locks retain the `set_holding` compatibility interface.
 
 - `src/settings.rs`: `Settings` (the variables, the environment git inherits, the working directory,

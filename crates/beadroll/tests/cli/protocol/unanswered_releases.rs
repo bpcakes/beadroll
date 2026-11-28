@@ -62,12 +62,12 @@ fn hold_first_push(sandbox: &Sandbox, name: &str) -> PathBuf {
     go
 }
 
-/// Machine `a`'s release of `key` with a second for each fetch and push, every wait between rounds
-/// stopped at `between` until it opens.
+/// Machine `a`'s release of `key`, giving up on each fetch and push after
+/// [`crate::GIVE_UP_ON_A_HELD_PUSH`], every wait between rounds stopped at `between` until it opens.
 fn release(a: &Machine, key: &str, between: &Gate) -> Run {
     let failpoints = format!("backoff@always={}", between.action());
     let release = a.cmd(["release", key, "--json"]);
-    let release = release.env("BEAD_NET_TIMEOUT", "1");
+    let release = release.env("BEAD_NET_TIMEOUT", crate::GIVE_UP_ON_A_HELD_PUSH);
     release.env("BEAD_FAILPOINTS", &failpoints).run()
 }
 
@@ -76,10 +76,11 @@ fn release(a: &Machine, key: &str, between: &Gate) -> Run {
 /// patience; once bead has given up on it and waits between rounds (a gate on `backoff`), the push
 /// is let go and lands, and bead's next round finds the release accepted: one claim more on the
 /// remote and no fence. The rounds' order is the gate's and the hook's, and the command's other
-/// fetches and pushes have a second each, far more than they take. With a 0.1 s timeout on every
-/// one of them and a random wait between rounds deciding the order, a fetch or the fence sometimes
-/// missed its tenth of a second on a macOS runner (roll-dih8.28); the fenced order is
-/// `timed_out_release_fenced_by_its_own_next_round_is_built_again`.
+/// fetches and pushes have [`crate::GIVE_UP_ON_A_HELD_PUSH`] each, far more than they take. With
+/// a 0.1 s timeout on every one of them and a random wait between rounds deciding the order, a
+/// fetch or the fence sometimes missed its tenth of a second on a macOS runner (roll-dih8.28), and
+/// with a second, the fenced order's fence once missed it under a full suite (roll-t7ws). The
+/// fenced order is `timed_out_release_fenced_by_its_own_next_round_is_built_again`.
 #[test]
 fn timed_out_accepted_release_returns_success() {
     let sandbox = crate::sandbox();
