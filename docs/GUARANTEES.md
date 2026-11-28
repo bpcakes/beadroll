@@ -230,6 +230,12 @@ edits are never held up.
 
 - An interrupted append (crash mid-write) is repaired before the next write or
   publish: the fragment is kept beside the segment as `*.torn-*`.
+- A journal's segments are read in name order, and bead never starts one whose
+  name sorts before the last, nor appends to a file the readers pass over (a
+  bare `.jsonl`): past `999999.jsonl` a write is refused (`IO`) with no event
+  appended and no segment started (a torn tail is still repaired first), until
+  `BEAD_ROTATE_BYTES` is raised above the last segment's size, which then goes
+  on growing.
 - A malformed event, an event of a newer format, an unknown operation, or a
   field of the wrong type is reported by `bead info` under `integrity` and
   applied by nobody; everything unrelated keeps working. One event id with two

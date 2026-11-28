@@ -3,38 +3,23 @@
 //! be freed (roll-lqjj.32, roll-lqjj.42); freed first when the run goes on to publish, which reads
 //! a state of its own, so that no command holds two.
 
-use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
 
 use beadroll_core::json::{Object, Value};
 use beadroll_store::{PublicationState, Workspace};
 use beadroll_sync::{NetworkMode, Spent};
-use beadroll_test_support::{Machine, Sandbox, built_bead, git};
+use beadroll_test_support::Gate;
 
 use super::{Answer, Failure, Held, Line, Outcome, Tone, ended_with, finish};
 use crate::cli::{AfterCommand, RunLifetime};
-use crate::testing::{settings, tracker, workspace};
-
-/// Something a command held, which counts how often it was freed.
-#[derive(Debug)]
-struct Probe(Arc<AtomicUsize>);
-
-impl Held for Probe {}
-
-impl Drop for Probe {
-    fn drop(&mut self) {
-        self.0.fetch_add(1, Ordering::SeqCst);
-    }
-}
+use crate::testing::{probe, tracker, tracker_without_remote, without_origin, workspace};
 
 /// An outcome that holds a probe, and the count of its being freed.
 fn holding_a_probe() -> (Outcome, Arc<AtomicUsize>) {
-    let freed = Arc::new(AtomicUsize::new(0));
+    let (probe, freed) = probe();
     let mut outcome = Outcome::new(Value::Null, Vec::<String>::new());
-    outcome.held = Some(Box::new(Probe(Arc::clone(&freed))));
+    outcome.held = Some(Box::new(probe));
     (outcome, freed)
 }
 
@@ -155,27 +140,13 @@ fn a_command_that_wrote_nothing_keeps_what_it_held_though_it_is_not_offline() {
     );
 }
 
-/// Opens the machine's store as a checkout without an origin opens it, with `config` as what its
-/// `.beadroll.json` tracks.
-fn without_origin(machine: &Machine, config: Object) -> Workspace {
-    let store = machine.store();
-    let id = store
-        .file_name()
-        .and_then(OsStr::to_str)
-        .expect("a store id");
-    Workspace::new(settings(machine, &[]), id, None, None, config).expect("the store")
-}
-
 /// A write on a tracker with no remote publishes nothing, as an offline write publishes nothing,
 /// so it keeps what it held to the end of the process as that write does, and says nothing of
 /// publishing (roll-lqjj.50). Were `--offline` alone to decide, it would free its transaction
 /// first for a publish with nowhere to go: about 83 ms at 200,000 events.
 #[test]
 fn a_write_on_a_tracker_with_no_remote_keeps_what_it_held_when_the_process_ends_with_it() {
-    let sandbox = Sandbox::new(built_bead());
-    let machine = Machine::new(&sandbox, "a");
-    git(["remote", "remove", "origin"], Some(machine.checkout()));
-    machine.bead(["init", "--prefix", "ex"]);
+    let (_sandbox, machine) = tracker_without_remote();
     let ws = without_origin(&machine, Object::new());
     assert!(
         matches!(ws.endpoint(None), Ok(None)),
@@ -270,32 +241,6 @@ fn a_write_given_an_unreachable_remote_tries_it_and_lets_go_of_what_it_held() {
     }
 }
 
-/// The handshake of a `pause-until` failpoint (`crates/beadroll-store/src/failpoint.rs`): the
-/// paused run touches `PATH.ready`, then waits for `PATH.go`. Once it has reached the gate (or
-/// `done` says it will not), runs `step`, then opens the gate, whatever `step` came to.
-fn meet<T>(gate: &Path, done: &dyn Fn() -> bool, step: impl FnOnce() -> T) -> Option<T> {
-    struct Open(PathBuf);
-    impl Drop for Open {
-        fn drop(&mut self) {
-            let _ = std::fs::write(&self.0, b"");
-        }
-    }
-    let with = |suffix: &str| {
-        let mut name = gate.as_os_str().to_owned();
-        name.push(suffix);
-        PathBuf::from(name)
-    };
-    let _open = Open(with(".go"));
-    let deadline = Instant::now() + Duration::from_secs(120);
-    while !with(".ready").exists() {
-        if done() || Instant::now() > deadline {
-            return None;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    Some(step())
-}
-
 /// A write that is published at once lets go of what it held before the publish begins to read the
 /// store's state, which is what the publish needs a projection of: at the failpoint where that
 /// read starts, the run is stopped and the probe has been freed already, once. Were it kept to the
@@ -303,8 +248,8 @@ fn meet<T>(gate: &Path, done: &dyn Fn() -> bool, step: impl FnOnce() -> T) -> Op
 #[test]
 fn a_write_that_publishes_lets_go_of_what_it_held_before_the_publish_reads_a_state() {
     let (sandbox, machine) = tracker();
-    let gate = sandbox.root().join("publish-reads");
-    let held = format!("projection.read=pause-until({})", gate.display());
+    let gate = Gate::new(&sandbox, "publish-reads");
+    let held = gate.at("projection.read");
     let ws = workspace(&machine, sandbox.origin(), &[("BEAD_FAILPOINTS", &held)]);
     let (outcome, freed) = holding_a_probe();
     ws.set_wrote(PublicationState::Unpublished);
@@ -312,7 +257,7 @@ fn a_write_that_publishes_lets_go_of_what_it_held_before_the_publish_reads_a_sta
     let (answer, met) = std::thread::scope(|scope| {
         let meeting = scope.spawn(|| {
             let done = || finished.load(Ordering::SeqCst) > 0;
-            meet(&gate, &done, || freed.load(Ordering::SeqCst))
+            gate.meet(&done, || freed.load(Ordering::SeqCst))
         });
         let answer = finish(
             outcome,

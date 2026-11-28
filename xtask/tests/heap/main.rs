@@ -112,7 +112,7 @@ fn measured(machine: &Machine, args: &[&str]) -> Heap {
 fn bead_returns_holding_nothing_of_what_it_made() {
     let (_sandbox, machine, import) = tracker();
     assert!(import.held < LEFT, "the import: {import:?}");
-    let commands: [(&str, &[&str]); 8] = [
+    let commands: [(&str, &[&str]); 12] = [
         ("a read", &["list"]),
         (
             "a write, not published",
@@ -124,6 +124,19 @@ fn bead_returns_holding_nothing_of_what_it_made() {
         ("a claim, not published", &["claim", "ex-4", "--offline"]),
         ("a close of another", &["close", "ex-3"]),
         ("a reopen", &["reopen", "ex-3", "--offline"]),
+        (
+            "a child, published",
+            &["create", "child", "--parent", "ex-1"],
+        ),
+        (
+            "a child, not published",
+            &["create", "child", "--parent", "ex-1", "--offline"],
+        ),
+        ("a claim again", &["claim", "ex-5"]),
+        (
+            "a close that ends it, not published",
+            &["close", "ex-5", "--offline"],
+        ),
     ];
     for (what, args) in commands {
         let heap = measured(&machine, args);
@@ -145,9 +158,11 @@ fn bead_returns_holding_nothing_of_what_it_made() {
 
 /// No command holds two projections at once. A write that is published at once frees its
 /// transaction before the publish makes the state it needs, so it peaks where the same write
-/// not published does; a close or delete that ends a claim publishes inside the command and reads
-/// the store after, as a claim does, so it frees the transaction it wrote in before either and
-/// peaks where the claim did, not a whole projection above it.
+/// not published does. A child, which `create` publishes itself and reads the store for after,
+/// and a close or delete that ends a claim, which publish inside the command and read the store
+/// after, as a claim does, free the transaction they wrote in before either and peak where the
+/// claim did, not a whole projection above it; a child not published reads nothing more, so it
+/// peaks where any write not published does, not where that read would take it (roll-e3pu).
 #[test]
 fn no_command_holds_its_transaction_beside_the_state_it_goes_on_to_read() {
     let (_sandbox, machine, _) = tracker();
@@ -156,6 +171,19 @@ fn no_command_holds_its_transaction_beside_the_state_it_goes_on_to_read() {
     assert!(
         within(published.peak, not_published.peak),
         "a write published at once: {published:?}, not published: {not_published:?}"
+    );
+    let child = ["create", "child", "--parent", "ex-1"];
+    let published = measured(&machine, &child);
+    let claim = measured(&machine, &["claim", "ex-6"]);
+    assert!(
+        within(published.peak, claim.peak),
+        "a child published at once: {published:?}, a claim: {claim:?}"
+    );
+    let not_published = measured(&machine, &[&child[..], &["--offline"]].concat());
+    let alone = measured(&machine, &["create", "alone", "--offline"]);
+    assert!(
+        within(not_published.peak, alone.peak),
+        "a child not published: {not_published:?}, an issue not published: {alone:?}"
     );
     for (op, key) in [("close", "ex-2"), ("delete", "ex-3")] {
         let claim = measured(&machine, &["claim", key]);

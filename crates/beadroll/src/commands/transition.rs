@@ -14,8 +14,9 @@ use beadroll_core::op::OpName;
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_store::{Label, view_outline};
-use beadroll_sync::{NetworkMode, publish_soon, writing_spent};
+use beadroll_sync::{NetworkMode, writing_spent};
 
+use super::publish::{Published, publish_first};
 use super::{
     Context, Failure, Line, Outcome, Payload, Tone, encodable, ended_by, issue_line,
     issue_not_found, need_tracker, refuse_foreign_claim, resolve_arg, texts_in,
@@ -162,15 +163,17 @@ pub(crate) fn transition(
     let ((mut result, ended, named, unchanged, plan), spent) = written;
     // An ended claim is published here, and its answer reads the store again: the transaction is
     // let go of before either, as the command line lets go of it before a publish (roll-lqjj.42).
-    // Nothing but this order keeps the two apart, which the types do not: `xtask/tests/heap`
-    // peaks a close or delete that ends a claim against the claim, and fails when it is a whole
-    // projection above. A `--force --offline` close of another owner's claim neither publishes nor
-    // reads (no claim of its own to name), and frees it all the same, which is harmless.
-    let spent = (!ended).then_some(spent);
-    let warning = if ended {
-        publish_soon(ctx.ws, args.network, args.remote.as_deref())
+    // With nowhere to publish to it is kept, unless a claim the events name is to be looked up in
+    // the store. That a read made after the publish is not made beside the transaction, the types
+    // do not say: `xtask/tests/heap` peaks a close or delete that ends a claim against the claim,
+    // and fails when it is a whole projection above.
+    let (mut spent, warning) = if ended {
+        match publish_first(ctx.ws, args.network, args.remote.as_deref(), spent) {
+            Published::Unsent { held, warning } => (Some(held), warning),
+            Published::Exchanged { warning } => (None, warning),
+        }
     } else {
-        None
+        (Some(spent), None)
     };
     let mut notes = Vec::new();
     if let Some(warning) = &warning {
@@ -180,7 +183,10 @@ pub(crate) fn transition(
             item.insert("unpublished".into(), Value::from(warning.as_str()));
         }
     } else if !named.is_empty() {
-        // published: answer with what the remote made of it
+        // answer with what replay made of the ends the events name, published or not: even with
+        // nothing exchanged it may have put one before its claim, which an event kept off the
+        // frontier leaves out of what the end builds on (roll-e3pu)
+        spent = None;
         superseded(ctx, op, &plan.issues, &named, &mut result, &mut notes)?;
     }
     let mut lines = answer(

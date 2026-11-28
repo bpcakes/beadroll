@@ -15,9 +15,10 @@ use beadroll_core::query::{GraphChange, OtherParents};
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_store::Label;
-use beadroll_sync::{Emitter, Mode, NetworkMode, coordinated, publish_soon, writing_state};
+use beadroll_sync::{Emitter, Mode, NetworkMode, coordinated, writing_state};
 
 use super::ownership::{ClaimStep, claim_note, command_signature, details, still_held};
+use super::publish::{Published, publish_first};
 use super::{
     ContentArgs, Context, Failure, Line, Outcome, Payload, Tone, arg_texts, edge_data, encodable,
     ended_by, field_args, holds_nothing, issue_line, need_tracker, refuse_foreign_claim,
@@ -80,7 +81,8 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         UpdateKind::Changed
     };
     let mut notes = Vec::new();
-    // the state the write left, which the answer reads unless a publish follows (roll-lqjj.29)
+    // the state the write left, which the answer reads unless an exchange with the remote follows
+    // (roll-lqjj.29)
     let mut written = None;
     // a retried claim may have been accepted and changed hands since
     let mut check_held = false;
@@ -132,11 +134,15 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         ended
     };
     // the same promptness `bead close` gives
-    let warning = if ended.is_empty() {
-        None
+    let (written, warning) = if ended.is_empty() {
+        (written, None)
     } else {
-        written = None; // the publish may bring in what other machines wrote: read after it
-        publish_soon(ctx.ws, args.network, args.remote.as_deref())
+        match publish_first(ctx.ws, args.network, args.remote.as_deref(), written) {
+            // nothing exchanged: the store is as the write left it
+            Published::Unsent { held, warning } => (held, warning),
+            // the publish may bring in what other machines wrote: read after it
+            Published::Exchanged { warning } => (None, warning),
+        }
     };
     let st = match written {
         Some(written) => view_of_written(ctx.ws, written, &args.ids)?,

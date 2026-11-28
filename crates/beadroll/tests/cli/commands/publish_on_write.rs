@@ -147,6 +147,71 @@ fn a_failed_publish_of_an_ended_claim_is_said_once_and_not_tried_again() {
     }
 }
 
+/// A child is published by `create` itself, before it answers, so that its key is the one the
+/// merge leaves (roll-e3pu). When that publish fails, the answer says so once and `--json` counts
+/// its two events (the create and its parent edge), as for any create, and the command line does
+/// not try the remote again.
+#[test]
+fn a_failed_publish_of_a_child_is_said_once_and_counted() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let parent = printed_id(a.bead(["create", "parent"]));
+    let before = sandbox.remote_journal();
+    let failing = (
+        "BEAD_FAILPOINTS",
+        "publish.result=error(REMOTE_UNREACHABLE)",
+    );
+    let said = "recorded locally, not yet published (REMOTE_UNREACHABLE)";
+    let made = (a.cmd(["create", "child", "--parent", &parent, "--json"]))
+        .env(failing.0, failing.1)
+        .run();
+    assert_eq!(made.returncode(), 0, "{}", made.stderr);
+    let made = parse_json(&made.stdout).unwrap();
+    assert_eq!(made["unpublished"].as_i64(), Some(2), "{made:?}");
+    let text = (a.cmd(["create", "another", "--parent", &parent]))
+        .env(failing.0, failing.1)
+        .run();
+    assert_eq!(text.returncode(), 0, "{}", text.stderr);
+    assert_eq!(text.stdout.matches(said).count(), 1, "{}", text.stdout);
+    assert_eq!(
+        text.stdout.trim().lines().last(),
+        Some("4 events not yet published: bead sync")
+    );
+    assert_eq!(
+        sandbox.remote_journal(),
+        before,
+        "the remote was tried again"
+    );
+}
+
+/// A child whose remote cannot be chosen is not published, and no count can be made: its `--json`
+/// answer says so in the failed publish's words, all it has to say it with. Here `.beadroll.json`
+/// names one remote where the store already coordinates through another.
+#[test]
+fn a_child_whose_remote_cannot_be_chosen_says_so_in_json() {
+    let sandbox = crate::sandbox();
+    // any bead under test: the words have been in a child's answer since 2e01dd2, no failpoint
+    // or in-process read is needed, and an older bead without them is what such a run is to find
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let parent = printed_id(a.bead(["create", "parent"]));
+    let other = sandbox.bare("other.git");
+    a.bead(["sync", "--remote", other.to_str().unwrap()]);
+    let elsewhere = sandbox.root().join("elsewhere.git");
+    let elsewhere = elsewhere.to_str().unwrap();
+    let tracked = json!({"remote": elsewhere});
+    std::fs::write(a.checkout().join(".beadroll.json"), json_line(&tracked)).unwrap();
+    let made = a.run(["create", "child", "--parent", &parent, "--json"]);
+    assert_eq!(made.returncode(), 0, "{}", made.stderr);
+    let made = parse_json(&made.stdout).unwrap();
+    assert_eq!(
+        made["unpublished"].as_str(),
+        Some("recorded locally, not yet published (CONFIG)"),
+        "{made:?}"
+    );
+}
+
 #[test]
 fn init_with_an_import_publishes_the_tracker_at_once() {
     let fresh = crate::sandbox();

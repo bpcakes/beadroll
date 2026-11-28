@@ -86,10 +86,11 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
 - `tests/heap/main.rs`: the one integration-test binary, bead's heap as `cargo xtask bead` counts
   it (roll-lqjj.42, X17): a sandbox machine whose `bead` is this build's xtask runs commands on a
   tracker of 1,500 imported issues, and the test reads `heap peak:` and `heap held:` from standard
-  error. It keeps that a write published at once peaks where one not published does, that a close
-  or delete that ends a claim peaks where the claim did (neither holds a transaction beside a
-  state), and that every command, answering or failing, returns holding none of the tracker
-  (`run_with` and the libraries free).
+  error. It keeps that a write published at once peaks where one not published does, that a child
+  published at once and a close or delete that ends a claim peak where the claim did (none holds a
+  transaction beside a state), that a child not published peaks where any create not published
+  does (it reads no state after its write, roll-e3pu), and that every command, answering or failing,
+  returns holding none of the tracker (`run_with` and the libraries free).
 - `src/hygiene.rs`: the repository lint (a test only): no private names in tracked files, and no
   lint exemption on an item but the two `CONTRIBUTING.md` accepts, no Rust source past 800
   lines, no function or module named for a finding in `docs/FINDINGS.md` or for an issue the

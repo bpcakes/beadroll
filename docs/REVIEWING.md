@@ -1507,11 +1507,30 @@ These were decided deliberately. Report problems *with* them, not their existenc
   publish that fails, as it did. A remote that cannot be chosen
   (`.beadroll.json` naming one where the store coordinates through another) keeps the
   transaction too: the run says why where a failed publish said it, in the same words
-  (`publish_soon_at`, "recorded locally, not yet published (CONFIG)"). A `close` or `delete` that
-  ends a claim still frees it before its publish, on a tracker with no remote as well, since it
-  reads the store after to answer (`superseded`). A command that publishes or reads a state of its own before it answers lets go of
-  its transaction before either: `transition`, when a `close` or `delete` ends a claim, publishes
-  inside the command and reads the store after. `update` without a claim already answered from its
+  (`publish_soon_at`, "recorded locally, not yet published (CONFIG)"). A command that publishes
+  what it wrote before it answers (`create` of a child, whose key a merge may renumber; a `close`,
+  `delete` or `update` that ends a claim) chooses the same way, through one helper
+  (`commands::publish::publish_first`, roll-e3pu), which takes what the write held by value: when
+  a remote is chosen it lets go of it before the exchange, and the command reads the store after
+  to answer (`superseded`, the child's key); when none is, nothing came in, so the store holds what
+  the write left and the command answers from the write and keeps what it held, as an offline
+  write does: no free, and no state read (an offline child peaked 3.72 MB on 1,500 issues where
+  an offline create peaks 3.17 MB, and now peaks there too). A `close` or `delete` that names the
+  claim it ends is the exception: unless its publish failed (a warning, which it answers
+  with and looks nothing up, as before, roll-wrw2: what it held was let go of when a remote was
+  chosen and the exchange failed, and is kept only when none could be chosen), it lets go of what
+  it held and asks the store's
+  state whether replay took the end (`superseded`), whether or not anything was exchanged, since
+  even offline
+  replay can put the end before its claim, when an event waiting in a cycle of causes keeps the
+  claim off the frontier the end builds on and the clock is behind the claim; that the end went
+  stale is in the issue's ownership history, with its texts, which the transaction need not
+  have. A child whose publish fails keeps the publish's words in its `--json` answer's
+  `unpublished` (the detail; `--silent` answers with the key alone), where the count replaces
+  them whenever one can be made: they are not dead, since where none can (a remote that cannot be
+  chosen, a store that never counted) they are all `--json` has to say the child was not
+  published (AV02, rejected; a plain create's silence there is roll-gy2j). `update` without a claim
+  already answered from its
   transaction's state (roll-lqjj.29) and keeps that; its transaction's index, the event ids and
   the machines' lengths, is let go of as the state is taken out, about a millisecond at 200,000
   events (a `BTreeSet` of 200,000 ids drops in 1.2 ms), so that it was not given a type of its
@@ -1519,10 +1538,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   whose rounds let go of their transaction as before, and `init` publishes inside the command:
   none of them keeps one, since each would hold it beside the state it reads or the publish it
   makes. The outcome's one slot limits what it carries, not what a command holds on the way to
-  it, and nothing in the types makes a command let go before it publishes or reads: the order of
-  its code does (`finish` calls `ended_with` before `publish_soon_at`; `transition` drops its
-  transaction before it publishes and before `superseded` reads), and the tests below pin that
-  order and its heap. `writing`, `writing_state`, `coordinated` and every library free as before, `run_with`
+  it. A publish inside a command takes what it held by value (`publish_first`), so that it cannot
+  be held through the exchange; nothing in the types makes a command let go before it reads a
+  state of its own: the order of its code does (`finish` calls `ended_with` before
+  `publish_soon_at`; a command answers from what it held, or from a state read after the
+  exchange, never both), and the tests below pin that order and its heap. `writing`,
+  `writing_state`, `coordinated` and every library free as before, `run_with`
   frees what the outcome holds, and a write that fails frees its transaction where it fails, as a
   read that fails frees its state: the cost of the free is paid there, and nowhere else. Output,
   format 1 and the projection (`projection::ENCODING`) are unchanged. The tests:
@@ -1530,10 +1551,14 @@ These were decided deliberately. Report problems *with* them, not their existenc
   a run that wrote nothing keeps it though it is not `--offline` (what publishes is `wrote()`, not
   the flag), and that a write that publishes has freed it by the time the publish first reads the
   store, held at `projection.read`; `commands::held` that each command above hands its
-  transaction over and the `close` that ends a claim and a failed write hand over nothing;
+  transaction over and the `close` that ends a claim and a failed write hand over nothing, and
+  that `create --parent` and a `reopen` or `update` ending a claim, `--offline`, hand it over and
+  read the store's state no more often than the same write that publishes nothing (counted at
+  `projection.read`); `commands::publish` each of `publish_first`'s three ways;
   `xtask`'s `heap` tests, which run `cargo xtask bead` through the sandbox on a tracker of 1,500
   issues and read its `heap peak:` and `heap held:`, that a write published at once peaks where one
-  not published does and a `close` or `delete` that ends a claim where the claim did (a whole
+  not published does, a child published at once and a `close` or `delete` that ends a claim where
+  the claim did, a child not published where a create not published does (a whole
   projection above it when the transaction is freed after the publish: 7.19 MB against 4.51 MB,
   and 7.18 against 3.85 for a write published at once), and that after a read, a write published
   or not, a claim, a close, a failed write and a failed claim, nothing of the tracker is still held
