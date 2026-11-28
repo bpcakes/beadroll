@@ -72,7 +72,7 @@ fn unresolved_later_command_keeps_the_accepted_release() {
     executable(&hook, script);
     let later = a
         .cmd(["claim", &y, "--json"])
-        .env("BEAD_NET_TIMEOUT", "1")
+        .env("BEAD_NET_TIMEOUT", crate::GIVE_UP_ON_A_HELD_PUSH)
         .run();
     std::fs::remove_dir(&gate).unwrap();
     // the held pushes are refused once the gate is gone

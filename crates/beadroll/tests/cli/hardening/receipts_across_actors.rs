@@ -177,7 +177,7 @@ mod in_flight_attempt_across_actors {
         let (released, seen) = beside(
             || {
                 let release = m.cmd(["release", &x, "--json"]).thread("actor-a");
-                let release = release.env("BEAD_NET_TIMEOUT", "1");
+                let release = release.env("BEAD_NET_TIMEOUT", crate::GIVE_UP_ON_A_HELD_PUSH);
                 release.env("BEAD_FAILPOINTS", &failpoints).run()
             },
             |finished| {

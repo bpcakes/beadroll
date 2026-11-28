@@ -2740,6 +2740,15 @@ These were decided deliberately. Report problems *with* them, not their existenc
   coreutils dispatches by `argv[0]`: an `echo` symlink named `own-bead` fails on the Ubuntu 26.04
   CI image. The executable-selection test still uses its own sandbox path, named `echo`, to
   verify the machine override (roll-jg0k.1).
+- The suite runs the `bead` at `target/<profile>/bead` and does not pin it against another cargo
+  command run in the same target directory meanwhile (roll-t7ws). Every `cargo build`, `test` or
+  `nextest run` puts its own build there under a new inode, even with nothing to rebuild, `build`
+  and the test commands each their own: a test that starts `bead` in that moment finds no binary,
+  and bead's build identity (its executable's inode, which a stored projection records) changes,
+  so that the next write rewrites a projection a test expected kept. `./check.sh` builds before its
+  tests and not during them; the rule is to run no cargo command in the checkout while it runs.
+  Pinning a copy or a link for 1,500 tests would guard against a second session in the same
+  checkout, which nothing else here supports either.
 
 Decisions that changed while building, each with its reason:
 

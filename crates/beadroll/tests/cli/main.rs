@@ -35,3 +35,10 @@ pub(crate) fn sandbox() -> Sandbox {
 pub(crate) fn rust_only(sandbox: &Sandbox, name: &str) -> Machine {
     Machine::new(sandbox, name).with_bead(env!("CARGO_BIN_EXE_bead"))
 }
+
+/// The network timeout, in seconds, of a command meant to give up on a push that a test's
+/// pre-receive hook holds until it lets the push go: short of that hold, and long enough for every
+/// other fetch and push the command makes on a machine loaded by the rest of the suite, which a
+/// second was not (roll-t7ws), as `finished_push_is_not_an_unanswered_one` gives ten seconds short
+/// of its helper's thirty.
+pub(crate) const GIVE_UP_ON_A_HELD_PUSH: &str = "10";
