@@ -6,6 +6,9 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- The store lock is released when the command lets go of it, not when its file is closed: a
+  `flock` lasts until every descriptor of the file is closed, and a child that another thread was
+  starting kept one for a moment (roll-x9x5). bead starts no child then, so only the tests saw it.
 - `create --parent`, and a `reopen` or `update --status closed` that ends a claim, ask where the
   write goes before they let go of what it held, as every other write does: `--offline` or on a
   tracker with no remote they keep it and answer from the write, where they freed it and read the

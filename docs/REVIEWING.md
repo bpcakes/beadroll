@@ -1824,7 +1824,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   claim identities before releasing the lock, including on unwind. `set_holding` remains a
   compatibility interface for external lock managers, not the internal locking path.
   The guard is `must_use`: a bare `ws.lock()?;` warns that it releases the lock immediately;
-  explicitly discarding it remains possible.
+  explicitly discarding it remains possible. It unlocks the file before it closes it, so that the
+  lock goes with the guard: a `flock` lasts until every descriptor of the open file is closed, and
+  a child that another thread is starting holds a copy of each until its exec. bead starts no
+  child beside a guard it drops, so this showed only in the tests (roll-x9x5): libtest runs a
+  crate's tests as threads of one process, and a lock probe found the store still locked while
+  another test started a `bead`.
   `Tx::attempt` borrows a writer that routes ordinary edits into the ownership attempt. Its
   lifetime cannot leak that routing into later sequential writes; the public `conditional`
   switch remains compatible. Claim and release events are always attempt events. Mixed writes
